@@ -1,4 +1,4 @@
-import { ClarificationDto } from '../escrow/dto/escrow.dto';
+import { ClarificationDto, EvidenceRequestDto } from '../escrow/dto/escrow.dto';
 import {
   Body,
   Controller,
@@ -37,6 +37,7 @@ import {
   UpdateMaintenanceDto,
   UpdatePlatformIdentityDto,
   UpdateJobCapacityDto,
+  SignAdminAttachmentsDto,
 } from './dto/admin.dto';
 import {
   ListVerificationsQueryDto,
@@ -50,6 +51,7 @@ import {
   ResolveDisputeDto,
 } from '../escrow/dto/escrow.dto';
 import { ChatService } from '../chat/chat.service';
+import { ListAdminConversationQueryDto } from '../chat/dto/chat.dto';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import { WalletService } from '../wallet/wallet.service';
 import {
@@ -304,6 +306,11 @@ export class AdminController {
     return this.adminPlatformService.broadcast(admin, dto);
   }
 
+  @Get('notifications/broadcasts/:id')
+  broadcastStatus(@Param('id', ParseUUIDPipe) id: string) {
+    return this.adminPlatformService.broadcastStatus(id);
+  }
+
   // ── Platform commission (migration 0024) ──────────────────────────────────
 
   @Get('commission')
@@ -321,8 +328,11 @@ export class AdminController {
   }
 
   @Get('jobs/:jobId/conversation')
-  getJobConversation(@Param('jobId', ParseUUIDPipe) jobId: string) {
-    return this.chatService.adminConversationForJob(jobId);
+  getJobConversation(
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Query() query: ListAdminConversationQueryDto,
+  ) {
+    return this.chatService.adminConversationForJob(jobId, query);
   }
 
   // ── Provider verification queue (migration 0008) ──────────────────────────
@@ -330,6 +340,11 @@ export class AdminController {
   @Get('verifications')
   listVerifications(@Query() query: ListVerificationsQueryDto) {
     return this.verificationsService.list(query);
+  }
+
+  @Get('verifications/:id')
+  getVerification(@Param('id', ParseUUIDPipe) id: string) {
+    return this.verificationsService.getForAdmin(id);
   }
 
   @Post('verifications/:id/approve')
@@ -407,7 +422,26 @@ export class AdminController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ClarificationDto,
   ) {
-    return this.disputesService.clarify(admin, id, dto.body);
+    return this.disputesService.clarify(admin, id, dto);
+  }
+
+  @Post('disputes/:id/evidence-request')
+  requestDisputeEvidence(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EvidenceRequestDto,
+  ) {
+    return this.disputesService.requestEvidence(admin, id, dto);
+  }
+
+  @Post('attachments/sign')
+  signAttachments(@Body() dto: SignAdminAttachmentsDto) {
+    return this.chatService.adminSignAttachments(dto.paths);
+  }
+
+  @Get('queues/counts')
+  queueCounts() {
+    return this.adminService.queueCounts();
   }
 
   @Post('disputes/:id/resolve')

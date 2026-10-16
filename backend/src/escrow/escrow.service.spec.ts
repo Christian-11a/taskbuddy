@@ -723,9 +723,13 @@ describe('DisputesService', () => {
       {},
       { add_dispute_entry: [ok({ id: 'entry' })] },
     );
-    await service.clarify(admin, 'd1', 'Please explain the checklist');
+    await service.clarify(admin, 'd1', {
+      body: 'Please explain the checklist',
+    });
     expect(rpcArgs(rpc, 'add_dispute_entry')[0]).toMatchObject({
       p_kind: 'clarification',
+      p_body: 'Please explain the checklist',
+      p_recipient: 'both',
       p_message_id: null,
     });
   });

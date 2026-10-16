@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import type { Profile } from '../common/types';
+import { ListNotificationsPageDto } from './dto/notifications.dto';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -29,6 +30,7 @@ export class NotificationsController {
       .from('notifications')
       .select('*')
       .eq('recipient_id', user.id)
+      .is('dismissed_at', null)
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .limit(50);
@@ -36,6 +38,38 @@ export class NotificationsController {
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
     return data ?? [];
+  }
+
+  @Get('page')
+  async page(
+    @CurrentUser() user: Profile,
+    @Query() query: ListNotificationsPageDto,
+  ) {
+    const limit = query.limit ?? 50;
+    const offset = query.offset ?? 0;
+    const [page, unread] = await Promise.all([
+      this.supabase.admin
+        .from('notifications')
+        .select('*', { count: 'exact' })
+        .eq('recipient_id', user.id)
+        .is('dismissed_at', null)
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(offset, offset + limit - 1),
+      this.supabase.admin
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', user.id)
+        .is('read_at', null)
+        .is('dismissed_at', null),
+    ]);
+    if (page.error) throw new BadRequestException(page.error.message);
+    if (unread.error) throw new BadRequestException(unread.error.message);
+    return {
+      items: page.data ?? [],
+      total: page.count ?? 0,
+      unread_total: unread.count ?? 0,
+    };
   }
 
   /**
@@ -48,7 +82,8 @@ export class NotificationsController {
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('recipient_id', user.id)
-      .is('read_at', null);
+      .is('read_at', null)
+      .is('dismissed_at', null);
     if (error) throw new BadRequestException(error.message);
     return { count: count ?? 0 };
   }
@@ -89,6 +124,7 @@ export class NotificationsController {
       .eq('id', id)
       .eq('recipient_id', user.id)
       .is('read_at', null)
+      .is('dismissed_at', null)
       .select()
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
@@ -101,7 +137,8 @@ export class NotificationsController {
       .from('notifications')
       .update({ read_at: new Date().toISOString() })
       .eq('recipient_id', user.id)
-      .is('read_at', null);
+      .is('read_at', null)
+      .is('dismissed_at', null);
     if (error) throw new BadRequestException(error.message);
     return { success: true };
   }
@@ -113,11 +150,20 @@ export class NotificationsController {
     @CurrentUser() user: Profile,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    const { error: dismissError } = await this.supabase.admin
+      .from('notifications')
+      .update({ dismissed_at: new Date().toISOString() })
+      .eq('id', id)
+      .eq('recipient_id', user.id)
+      .or('type.eq.admin_alert,broadcast_id.not.is.null');
+    if (dismissError) throw new BadRequestException(dismissError.message);
     const { error } = await this.supabase.admin
       .from('notifications')
       .delete()
       .eq('id', id)
-      .eq('recipient_id', user.id);
+      .eq('recipient_id', user.id)
+      .neq('type', 'admin_alert')
+      .is('broadcast_id', null);
     if (error) throw new BadRequestException(error.message);
   }
 
@@ -125,10 +171,19 @@ export class NotificationsController {
   @Delete()
   @HttpCode(204)
   async removeAll(@CurrentUser() user: Profile) {
+    const { error: dismissError } = await this.supabase.admin
+      .from('notifications')
+      .update({ dismissed_at: new Date().toISOString() })
+      .eq('recipient_id', user.id)
+      .or('type.eq.admin_alert,broadcast_id.not.is.null')
+      .is('dismissed_at', null);
+    if (dismissError) throw new BadRequestException(dismissError.message);
     const { error } = await this.supabase.admin
       .from('notifications')
       .delete()
-      .eq('recipient_id', user.id);
+      .eq('recipient_id', user.id)
+      .neq('type', 'admin_alert')
+      .is('broadcast_id', null);
     if (error) throw new BadRequestException(error.message);
   }
 }

@@ -81,6 +81,20 @@ export class ClarificationDto {
   @IsString()
   @Length(1, 1000)
   body!: string;
+
+  @IsOptional()
+  @IsIn(['client', 'provider', 'both'])
+  recipient?: 'client' | 'provider' | 'both';
+}
+
+export class EvidenceRequestDto {
+  @IsString()
+  @Length(1, 1000)
+  body!: string;
+
+  @IsOptional()
+  @IsIn(['client', 'provider', 'both'])
+  recipient?: 'client' | 'provider' | 'both';
 }
 export class CancellationResponseDto {
   @IsOptional()

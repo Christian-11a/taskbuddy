@@ -168,8 +168,8 @@ been completed.
 | High | Sandbox top-ups now have matching completed wallet credits, and two card-funded hires have escrow rows. Test card-funded release/Connect transfer and Identity completion on a device; neither is proven | Stripe + Render + mobile | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
 | High | Check the current Render `STRIPE_MOBILE_API_VERSION` and exercise Identity/top-up creation; an earlier Identity request failed with `Invalid Stripe API version: 2025-21-27` | Render + Stripe | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
 | High | Migration 0038 is applied to the linked Supabase project. Verify the restarted Render API serves the new admin search and `has_password` contracts; the health check does not identify the deployed commit. Deploy the web/mobile clients separately | Render + Vercel + EAS | [`backend/README.md`](./backend/README.md) |
-| High | Post-UAT migrations 0046–0050 and API contracts are committed on `origin/feat/backend-handoff-contracts`, but not deployed. Apply migrations before that API; mobile screens and web Settings integration remain pending | Supabase + Render + mobile + web | [`backend/README.md`](./backend/README.md) |
-| Medium | Admin verification emails need a verified sending domain and provider configuration; the shared platform-identity API exists only on the feature branch | Domain + backend + web | [`docs/backend-handoff-web-admin.md`](./docs/backend-handoff-web-admin.md) |
+| High | PR #81 is merged into upstream main; migrations 0046–0052 are applied to the linked Supabase project. Deploy the matching backend API; mobile feature screens and device checks remain pending | Supabase + Render + mobile + web | [`backend/README.md`](./backend/README.md) |
+| Medium | Admin verification emails need a verified sending domain and provider configuration; the platform-identity migration is applied, while matching API deployment remains pending | Domain + backend + web | [`docs/backend-handoff-web-admin.md`](./docs/backend-handoff-web-admin.md) |
 | Medium | Investigate the ML service's HTTP 429 before claiming recommendations work end to end | Render + ML service | [`HANDOFF.md`](./HANDOFF.md) |
 | Medium | Push notifications: add Firebase `google-services.json` + FCM credentials, then rebuild | Firebase + EAS | `HANDOFF.md` §4 |
 | Low | Run the k6 money-path load test (it writes to prod, so it needs a go-ahead) | Render/Supabase tier visibility | `HANDOFF.md` §3, [`backend/load/README.md`](./backend/load/README.md) |
@@ -179,10 +179,11 @@ Product decisions that block further backend work are listed in `HANDOFF.md` (Up
 [`docs/backend-handoff-wallet-payout-rail-spike.md`](./docs/backend-handoff-wallet-payout-rail-spike.md)
 (why the withdrawal payout rail can't reuse the Stripe Connect payout service as-is).
 
-The linked project's migration 0038 functions were verified after application.
-Its older migration-history mismatch still prevents a clean `supabase db push
---dry-run`; do not repair history based only on a dry-run suggestion. The
-Render API restarted after the fork's `main` push and returned HTTP 200 with
+The linked project's migration history was reconciled after inspecting the existing
+schema, and migrations 0046–0052 were applied in order. Their history entries and
+new database objects were verified. Deployment of this branch's backend API
+remains pending. During the earlier deployment, the Render API restarted after
+the fork's `main` push and returned HTTP 200 with
 database `up`, but exact deployed-commit identity and client releases remain
 unverified. Password-reset OTP expiry is configured in Supabase Auth to one
 hour; see [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) for

@@ -1,28 +1,29 @@
 # Backend requests from the web admin team
 
-**Updated:** 2026-10-15
+**Updated:** 2026-10-16
 
 **Scope:** the web admin console. Mobile appears only where a shared endpoint or
 row changes what mobile sees.
 
-**Basis:** the backend as it stands on this branch (migrations through 0050, including PR #81). Each
-item says what exists today, so nothing here asks for something already served.
+**Basis:** PR #81 is merged into `upstream/main`; the current backend handoff
+branch adds migrations 0051–0052. Migrations 0046–0052 are applied to the linked
+Supabase project; matching API deployment remains pending.
 
 **Priority:** High means the console is wrong or slow today. Medium means a
 workaround exists and the console works without the change.
 
-## Deployment request: PR #81 (migrations 0046 to 0050)
+## Deployment request: PR #81 and web admin contracts
 
-The web admin is ready to use two endpoints from PR #81, but they cannot work until both
-of these are done on the live environment:
+PR #81 (migrations 0046–0050 and matching API) is merged into upstream main.
+This branch adds migrations 0051–0052 and matching web handoff endpoints.
+Migrations 0046–0052 have been applied in order to the linked Supabase project.
+The older migration history was reconciled after inspecting the existing schema;
+new history entries and database objects were verified. Vault synchronization
+was skipped.
 
-1. Run migrations 0046 to 0050 on the Supabase project (early payment release, shared
-   platform identity, job capacity settings, job change requests, provider release requests).
-2. Deploy the backend server code from PR #81, which adds `GET/PATCH /admin/platform-identity`
-   (with `expected_version`, 409 on a stale version) and `GET/PATCH /admin/job-capacity`.
-
-Please tell us when both are live. Until then the web admin will show these settings as
-"not available yet" instead of failing.
+Deploy the matching backend API, including `GET/PATCH /admin/platform-identity`
+and `/admin/job-capacity`, plus the web admin endpoints listed below. Until API
+deployment, the web admin shows unavailable settings instead of failing.
 
 | # | Request | Priority | Who benefits |
 |---|---|---|---|
@@ -33,6 +34,38 @@ Please tell us when both are live. Until then the web admin will show these sett
 | e | Push and email status in the broadcast response | Medium | Web, admins |
 | f | One counts endpoint for work queues | High | Web, backend load |
 | g | Pagination totals on every list | High | Web, mobile (notifications) |
+
+**Implementation status (current branch):** requests (a)–(g) are implemented
+in migrations 0051–0052 and the backend API. Request (h) has an opt-in
+`include_documents=false` verification list and a per-verification detail read;
+live timing and web adoption remain pending. Request (i), incremental
+`updated_since` reads with deletion signals, remains deferred because the handoff
+marks it non-urgent and the web client does not consume it yet. Request (j)
+keeps the current cancellation-review behavior until the product owner chooses
+whether an admin cancellation should refund held money immediately.
+
+Email delivery remains unimplemented pending a verified sender domain and
+provider configuration. Broadcast status reports `email_sent: 0` meanwhile.
+
+**Implemented API contracts on this branch:**
+
+- `POST /admin/disputes/:id/clarification` accepts `{ body, recipient? }`;
+  `POST /admin/disputes/:id/evidence-request` accepts the same shape.
+- `POST /admin/attachments/sign` accepts 1–20 unique chat attachment paths and
+  returns short-lived signed URLs.
+- `GET /admin/queues/counts` returns the four queue counts; an individual
+  unavailable count is `null`.
+- `GET /notifications/page?limit=&offset=` returns
+  `{ items, total, unread_total }`; the existing `GET /notifications` array
+  remains available. Dismissing admin alerts and broadcast notifications hides
+  them while preserving their delivery audit data.
+- `GET /admin/jobs/:jobId/conversation?limit=&before=` returns
+  `{ messages, total, has_more }`.
+- Broadcast creation returns `broadcast_id`, `sent_to`, `failed`, and
+  `push_queued` (with legacy `sent` retained); the status route reports Expo
+  ticket counts after the push scheduler processes the notification rows.
+- `GET /admin/verifications?include_documents=false` avoids signing documents
+  for list rows. `GET /admin/verifications/:id` loads document URLs on demand.
 
 ---
 

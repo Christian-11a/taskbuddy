@@ -6,6 +6,8 @@ import {
   Matches,
   MaxLength,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsInt, Max, Min } from 'class-validator';
 
 /**
  * The exact shape `UploadsService.createSignedUpload` issues:
@@ -34,4 +36,18 @@ export class SendMessageDto {
       'attachment_path must be a path returned by POST /uploads/signed-url',
   })
   attachment_path?: string;
+}
+
+export class ListAdminConversationQueryDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  before?: string;
 }

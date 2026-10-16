@@ -6,6 +6,10 @@ function createSupabaseMock() {
   const eq = jest.fn();
   const builder = {
     delete: jest.fn(() => builder),
+    update: jest.fn(() => builder),
+    or: jest.fn(() => builder),
+    neq: jest.fn(() => builder),
+    is: jest.fn(() => builder),
     eq,
     then: (resolve: (value: unknown) => unknown) =>
       Promise.resolve({ error: null }).then(resolve),
@@ -27,6 +31,14 @@ describe('NotificationsController delete', () => {
 
     expect(from).toHaveBeenCalledWith('notifications');
     expect(builder.delete).toHaveBeenCalled();
+    expect(builder.update).toHaveBeenCalledWith({
+      dismissed_at: expect.any(String),
+    });
+    expect(builder.or).toHaveBeenCalledWith(
+      'type.eq.admin_alert,broadcast_id.not.is.null',
+    );
+    expect(builder.neq).toHaveBeenCalledWith('type', 'admin_alert');
+    expect(builder.is).toHaveBeenCalledWith('broadcast_id', null);
     expect(eq).toHaveBeenCalledWith('id', 'n-1');
     // Without this a caller could delete someone else's notification by id.
     expect(eq).toHaveBeenCalledWith('recipient_id', 'user-1');
@@ -38,7 +50,7 @@ describe('NotificationsController delete', () => {
 
     await controller.removeAll(user);
 
-    expect(eq).toHaveBeenCalledTimes(1);
+    expect(eq).toHaveBeenCalledTimes(2);
     expect(eq).toHaveBeenCalledWith('recipient_id', 'user-1');
   });
 });
@@ -51,6 +63,9 @@ function queryMock(result: {
   const builder: Record<string, unknown> = {};
   for (const method of [
     'select',
+    'or',
+    'neq',
+    'range',
     'update',
     'delete',
     'eq',

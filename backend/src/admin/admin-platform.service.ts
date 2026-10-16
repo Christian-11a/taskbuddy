@@ -306,9 +306,18 @@ export class AdminPlatformService {
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
     const recipients = (data ?? []) as { id: string }[];
-    if (recipients.length === 0) {
-      return { sent: 0, failed: 0, audience: dto.audience };
-    }
+    const { data: broadcast, error: broadcastError } = await this.supabase.admin
+      .from('notification_broadcasts')
+      .insert({
+        created_by: admin.id,
+        audience: dto.audience,
+        title: dto.title,
+        body: dto.body,
+        recipient_count: recipients.length,
+      })
+      .select('id')
+      .single();
+    if (broadcastError) throw new BadRequestException(broadcastError.message);
 
     let sent = 0;
     let failed = 0;
@@ -322,6 +331,7 @@ export class AdminPlatformService {
             type: 'announcement',
             title: dto.title,
             body: dto.body,
+            broadcast_id: broadcast.id,
             data: { broadcast_by: admin.id },
           })),
         );
@@ -343,9 +353,62 @@ export class AdminPlatformService {
       'notification.broadcast',
       'notifications',
       admin.id,
-      { audience: dto.audience, title: dto.title, sent, failed },
+      {
+        audience: dto.audience,
+        title: dto.title,
+        broadcast_id: broadcast.id,
+        sent,
+        failed,
+      },
     );
-    return { sent, failed, audience: dto.audience };
+    const { error: statusError } = await this.supabase.admin
+      .from('notification_broadcasts')
+      .update({ inserted_count: sent, failed_count: failed })
+      .eq('id', broadcast.id);
+    if (statusError) throw new BadRequestException(statusError.message);
+    return {
+      broadcast_id: broadcast.id,
+      audience: dto.audience,
+      sent_to: sent,
+      sent,
+      failed,
+      push_queued: sent,
+    };
+  }
+
+  async broadcastStatus(id: string) {
+    const [{ data: broadcast, error: broadcastError }, { data: rows, error }] =
+      await Promise.all([
+        this.supabase.admin
+          .from('notification_broadcasts')
+          .select(
+            'id, audience, recipient_count, inserted_count, failed_count, created_at',
+          )
+          .eq('id', id)
+          .maybeSingle(),
+        this.supabase.admin
+          .from('notifications')
+          .select('push_attempted_count, push_sent_count, push_failed_count')
+          .eq('broadcast_id', id),
+      ]);
+    if (broadcastError) throw new BadRequestException(broadcastError.message);
+    if (error) throw new BadRequestException(error.message);
+    if (!broadcast) throw new NotFoundException('Broadcast not found');
+    const totals = (rows ?? []).reduce(
+      (sum, row) => ({
+        push_attempted: sum.push_attempted + row.push_attempted_count,
+        push_sent: sum.push_sent + row.push_sent_count,
+        push_failed: sum.push_failed + row.push_failed_count,
+      }),
+      { push_attempted: 0, push_sent: 0, push_failed: 0 },
+    );
+    return {
+      sent_to: broadcast.inserted_count,
+      push_attempted: totals.push_attempted,
+      push_sent: totals.push_sent,
+      push_failed: totals.push_failed,
+      email_sent: 0,
+    };
   }
 
   // ── Commission ────────────────────────────────────────────────────────────

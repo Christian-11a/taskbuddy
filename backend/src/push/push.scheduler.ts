@@ -15,6 +15,7 @@ interface NotificationRow {
   title: string;
   body: string | null;
   data: Record<string, unknown> | null;
+  broadcast_id: string | null;
 }
 
 /**
@@ -66,7 +67,7 @@ export class PushScheduler {
   private async deliverPending() {
     const { data: pending, error } = await this.supabase.admin
       .from('notifications')
-      .select('id, recipient_id, type, title, body, data')
+      .select('id, recipient_id, type, title, body, data, broadcast_id')
       .is('pushed_at', null)
       .order('created_at', { ascending: true })
       .limit(CLAIM_LIMIT);
@@ -105,6 +106,7 @@ export class PushScheduler {
           to: token,
           title: row.title,
           body: row.body ?? '',
+          notification_id: row.id,
           // Carries what the app needs to deep-link on tap. `type` tells it
           // which screen; `data` already holds the job/application id the
           // trigger recorded.

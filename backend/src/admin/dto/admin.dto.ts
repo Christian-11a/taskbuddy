@@ -1,6 +1,9 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
   IsBoolean,
+  IsArray,
   IsDateString,
   IsEmail,
   IsIn,
@@ -278,4 +281,13 @@ export class UpdateJobCapacityDto {
   @IsNumber() @Min(1) daily_hours_max!: number;
   @IsNumber() @Min(0) rest_hours!: number;
   @IsNumber() @Min(1) travel_kmh!: number;
+}
+
+export class SignAdminAttachmentsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  paths!: string[];
 }

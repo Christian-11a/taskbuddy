@@ -8,6 +8,7 @@ import type { UploadsService } from '../uploads/uploads.service';
 
 type QueryResult = {
   data: unknown;
+  count?: number;
   error: { message: string } | null;
 };
 
@@ -19,7 +20,15 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       error: { message: `no mock result for table '${table}'` },
     };
     const builder: Record<string, unknown> = {};
-    for (const method of ['select', 'eq', 'order', 'insert']) {
+    for (const method of [
+      'select',
+      'eq',
+      'order',
+      'insert',
+      'limit',
+      'lt',
+      'or',
+    ]) {
       builder[method] = jest.fn(() => builder);
     }
     builder.maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -63,6 +72,8 @@ describe('ChatService.adminConversationForJob', () => {
 
     await expect(service.adminConversationForJob('j1')).resolves.toEqual({
       messages: [],
+      total: 0,
+      has_more: false,
     });
   });
 
@@ -89,7 +100,10 @@ describe('ChatService.adminConversationForJob', () => {
     ];
     const { supabase } = createSupabaseMock({
       conversations: [{ data: { id: 'c1' }, error: null }],
-      messages: [{ data: rows, error: null }],
+      messages: [
+        { data: [...rows].reverse(), error: null },
+        { data: null, error: null, count: 2 },
+      ],
     });
     const service = newChatService(
       supabase,
@@ -99,6 +113,8 @@ describe('ChatService.adminConversationForJob', () => {
     const result = await service.adminConversationForJob('j1');
 
     expect(result).toEqual({
+      total: 2,
+      has_more: false,
       messages: [
         {
           id: 'm1',
