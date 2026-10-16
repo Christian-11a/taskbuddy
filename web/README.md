@@ -575,7 +575,7 @@ The shared-settings database contract is applied in migration 0047:
 `expected_version`, `platform_name`, and an optional `support_email`; stale
 versions return 409. Admin inbox alerts, structured dispute recipients/evidence,
 photo URL renewal, queue counts, notification paging, and broadcast delivery
-status are implemented in migrations 0051–0052 and the current backend branch;
+status are implemented in migrations 0051–0052 and the backend merged by PR #84;
 the database migrations are applied, while backend API deployment is pending.
 Admin email delivery remains pending sender-domain and
 email-provider configuration.

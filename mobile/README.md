@@ -4,10 +4,10 @@
 
 Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios; see the current implementation section below.
 
-Migrations **0037 and 0038** are applied to the linked Supabase project. The
-Render API restarted after the fork's `main` push and passed `/health`, but
-that response does not identify its deployed commit. Verify the new API
-contracts and run the Android device flows before releasing this app. See
+All migrations through **0052** are applied to the linked Supabase project
+(verified 2026-10-16). The API matching 0046–0052 is not yet deployed, and
+`/health` does not identify the deployed commit. Verify the new API contracts
+and run the Android device flows before releasing this app. See
 [backend handover](../HANDOFF.md) for remaining checks.
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
@@ -640,8 +640,8 @@ open: the Stripe Connect escrow, card-at-hire, and verification as a gate
 (§29, §17). The migration list, including which ones must be applied before an
 API deploy and which must run alone (0022, 0027), is kept in one place:
 `backend/README.md`. Migrations 0046–0050 and their matching API are merged into
-`upstream/main` by PR #81. The current backend handoff branch adds migrations
-0051–0052 for web admin APIs. Migrations 0046–0052 are applied to the linked
+`upstream/main` by PR #81, and migrations 0051–0052 for web admin APIs by
+PR #84. Migrations 0046–0052 are applied to the linked
 Supabase project; deployment of the matching backend API remains pending. The mobile UI for
 the post-UAT release, change-request, and capacity contracts still needs
 implementation and device verification. Card-funded price changes remain
