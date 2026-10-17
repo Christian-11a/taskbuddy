@@ -43,3 +43,20 @@ it('has no floating action: only the tabs render, and no extra button sits above
   expect(screen.getAllByTestId(/^nav-tab-/)).toHaveLength(TABS.length);
   expect(screen.queryByRole('button')).toBeNull();
 });
+
+it('shows an unread badge on a tab and says so to screen readers', () => {
+  const { MessageCircle } = jest.requireActual('lucide-react-native');
+  render(
+    <BottomNavBar
+      activeTab="Home"
+      tabs={[
+        { key: 'Home', label: 'Home', icon: Home },
+        { key: 'Messages', label: 'Messages', icon: MessageCircle, badge: 4 },
+      ]}
+      onTabPress={jest.fn()}
+    />,
+  );
+  expect(screen.getByTestId('nav-badge-Messages')).toBeTruthy();
+  expect(screen.getByLabelText('Messages, 4 unread')).toBeTruthy();
+  expect(screen.queryByTestId('nav-badge-Home')).toBeNull();
+});

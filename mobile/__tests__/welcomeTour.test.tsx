@@ -58,6 +58,7 @@ jest.mock('../src/lib/pushNotifications', () => ({
     return Promise.resolve(() => {});
   }),
   consumeLastNotificationTap: jest.fn(() => Promise.resolve(null)),
+  subscribeToChatPushes: jest.fn(() => Promise.resolve(() => {})),
 }));
 
 // Home keeps its tour anchors while `anchorsShown` is set; leaving Home takes them away, as in the app.

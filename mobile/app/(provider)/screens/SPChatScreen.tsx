@@ -13,6 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import ChatThread from '../../../src/components/ChatThread';
+import { refreshChatUnread } from '../../../src/hooks/useChatUnread';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { useChatJob } from '../../../src/hooks/useChatJob';
 
@@ -70,7 +71,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
             },
           );
         }
-        api.markConversationRead(convo.id).catch(() => {});
+        api.markConversationRead(convo.id).then(refreshChatUnread).catch(() => {});
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : 'Could not load chat.');
       } finally {

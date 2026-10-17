@@ -247,7 +247,13 @@ export class ChatService {
       await this.push.sendChat(recipientId, {
         title: sender.full_name || 'New message',
         body: message.body ? message.body.slice(0, 200) : 'Sent a photo',
-        data: { conversation_id: conversation.id, job_id: conversation.job_id },
+        // recipient_id: the app only acts on a tapped push meant for the
+        // account signed in on that phone.
+        data: {
+          conversation_id: conversation.id,
+          job_id: conversation.job_id,
+          recipient_id: recipientId,
+        },
       });
     } catch (err) {
       this.logger.warn(`Chat push skipped: ${(err as Error).message}`);

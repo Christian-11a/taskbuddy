@@ -64,6 +64,13 @@ export async function requestExpoPushRegistration(): Promise<PushRegistrationOut
         name: 'Default',
         importance: Notifications.AndroidImportance.MAX,
       });
+      // Chat has its own channel (migration 0061), so people can mute or tune
+      // chat alerts in Android settings without losing job and payment ones.
+      await Notifications.setNotificationChannelAsync('chat', {
+        name: 'Messages',
+        description: 'New chat messages from clients and providers',
+        importance: Notifications.AndroidImportance.HIGH,
+      });
     }
 
     let { status } = await Notifications.getPermissionsAsync();
@@ -110,6 +117,22 @@ export async function subscribeToNotificationTaps(
   const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
     if (response.actionIdentifier !== Notifications.DEFAULT_ACTION_IDENTIFIER) return;
     cb(response.notification.request.content.data as Record<string, string>);
+  });
+  return () => subscription.remove();
+}
+
+/**
+ * Calls `cb` when a chat push arrives while the app is open, so the unread
+ * badges can refresh straight away. No-op on web / Expo Go.
+ */
+export async function subscribeToChatPushes(cb: () => void): Promise<() => void> {
+  if (Platform.OS === 'web' || isRunningInExpoGo()) {
+    return () => {};
+  }
+  const Notifications = await import('expo-notifications');
+  const subscription = Notifications.addNotificationReceivedListener((notification) => {
+    const data = notification.request.content.data as Record<string, unknown> | undefined;
+    if (data?.type === 'chat') cb();
   });
   return () => subscription.remove();
 }

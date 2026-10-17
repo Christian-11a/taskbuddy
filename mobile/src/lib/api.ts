@@ -621,6 +621,8 @@ export interface Conversation {
   counterpart_avatar_url: string | null;
   last_message_at: string | null;
   created_at: string;
+  /** Messages from the other person not read yet (migration 0061). */
+  unread_count?: number;
 }
 
 export interface Message {
@@ -1595,6 +1597,11 @@ export const api = {
   },
 
   // ── Chat ────────────────────────────────────────────────────────────────────
+  /** Unread chat messages, in total and per conversation: the Messages badge. */
+  chatUnread() {
+    return authRequest<{ total: number; conversations: Record<string, number> }>('/conversations/unread');
+  },
+
   conversations() {
     return authRequest<Conversation[]>('/conversations');
   },

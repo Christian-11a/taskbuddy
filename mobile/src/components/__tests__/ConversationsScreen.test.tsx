@@ -43,3 +43,17 @@ it('says there are no conversations yet when the list is empty', async () => {
   expect(await screen.findByTestId('messages-empty')).toBeTruthy();
   expect(screen.getByText('No conversations yet')).toBeTruthy();
 });
+
+it('marks a conversation with unread messages and shows the count', async () => {
+  (api.conversations as jest.Mock).mockResolvedValue([
+    {
+      id: 'c9', job_id: 'job-9', job_title: 'Fix sink', job_status: 'in_progress',
+      counterpart_name: 'Ana', counterpart_avatar_url: null,
+      last_message_at: '2026-10-17T00:00:00Z', created_at: '2026-10-16T00:00:00Z', unread_count: 3,
+    },
+  ]);
+  render(<ConversationsScreen onOpenChat={jest.fn()} />);
+
+  expect(await screen.findByTestId('conversation-unread-c9')).toBeTruthy();
+  expect(screen.getByLabelText('Chat with Ana about Fix sink, 3 unread')).toBeTruthy();
+});

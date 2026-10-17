@@ -347,7 +347,7 @@ describe('ChatService chat alerts (0061)', () => {
     expect(sendChat).toHaveBeenCalledWith('u2', {
       title: 'Ana',
       body: 'On my way',
-      data: { conversation_id: 'c1', job_id: 'j1' },
+      data: { conversation_id: 'c1', job_id: 'j1', recipient_id: 'u2' },
     });
   });
 
