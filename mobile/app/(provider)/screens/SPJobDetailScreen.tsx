@@ -12,7 +12,8 @@
  */
 
 import React, { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
   CalendarDays,
@@ -25,9 +26,10 @@ import {
 } from 'lucide-react-native';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import PhotoViewer from '../../../src/components/PhotoViewer';
-import ProposalModal from '../../../src/components/ProposalModal';
+import ProposalModal, { PAYOUT_NOTE } from '../../../src/components/ProposalModal';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { capacityConflictMessage } from '../../../src/lib/capacityConflict';
 import PhotoStrip from '../../../src/components/PhotoStrip';
 import TaskProofSheet from '../../../src/components/TaskProofSheet';
 import { showToast } from '../../../src/components/Toast';
@@ -53,7 +55,6 @@ import { distanceLabel, peso, timeOfDay, urgencyMeta } from '../../../src/lib/fo
 import { dayHeading } from '../../../src/lib/jobCalendar';
 import { dateKeyOf } from '../../../src/lib/localDate';
 import {
-  monthDay,
   providerJobView,
   type Action,
   type ProviderApplication,
@@ -110,6 +111,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     [],
     'sp-applications',
   );
+  // Proposals are refused without a payout account. A failed lookup counts as linked (the server decides),
+  // and the check runs again when the app returns to the foreground.
+  const { data: payoutLink, reload: reloadPayout } = useAsyncData<{ linked: boolean }>(async () => {
+    try { return { linked: !!(await api.payoutAccount()) }; } catch { return { linked: true }; }
+  }, [], 'sp-payout-linked');
+  useRefreshOnForeground(reloadPayout, true);
   const { data: dispute } = useAsyncData(
     () => jobId && job?.assigned_provider_id === profile?.id ? api.jobDispute(jobId) : Promise.resolve(null),
     [jobId, job?.assigned_provider_id, profile?.id],
@@ -129,10 +136,14 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const [busy, setBusy] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   const [proposalOpen, setProposalOpen] = useState(false);
+  // Set when the server answers 409 because the provider is at a capacity limit.
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [startOpen, setStartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // The server answered 403 `payout_account_required`, whatever the lookup said.
+  const [payoutRefused, setPayoutRefused] = useState(false);
   // Which checklist row is mid-flight, so only that row shows a spinner.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
@@ -148,12 +159,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     ? providerJobView({ job, me: profile, myApplication, dispute, tasks, isVerified, now: new Date() })
     : null;
   const main = view?.main ?? null;
+  const needsPayout = payoutRefused || payoutLink?.linked === false;
+  const blockedByPayout = main?.kind === 'sendProposal' && needsPayout;
   const link = view?.link ?? null;
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
   const paid = Number(job?.budget ?? 0) > 0;
   const isDone = isAssignedToMe && job?.status === 'completed';
-  const complaintOpen = dispute?.status === 'open';
-  const releaseDay = job ? monthDay(job.warranty_expires_at) : null;
   const sentAt = myApplication ? dayAndTime(myApplication.applied_at) : null;
   const client = {
     name: clientConversation?.counterpart_name || 'Client',
@@ -177,7 +188,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       await fn();
       reload();
     } catch (e) {
-      setActionError(errorMessage(e));
+      if (e instanceof ApiError && e.code === 'payout_account_required') setPayoutRefused(true);
+      else setActionError(errorMessage(e));
       // Verification is required to apply (BACKEND_SCHEMA.md §17). Reaching
       // this means the cached profile said "verified" when the API disagrees,
       // so re-read it: the Verify button below then replaces Submit Proposal.
@@ -205,7 +217,17 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       // Send proposal stays visible and a second tap 400s as a duplicate.
       reloadApps();
     } catch (e) {
-      setActionError(errorMessage(e));
+      const capacity = capacityConflictMessage(e);
+      if (capacity) {
+        setProposalOpen(false);
+        setActionError(null);
+        setCapacityNotice(capacity);
+      } else if (e instanceof ApiError && e.code === 'payout_account_required') {
+        setPayoutRefused(true);
+        setActionError(null);
+      } else {
+        setActionError(errorMessage(e));
+      }
       if (e instanceof ApiError && e.code === 'verification_required') {
         void refreshProfile();
       }
@@ -290,6 +312,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const run = (action: Action, current: Job) => {
     switch (action.kind) {
       case 'sendProposal':
+        if (needsPayout) return;
         setActionError(null);
         setProposalOpen(true);
         return;
@@ -387,6 +410,18 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             </View>
           </View>
 
+          {view.banner && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`${view.banner.text} View case`}
+              testID="dispute-banner"
+              onPress={() => run(view.banner!.action, job)}
+              style={styles.disputeBanner}
+            >
+              <Text style={styles.disputeBannerText}>{view.banner.text}</Text>
+              <Text style={styles.disputeBannerLink}>View case</Text>
+            </Pressable>
+          )}
           <StatusCard tone={view.card.tone} overline={view.card.overline} title={view.card.title} body={view.card.body} />
 
           {pending && myApplication && (
@@ -405,12 +440,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 <Text style={styles.earnLabel}>Job price</Text>
                 <Text style={styles.earnValue}>{peso(job.budget)}</Text>
               </View>
-              {!!releaseDay && !complaintOpen && (
-                <View style={styles.earnRow}>
-                  <Text style={styles.earnLabel}>Released to you</Text>
-                  <Text style={styles.earnValue}>{releaseDay}</Text>
-                </View>
-              )}
               <Text style={styles.footnote}>A platform fee is taken when it's paid out to your linked GCash, Maya or bank account.</Text>
             </View>
           )}
@@ -423,27 +452,31 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               </View>
               <View style={styles.card}>
                 {tasks.map((task) => (
-                  <Tap
-                    key={task.id}
-                    style={styles.taskRow}
-                    onPress={() => void toggleTask(task)}
-                    disabled={!tasksEditable || !!pendingTaskId}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={task.label}
-                    accessibilityState={{ checked: task.is_done, disabled: !tasksEditable }}
-                  >
-                    <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
-                      {pendingTaskId === task.id ? (
-                        <ActivityIndicator size="small" color={task.is_done ? Colors.onPrimary : Colors.primary} />
-                      ) : (
-                        task.is_done && <Check size={14} color={Colors.onPrimary} strokeWidth={3} />
-                      )}
-                    </View>
-                    <View style={styles.taskText}>
+                  <View key={task.id}>
+                    <Tap
+                      testID={`task-row-${task.id}`}
+                      style={styles.taskRow}
+                      onPress={() => void toggleTask(task)}
+                      disabled={!tasksEditable || !!pendingTaskId}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={task.label}
+                      accessibilityState={{ checked: task.is_done, disabled: !tasksEditable }}
+                    >
+                      <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
+                        {pendingTaskId === task.id ? (
+                          <ActivityIndicator size="small" color={task.is_done ? Colors.onPrimary : Colors.primary} />
+                        ) : (
+                          task.is_done && <Check size={16} color={Colors.onPrimary} strokeWidth={3} />
+                        )}
+                      </View>
                       <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
-                      <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
-                    </View>
-                  </Tap>
+                    </Tap>
+                    {(task.proof_photo_urls?.length ?? 0) > 0 && (
+                      <View style={styles.taskPhotos}>
+                        <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                      </View>
+                    )}
+                  </View>
                 ))}
               </View>
             </View>
@@ -504,7 +537,19 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       {!!actionError && !proposalOpen && !declineOpen && !withdrawOpen && (
         <Text style={styles.actionError} accessibilityRole="alert">{actionError}</Text>
       )}
-      {job && main && (
+      {job && main && blockedByPayout && (
+        <>
+          <Text style={styles.payoutNote} testID="payout-note">{PAYOUT_NOTE}</Text>
+          <BottomActionBar
+            primaryLabel="Link payout account"
+            onPrimary={() => onNavigate('Payout Account')}
+            busy={busy}
+            secondaryLabel={link ? labelFor(link, pending) : undefined}
+            onSecondary={link ? () => run(link, job) : undefined}
+          />
+        </>
+      )}
+      {job && main && !blockedByPayout && (
         <BottomActionBar
           primaryLabel={labelFor(main, pending)}
           onPrimary={() => run(main, job)}
@@ -521,11 +566,26 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         onClose={() => setMenuOpen(false)}
       />
 
+      <ConfirmationModal
+        visible={capacityNotice !== null}
+        title="Proposal limit reached"
+        message={capacityNotice ?? ''}
+        confirmLabel="OK"
+        hideCancel
+        onConfirm={() => setCapacityNotice(null)}
+        onCancel={() => setCapacityNotice(null)}
+      />
+
       <ProposalModal
         visible={proposalOpen}
         jobTitle={job?.title}
         busy={busy}
         error={proposalOpen ? actionError : null}
+        payoutRequired={payoutRefused}
+        onLinkPayout={() => {
+          setProposalOpen(false);
+          onNavigate('Payout Account');
+        }}
         onSubmit={(message) => void submitProposal(message)}
         onCancel={() => {
           setProposalOpen(false);
@@ -623,9 +683,9 @@ function createThemedStyles(theme: ThemePalette) {
     bodyText: { fontFamily: 'Inter', fontSize: 14, lineHeight: 21, color: V6Colors.ink700 },
 
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 36 },
-    taskText: { flex: 1 },
+    taskPhotos: { marginLeft: 36 },
     taskBox: {
-      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: V6Colors.line,
+      width: 24, height: 24, flexShrink: 0, borderRadius: 6, borderWidth: 1.5, borderColor: V6Colors.line,
       backgroundColor: V6Colors.surface, alignItems: 'center', justifyContent: 'center',
     },
     taskBoxDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
@@ -650,6 +710,15 @@ function createThemedStyles(theme: ThemePalette) {
 
     photo: { width: '100%', height: 240, borderRadius: 14 },
 
+    disputeBanner: {
+      backgroundColor: V6Colors.warningSurface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, gap: 2,
+    },
+    disputeBannerText: { fontFamily: 'Inter', fontSize: 14, lineHeight: 19, color: V6Colors.warningText },
+    disputeBannerLink: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: V6Colors.warningText, textDecorationLine: 'underline' },
+    payoutNote: {
+      color: V6Colors.ink700, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center',
+      paddingHorizontal: Spacing.screenH, paddingTop: 10, backgroundColor: V6Colors.surface,
+    },
     actionError: {
       color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center',
       paddingHorizontal: Spacing.screenH, paddingTop: 10,

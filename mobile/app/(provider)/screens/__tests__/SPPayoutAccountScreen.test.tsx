@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
-import SPPayoutAccountScreen, { accountLabel, payoutProblem } from '../SPPayoutAccountScreen';
+import SPPayoutAccountScreen, { accountLabel, payoutProblem, payoutStatus, payoutTitle } from '../SPPayoutAccountScreen';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
@@ -19,6 +19,26 @@ describe('accountLabel', () => {
     expect(accountLabel({ method: 'maya', bank_name: null, account_last4: '1111' })).toBe('Maya ••••1111');
     expect(accountLabel({ method: 'bank', bank_name: 'BPI', account_last4: '0123' })).toBe('BPI ••••0123');
     expect(accountLabel({ method: 'bank', bank_name: null, account_last4: '0123' })).toBe('Bank ••••0123');
+  });
+});
+
+describe('payoutStatus', () => {
+  it('labels completed, pending and failed payouts, and shows unknown values raw', () => {
+    expect(payoutStatus('completed')).toEqual({ label: 'Sent', tone: 'success' });
+    expect(payoutStatus('pending')).toEqual({ label: 'Pending', tone: 'warning' });
+    expect(payoutStatus('failed')).toEqual({ label: 'Failed', tone: 'danger' });
+    expect(payoutStatus('on_hold')).toEqual({ label: 'On_hold', tone: 'neutral' });
+  });
+});
+
+describe('payoutTitle', () => {
+  it('shows old Withdrawal and empty titles as Payout, and other titles as they are', () => {
+    expect(payoutTitle('Withdrawal')).toBe('Payout');
+    expect(payoutTitle('  withdrawal  ')).toBe('Payout');
+    expect(payoutTitle('')).toBe('Payout');
+    expect(payoutTitle('   ')).toBe('Payout');
+    expect(payoutTitle(null)).toBe('Payout');
+    expect(payoutTitle('Booking payment')).toBe('Booking payment');
   });
 });
 

@@ -3,6 +3,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import SPJobDetailScreen from '../SPJobDetailScreen';
 import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
+import { StyleSheet } from 'react-native';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
@@ -18,6 +19,7 @@ jest.mock('../../../../src/lib/api', () => ({
     updateJobTask: jest.fn(),
     conversations: jest.fn(),
     uploadImage: jest.fn(),
+    payoutAccount: jest.fn().mockResolvedValue({ id: 'acct-1' }),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -33,6 +35,7 @@ jest.mock('../../../../src/lib/api', () => ({
 jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///proof.jpg' }] }),
+  UIImagePickerPreferredAssetRepresentationMode: { Automatic: 'automatic', Compatible: 'compatible', Current: 'current' },
 }));
 jest.mock('../../../../src/context/AuthContext', () => ({
   useAuth: jest.fn(),
@@ -220,18 +223,14 @@ describe('FullTest provider job details', () => {
     fireEvent.press(screen.getByText('Report a problem'));
     expect(onNavigate).toHaveBeenCalledWith('Dispute Filing', JOB_ID);
   });
-  it.each([1, 4])('offers warranty review only during the three-day window (age %i)', async (days) => {
+  it('a completed job offers no report, even when an old warranty date is still on the record', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'completed', assigned_provider_id: PROVIDER_ID,
-      completed_at: new Date(Date.now() - days * 86400000).toISOString(),
-      warranty_expires_at: new Date(Date.now() + (3 - days) * 86400000).toISOString() });
+      completed_at: new Date(Date.now() - 86400000).toISOString(),
+      warranty_expires_at: new Date(Date.now() + 2 * 86400000).toISOString() });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText(openJob.title);
-    if (days < 3) {
-      fireEvent.press(screen.getByLabelText('More job actions'));
-      expect(await screen.findByText('Report a problem')).toBeTruthy();
-    } else {
-      expect(screen.queryByLabelText('More job actions')).toBeNull();
-    }
+    expect(screen.queryByLabelText('More job actions')).toBeNull();
+    expect(screen.queryByText(/Warranty/i)).toBeNull();
   });
 
 });
@@ -363,7 +362,7 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     expect(screen.getByRole('button', { name: 'Mark as done', disabled: true })).toBeTruthy();
     expect(api.updateJobTask).not.toHaveBeenCalled();
 
-    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Add photo' })));
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' })));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Mark as done' })));
     await waitFor(() =>
       expect(api.updateJobTask).toHaveBeenCalledWith(JOB_ID, 'task-1', true, ['provider-1/proof.jpg']),
@@ -386,6 +385,20 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
 
     expect(await screen.findByLabelText('Proof for Fix tap, photo 1 of 1')).toBeTruthy();
+  });
+
+  it('lays each task row out centred, with a fixed 24dp box beside the text', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...hired,
+      status: 'in_progress' as const,
+      job_tasks: [{ id: 'task-1', label: 'Fix tap', position: 0, is_done: false, completed_at: null }],
+    });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    const row = await screen.findByTestId('task-row-task-1');
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12 });
+    const box = row.findAll((node) => StyleSheet.flatten(node.props.style)?.width === 24)[0];
+    expect(StyleSheet.flatten(box.props.style)).toMatchObject({ width: 24, height: 24, flexShrink: 0 });
   });
 
   it('a hired job shows the homeowner from the conversation list and opens the chat', async () => {
@@ -457,7 +470,7 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
 
     expect(await screen.findByText('Job price')).toBeTruthy();
-    expect(screen.getByText('Released to you')).toBeTruthy();
+    expect(screen.queryByText('Released to you')).toBeNull();
     fireEvent.press(screen.getByLabelText('View payouts'));
     expect(onNavigate).toHaveBeenCalledWith('Payout Account');
   });
@@ -604,5 +617,94 @@ describe('SPJobDetailScreen — the Start job dialog says when the job was booke
 
     expect(screen.getByText(/This job is booked for .+ \(in 2 days\)\. Start it now\?/)).toBeTruthy();
     expect(screen.getByLabelText('Start now')).toBeTruthy();
+  });
+});
+
+describe('SPJobDetailScreen — payout account before proposing', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('replaces Send proposal with a note and a button to the Payout account screen when none is linked', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Link payout account')).toBeTruthy());
+    expect(screen.getByText('Link a GCash, Maya or bank account to send proposals')).toBeTruthy();
+    expect(screen.queryByLabelText('Send proposal')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Link payout account'));
+    expect(onNavigate).toHaveBeenCalledWith('Payout Account');
+  });
+
+  it('keeps Send proposal when an account is linked', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Send proposal')).toBeTruthy());
+    expect(screen.queryByTestId('payout-note')).toBeNull();
+  });
+
+  it('shows the note, not a generic error, when the server answers 403 payout_account_required', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+    const { ApiError } = jest.requireMock('../../../../src/lib/api');
+    (api.applyToJob as jest.Mock).mockRejectedValue(new ApiError('Forbidden', 403, 'payout_account_required'));
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Send proposal')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('Send proposal'));
+    fireEvent.changeText(screen.getByTestId('proposal-message'), 'I can start tomorrow morning.');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('proposal-send'));
+    });
+
+    expect(screen.getByTestId('proposal-payout-note')).toBeTruthy();
+    expect(screen.queryByText('Forbidden')).toBeNull();
+    fireEvent.press(screen.getByTestId('proposal-link-payout'));
+    expect(onNavigate).toHaveBeenCalledWith('Payout Account');
+  });
+
+  it('shows a capacity dialog with the server message when sending a proposal answers 409 at the limit', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+    const { ApiError } = jest.requireMock('../../../../src/lib/api');
+    (api.applyToJob as jest.Mock).mockRejectedValue(
+      new ApiError('You have 3 pending applications. Wait for a decision before applying again.', 409),
+    );
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Send proposal')).toBeTruthy());
+    fireEvent.press(screen.getByLabelText('Send proposal'));
+    fireEvent.changeText(screen.getByTestId('proposal-message'), 'I can start tomorrow morning.');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('proposal-send'));
+    });
+
+    expect(await screen.findByText('Proposal limit reached')).toBeTruthy();
+    expect(screen.getByText('You have 3 pending proposals. Wait for a decision before sending another proposal.')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'OK' }));
+    await waitFor(() => expect(screen.queryByText('Proposal limit reached')).toBeNull());
+  });
+});
+
+describe('SPJobDetailScreen — dispute banner', () => {
+  it('shows the open-complaint banner above the status card and opens the case when pressed', async () => {
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'in_progress', display_status: 'disputed', assigned_provider_id: PROVIDER_ID });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    const banner = await screen.findByTestId('dispute-banner');
+    expect(within(banner).getByText('A complaint is open. An admin is reviewing it.')).toBeTruthy();
+    fireEvent.press(banner);
+    expect(onNavigate).toHaveBeenCalledWith('Dispute Status', JOB_ID);
   });
 });

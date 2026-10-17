@@ -42,6 +42,7 @@ import {
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
@@ -252,6 +253,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
+  const statusInset = useSafeAreaInsets().top;
   const { unreadCount } = useNotifications();
   const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   // The welcome tour points at the availability row and the feed search. Both are on screen only once verified,
@@ -270,6 +272,13 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     try { return await api.myVerification(); } catch { return null; }
   }, [isVerified]);
   useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); }, !isVerified);
+  // Whether a payout account is linked; proposals are refused without one. A failed lookup is "unknown"
+  // (null), which shows nothing rather than nagging. Read again when the app returns to the foreground.
+  const { data: payoutLink, reload: reloadPayout } = useAsyncData<{ linked: boolean } | null>(async () => {
+    try { return { linked: !!(await api.payoutAccount()) }; } catch { return null; }
+  }, []);
+  useRefreshOnForeground(reloadPayout, true);
+  const payoutLinked = payoutLink ? payoutLink.linked : null;
   const verifyState: VerifyState = verification?.status === 'pending' ? 'pending'
     : verification?.status === 'rejected' ? 'rejected' : 'none';
   useEffect(() => {
@@ -337,7 +346,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   };
 
   const name = profile?.full_name ?? '';
-  const setupSteps = providerSetupSteps(profile, providerProfile, verifyState);
+  const setupSteps = providerSetupSteps(profile, providerProfile, verifyState, payoutLinked);
   // The hero waits for the feed's load, so "Find your next job" is never shown before the bookings are known.
   const hero = data ? pickProviderHero(data.assigned, new Date()) : null;
   const feedRef = useRef<ScrollView>(null);
@@ -381,7 +390,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
             </Tap>
             {/* The name column yields first: "Hello" stays on one line and a long name wraps to two before it truncates, and the actions keep their size. */}
             <View testID="hero-text" style={styles.greetingColumn}>
-              <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">Hello</Text>
+              <Text style={styles.greeting} numberOfLines={2} ellipsizeMode="tail" maxFontSizeMultiplier={1.3}>Hello</Text>
               <Text
                 style={styles.userName}
                 numberOfLines={2}
@@ -421,11 +430,27 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               steps={setupSteps}
               verifyState={verifyState}
               categoryName={providerProfile?.service_categories?.name ?? null}
-              onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : 'Edit Profile')}
+              onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : id === 'payout' ? 'Payout Account' : 'Edit Profile')}
               setupTour={setupTour}
             />
           ) : (
             <>
+              {payoutLinked === false && (
+                <View testID="payout-setup-card" style={styles.payoutCard}>
+                  <Text style={styles.payoutTitle}>Link a payout account</Text>
+                  <Text style={styles.payoutBody}>Link a GCash, Maya or bank account to send proposals.</Text>
+                  <Tap
+                    style={styles.setupButton}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel="Link payout account"
+                    onPress={() => onNavigate('Payout Account')}
+                  >
+                    <Text style={styles.setupButtonText}>Link payout account</Text>
+                    <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
+                  </Tap>
+                </View>
+              )}
               {/* The hero: the next booking (the hired job to start, or the soonest one still ahead), a job in progress, or an invitation to find work. */}
               {hero && (
                 <View testID="feed-hero" style={styles.heroCard}>
@@ -583,6 +608,8 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
           <View style={{ height: 24 }} />
         </View>
       </KeyboardAwareScrollView>
+      {/* Opaque status-bar backdrop: the header scrolls with the content, so without it rows draw under the clock and icons. */}
+      <View pointerEvents="none" style={[styles.statusBackdrop, { height: statusInset }]} />
     </View>
   );
 }
@@ -594,6 +621,7 @@ function createThemedStyles(theme: ThemePalette) {
     screen: { flex: 1, backgroundColor: C.canvas },
     body: { flex: 1 },
 
+    statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.canvas },
     header: { paddingHorizontal: Spacing.screenH },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     avatar: {
@@ -606,7 +634,7 @@ function createThemedStyles(theme: ThemePalette) {
     // avatar is the only route to Profile (and Log out), so a long name must
     // truncate rather than push it off-screen.
     greetingColumn: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
-    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 20 },
     userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
     bell: {
@@ -668,6 +696,11 @@ function createThemedStyles(theme: ThemePalette) {
     stepTitleNext: { color: C.ink900, fontWeight: '700' },
     stepTitleLater: { color: C.ink500 },
     stepSubtitle: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    payoutCard: {
+      backgroundColor: C.wellBg, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14,
+    },
+    payoutTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', lineHeight: 20, fontFamily: 'Inter' },
+    payoutBody: { color: C.ink700, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter' },
     setupButton: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       minHeight: 48, borderRadius: 16, backgroundColor: Colors.primary,

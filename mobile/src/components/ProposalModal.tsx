@@ -15,6 +15,9 @@ export const PROPOSAL_MAX_LENGTH = 300;
  */
 export const PROPOSAL_MIN_LENGTH = 20;
 
+/** Said wherever a proposal is blocked for want of a payout account. */
+export const PAYOUT_NOTE = 'Link a GCash, Maya or bank account to send proposals';
+
 const TIPS = ['When you can come', "What's included (tools, parts)", "Similar jobs you've done"];
 
 /** Why the message can't be sent yet, or null. Spaces at either end do not count. */
@@ -37,6 +40,9 @@ interface ProposalModalProps {
   jobTitle?: string;
   busy?: boolean;
   error?: string | null;
+  /** The server refused with `payout_account_required`: show the note and a way to link an account instead of the error. */
+  payoutRequired?: boolean;
+  onLinkPayout?: () => void;
   onSubmit: (message: string) => void;
   onCancel: () => void;
 }
@@ -47,7 +53,7 @@ interface ProposalModalProps {
  * chance to say why them — shown to the client on the Proposals screen.
  */
 export default function ProposalModal({
-  visible, jobTitle, busy = false, error, onSubmit, onCancel,
+  visible, jobTitle, busy = false, error, payoutRequired = false, onLinkPayout, onSubmit, onCancel,
 }: ProposalModalProps) {
   const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
@@ -94,7 +100,23 @@ export default function ProposalModal({
 
       <Text style={styles.notice}>The client compares offers and hires one provider. You'll be notified.</Text>
 
-      {!!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+      {payoutRequired ? (
+        <>
+          <Text style={styles.error} accessibilityRole="alert" testID="proposal-payout-note">{PAYOUT_NOTE}</Text>
+          {!!onLinkPayout && (
+            <Tap
+              style={styles.sendBtn}
+              onPress={onLinkPayout}
+              scale
+              accessibilityRole="button"
+              accessibilityLabel="Link payout account"
+              testID="proposal-link-payout"
+            >
+              <Text style={styles.sendText}>Link payout account</Text>
+            </Tap>
+          )}
+        </>
+      ) : !!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
 
       <Tap
         style={[styles.sendBtn, !ready && !busy && styles.sendBtnOff, busy && styles.dimmed]}

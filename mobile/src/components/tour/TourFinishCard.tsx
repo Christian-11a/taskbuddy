@@ -28,6 +28,8 @@ type TourFinishCardProps = {
   verified: boolean;
   /** Whether a provider's profile is ready to verify (address and bio); the client ignores it. */
   hasServiceProfile?: boolean;
+  /** Whether a verified provider has linked a payout account; defaults to true, the client ignores it. */
+  hasPayoutAccount?: boolean;
   firstName: string;
   /** A brand-new account's first walkthrough: confetti and one light tap. Never on a replay. */
   firstRun: boolean;
@@ -42,12 +44,12 @@ const noop = () => {};
 /** The 18 dp link plus 15 dp above and below makes the 48 dp target. The gap above the link is 16 dp, so the slop never reaches the main button. */
 const SECONDARY_HIT_SLOP = { top: 15, bottom: 15, left: 12, right: 12 } as const;
 
-export default function TourFinishCard({ role, verified, hasServiceProfile = true, firstName, firstRun, onAction }: TourFinishCardProps) {
+export default function TourFinishCard({ role, verified, hasServiceProfile = true, hasPayoutAccount = true, firstName, firstRun, onAction }: TourFinishCardProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const content = finishCard({ role, verified, hasServiceProfile, firstName });
+  const content = finishCard({ role, verified, hasServiceProfile, hasPayoutAccount, firstName });
   const { secondary } = content;
 
   // One light tap when a first run's card appears, and none on a replay.

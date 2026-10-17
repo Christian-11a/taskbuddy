@@ -23,6 +23,7 @@ jest.mock('../../../../src/lib/api', () => ({
     myApplications: jest.fn(),
     setAvailability: jest.fn(),
     myVerification: jest.fn(),
+    payoutAccount: jest.fn().mockResolvedValue({ id: 'acct-1' }),
   },
 }));
 
@@ -82,11 +83,11 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
 
   // At 1.3x text "Hello" stays on one line and the name may wrap to two lines before
   // it is cut with an ellipsis, so the header never grows a third line.
-  it('keeps "Hello" on one line and lets the name wrap to two, with an ellipsis, at large text', async () => {
+  it('lets "Hello" wrap and lets the name wrap to two, with an ellipsis, at large text', async () => {
     render(<SPHomeScreen onNavigate={jest.fn()} />);
 
     const hello = await screen.findByText('Hello');
-    expect(hello.props.numberOfLines).toBe(1);
+    expect(hello.props.numberOfLines).toBe(2);
     expect(hello.props.ellipsizeMode).toBe('tail');
     const name = screen.getByText(LONG_NAME);
     expect(name.props.numberOfLines).toBe(2);
@@ -286,6 +287,8 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
   });
 
   describe('new provider setup (not verified yet)', () => {
+    beforeEach(() => { (api.payoutAccount as jest.Mock).mockResolvedValue(null); });
+
     /** An unverified provider. `city` alone counts as an address; a bio and verification come from the args. */
     const unverified = ({ address = null, bio = null, categoryName }: { address?: string | null; bio?: string | null; categoryName?: string } = {}, refreshProfile = jest.fn()) => (useAuth as jest.Mock).mockReturnValue({
       profile: { full_name: 'New Provider', address, city: 'Lipa', latitude: null, longitude: null },
@@ -306,7 +309,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
-      expect(screen.getByText('Finish setting up · 1 of 3')).toBeTruthy();
+      expect(screen.getByText('Finish setting up · 1 of 4')).toBeTruthy();
       expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
       expect(screen.getByText('ID photo + selfie · about 2 minutes')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Add a short bio' })).toBeTruthy();
@@ -323,7 +326,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 3')).toBeTruthy();
+      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
       expect(screen.getByTestId('setup-badge-bio')).not.toBe(badgeBefore);
       expect(screen.getByTestId('setup-segment-bio')).not.toBe(segmentBefore);
       expect(StyleSheet.flatten(screen.getByTestId('setup-segment-bio').props.style).backgroundColor).toBe(lightPalette.Colors.onPrimary);
@@ -346,7 +349,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       const onNavigate = jest.fn();
       render(<SPHomeScreen onNavigate={onNavigate} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 3')).toBeTruthy();
+      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
       fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
 
       expect(onNavigate).toHaveBeenCalledWith('Verification');
@@ -641,5 +644,39 @@ describe('SPHomeScreen — saved copies of the wrong shape', () => {
 
   it('a saved application list of the wrong shape is ignored, and the screen loads as it does with nothing saved', async () => {
     await expectSavedCopyIgnored('sp-applications', {}, () => render(<SPHomeScreen onNavigate={jest.fn()} />));
+  });
+});
+
+describe('SPHomeScreen - payout account setup card', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Ana Cruz', city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('shows a Link payout account button that opens the Payout account screen when none is linked', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    const onNavigate = jest.fn();
+    render(<SPHomeScreen onNavigate={onNavigate} />);
+
+    await screen.findByTestId('payout-setup-card');
+    fireEvent.press(screen.getByLabelText('Link payout account'));
+    expect(onNavigate).toHaveBeenCalledWith('Payout Account');
+  });
+
+  it('shows no card when an account is linked', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    await waitFor(() => expect(api.payoutAccount).toHaveBeenCalled());
+    expect(screen.queryByTestId('payout-setup-card')).toBeNull();
   });
 });

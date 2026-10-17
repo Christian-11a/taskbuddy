@@ -4,7 +4,7 @@ import { addressSaved } from './verifyFlow';
 /** Where the provider's identity check stands, as the Feed reads `api.myVerification`. */
 export type VerifyState = 'none' | 'pending' | 'rejected';
 
-export type SetupStepId = 'address' | 'bio' | 'verify';
+export type SetupStepId = 'address' | 'bio' | 'verify' | 'payout';
 /** `done` when finished; `next` for the first unfinished step; `locked` for the rest. */
 export type SetupStepState = 'done' | 'next' | 'locked';
 
@@ -39,13 +39,15 @@ function trimmed(value: string | null | undefined): string {
 }
 
 /**
- * The three steps a new provider finishes before jobs show in the Feed, in
- * order: address, bio, verification. A step is done when its data is saved.
+ * The steps a new provider finishes, in order: address, bio, verification,
+ * then a payout account (proposals need one). A step is done when its data is
+ * saved. `payoutLinked` is true once `GET /payouts/account` returns an account.
  */
 export function providerSetupSteps(
   profile: ProfileFields,
   providerProfile: ProviderFields,
   verifyState: VerifyState,
+  payoutLinked: boolean | null = null,
 ): SetupStep[] {
   const address = trimmed(profile?.address);
   const city = trimmed(profile?.city);
@@ -74,6 +76,13 @@ export function providerSetupSteps(
       done: verified,
       subtitle: verified ? 'Verified' : VERIFY_SUBTITLE[verifyState],
       actionLabel: VERIFY_ACTION[verifyState],
+    },
+    {
+      id: 'payout',
+      title: 'Link payout account',
+      done: payoutLinked === true,
+      subtitle: payoutLinked === true ? 'Linked' : 'GCash, Maya or bank account · needed to send proposals',
+      actionLabel: 'Link payout account',
     },
   ];
 

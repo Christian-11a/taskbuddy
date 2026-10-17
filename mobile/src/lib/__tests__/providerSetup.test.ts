@@ -24,12 +24,12 @@ describe('providerSetupSteps', () => {
   });
 
   it('makes the first undone step next and the steps after it locked', () => {
-    expect(providerSetupSteps({ address: 'Lipa' }, null, 'none').map((step) => step.state)).toEqual(['done', 'next', 'locked']);
-    expect(providerSetupSteps(null, null, 'none').map((step) => step.state)).toEqual(['next', 'locked', 'locked']);
+    expect(providerSetupSteps({ address: 'Lipa' }, null, 'none').map((step) => step.state)).toEqual(['done', 'next', 'locked', 'locked']);
+    expect(providerSetupSteps(null, null, 'none').map((step) => step.state)).toEqual(['next', 'locked', 'locked', 'locked']);
   });
 
   it('keeps the verification step last', () => {
-    expect(providerSetupSteps(null, null, 'none').map((step) => step.id)).toEqual(['address', 'bio', 'verify']);
+    expect(providerSetupSteps(null, null, 'none').map((step) => step.id)).toEqual(['address', 'bio', 'verify', 'payout']);
   });
 
   it('describes the verification step from the request status', () => {
@@ -42,20 +42,39 @@ describe('providerSetupSteps', () => {
 
   it('marks verification done only once the provider is verified', () => {
     const steps = providerSetupSteps({ address: 'Lipa' }, { bio: 'Plumber', is_verified: true }, 'none');
-    expect(steps.map((step) => step.state)).toEqual(['done', 'done', 'done']);
+    expect(steps.map((step) => step.state)).toEqual(['done', 'done', 'done', 'next']);
+  });
+});
+
+describe('payout account step', () => {
+  const verified = { bio: 'Plumber', is_verified: true };
+
+  it('comes after verification and is the next step once verified with no account', () => {
+    const steps = providerSetupSteps({ address: 'Lipa' }, verified, 'none', false);
+    expect(steps[3]).toMatchObject({ id: 'payout', title: 'Link payout account', done: false, state: 'next', actionLabel: 'Link payout account' });
+    expect(nextSetupStep(steps)?.id).toBe('payout');
+  });
+
+  it('is done once an account is linked, and stays open while that is unknown', () => {
+    expect(providerSetupSteps({ address: 'Lipa' }, verified, 'none', true)[3]).toMatchObject({ done: true, state: 'done', subtitle: 'Linked' });
+    expect(providerSetupSteps({ address: 'Lipa' }, verified, 'none')[3].done).toBe(false);
+  });
+
+  it('stays locked until verification is done', () => {
+    expect(providerSetupSteps({ address: 'Lipa' }, { bio: 'Plumber' }, 'none', false)[3].state).toBe('locked');
   });
 });
 
 describe('setupProgress and nextSetupStep', () => {
   it('counts the finished steps and names the next one', () => {
     const steps = providerSetupSteps({ address: 'Arturo Tanco Drive, Lipa' }, null, 'none');
-    expect(setupProgress(steps)).toEqual({ done: 1, total: 3 });
+    expect(setupProgress(steps)).toEqual({ done: 1, total: 4 });
     expect(nextSetupStep(steps)?.id).toBe('bio');
   });
 
   it('has no next step once everything is done', () => {
-    const steps = providerSetupSteps({ address: 'Lipa' }, { bio: 'Plumber', is_verified: true }, 'none');
+    const steps = providerSetupSteps({ address: 'Lipa' }, { bio: 'Plumber', is_verified: true }, 'none', true);
     expect(nextSetupStep(steps)).toBeUndefined();
-    expect(setupProgress(steps)).toEqual({ done: 3, total: 3 });
+    expect(setupProgress(steps)).toEqual({ done: 4, total: 4 });
   });
 });

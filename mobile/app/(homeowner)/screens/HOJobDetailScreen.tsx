@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
   CalendarDays,
@@ -355,6 +355,18 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           </View>
 
           <View style={styles.statusBlock}>
+            {view.banner && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${view.banner.text} View case`}
+                testID="dispute-banner"
+                onPress={() => perform(view.banner!.action)}
+                style={styles.disputeBanner}
+              >
+                <Text style={styles.disputeBannerText}>{view.banner.text}</Text>
+                <Text style={styles.disputeBannerLink}>View case</Text>
+              </Pressable>
+            )}
             <StatusCard
               tone={view.card.tone}
               overline={view.card.overline}
@@ -451,14 +463,26 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <Text style={styles.counter}>{doneCount}/{tasks.length} done</Text>
               </View>
               {tasks.map((task) => (
-                <View key={task.id} style={styles.taskRow}>
-                  <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
-                    {task.is_done && <Check size={13} color={C.onPrimary} strokeWidth={3} />}
-                  </View>
-                  <View style={styles.taskText}>
+                <View key={task.id}>
+                  <View
+                    testID={`task-row-${task.id}`}
+                    accessible
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={task.label}
+                    accessibilityState={{ checked: task.is_done, disabled: true }}
+                    style={styles.taskRow}
+                  >
+                    <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
+                      {task.is_done && <Check size={16} color={C.onPrimary} strokeWidth={3} />}
+                    </View>
                     <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
-                    <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                    {task.is_done && <Text style={styles.taskDoneLabel}>Done</Text>}
                   </View>
+                  {(task.proof_photo_urls?.length ?? 0) > 0 && (
+                    <View style={styles.taskPhotos}>
+                      <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                    </View>
+                  )}
                 </View>
               ))}
             </View>
@@ -613,6 +637,11 @@ function createThemedStyles(theme: ThemePalette) {
     urgencyText: { fontFamily: 'Inter', fontSize: 12, fontWeight: '700' },
 
     statusBlock: { gap: 8 },
+    disputeBanner: {
+      backgroundColor: V6Colors.warningSurface, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, gap: 2,
+    },
+    disputeBannerText: { fontFamily: 'Inter', fontSize: 14, lineHeight: 19, color: V6Colors.warningText },
+    disputeBannerLink: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: V6Colors.warningText, textDecorationLine: 'underline' },
     block: { gap: 10 },
     sectionTitle: { fontFamily: 'Inter', fontSize: 17, fontWeight: '600', color: C.ink900 },
     rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -637,13 +666,14 @@ function createThemedStyles(theme: ThemePalette) {
 
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
     taskBox: {
-      width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: C.line,
+      width: 24, height: 24, flexShrink: 0, borderRadius: 6, borderWidth: 1.5, borderColor: C.line,
       alignItems: 'center', justifyContent: 'center',
     },
     taskBoxDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-    taskText: { flex: 1 },
     taskLabel: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900 },
     taskLabelDone: { color: C.ink500, textDecorationLine: 'line-through' },
+    taskDoneLabel: { fontFamily: 'Inter', fontSize: 12.5, fontWeight: '700', lineHeight: 16, color: C.successText },
+    taskPhotos: { marginLeft: 36 },
 
     attachmentList: { gap: 10 },
     attachmentImage: { width: 92, height: 92, borderRadius: 12, backgroundColor: C.ink100 },
