@@ -9,6 +9,7 @@ import { TOTAL60 } from './v2/timeline';
 import { HeroLoop, HERO_LOOP_FRAMES } from './v2/HeroLoop';
 import { StoryClip, storyClipMetadata } from './v2/StoryClip';
 import { PhoneStill, PHONE_STILL } from './v2/PhoneStill';
+import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAMES } from './guide/GuideLesson';
 
 export const Root: React.FC = () => (
   <>
@@ -18,5 +19,7 @@ export const Root: React.FC = () => (
     <Composition id="PhoneStill" component={PhoneStill} durationInFrames={1} fps={FPS} width={PHONE_STILL.w} height={PHONE_STILL.h} defaultProps={{ role: 'customer' as const, film: 300 }} />
     <Composition id="TaskBuddyPromo" component={Promo} durationInFrames={TOTAL} fps={FPS} width={W} height={H} />
     <Composition id="LogoTest" component={LogoTest} durationInFrames={1} fps={FPS} width={2048} height={512} />
+    <Composition id="GuideLesson" component={GuideLesson} durationInFrames={TITLE_FRAMES + END_FRAMES + 300} fps={GUIDE_FPS} width={1920} height={1080} defaultProps={{ lessonId: 'sample-post-a-job' }} calculateMetadata={calculateGuideMetadata} />
+    <Composition id="GuideLesson720" component={GuideLesson} durationInFrames={TITLE_FRAMES + END_FRAMES + 300} fps={GUIDE_FPS} width={1280} height={720} defaultProps={{ lessonId: 'sample-post-a-job' }} calculateMetadata={calculateGuideMetadata} />
   </>
 );
