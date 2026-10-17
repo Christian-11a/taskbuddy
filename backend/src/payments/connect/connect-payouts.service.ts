@@ -369,10 +369,10 @@ export class ConnectPayoutsService {
       });
       await this.notify(
         escrow.provider_id,
-        'Payout kept in your wallet',
+        'Payout not sent yet',
         final
-          ? 'We could not send this payout to your Stripe account, so it is in your TaskBuddy wallet. You can withdraw it from the Wallet tab.'
-          : 'We could not send this payout to your Stripe account yet. It is in your TaskBuddy wallet and we will try again.',
+          ? 'We could not send this payout to your Stripe account. It will be sent to your linked payout account automatically — check that it is up to date.'
+          : 'We could not send this payout to your Stripe account yet. We will try again automatically — you do not need to do anything.',
         escrow.job_id,
       );
       this.logger.warn(
