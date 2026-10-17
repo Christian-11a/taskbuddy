@@ -777,6 +777,19 @@ describe('DisputesService', () => {
       status: 'resolved',
     });
   });
+  it('attaches a summary of the whole job chat to the case', async () => {
+    const { service } = build({
+      jobs: [ok(participantJob)],
+      disputes: [
+        ok({ id: 'd1', job_id: 'j1', status: 'open', dispute_entries: [] }),
+      ],
+      conversations: [ok({ id: 'conv1', messages: [{ count: 12 }] })],
+    });
+    expect(await service.forJob(client, 'j1')).toMatchObject({
+      id: 'd1',
+      chat: { conversation_id: 'conv1', message_count: 12 },
+    });
+  });
   it('records participant evidence by message ID through the atomic entry RPC', async () => {
     const { service, rpc } = build(
       {},
