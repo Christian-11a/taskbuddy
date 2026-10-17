@@ -701,6 +701,10 @@ export class JobsService {
         : {}),
       review,
       has_review: review !== null,
+      // One status for list badges: the work status, unless a dispute is
+      // open (migration 0063), which freezes payment until an admin decides.
+      display_status:
+        row.dispute_state === 'open' ? 'disputed' : (row.status as string),
       warranty_expires_at:
         row.status === 'completed' && row.completed_at
           ? new Date(
