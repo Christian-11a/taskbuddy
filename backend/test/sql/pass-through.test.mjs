@@ -102,3 +102,39 @@ it('refuses a channel code that does not match the method', async () => {
     ),
   );
 });
+
+it('keeps the admin commission: only the amount after commission is paid out (0056, 0060)', async () => {
+  await q(`insert into provider_profiles (profile_id, category_id, bio, is_verified)
+           values ($1, 1, 'Licensed plumber for ten years.', true)`, [PROVIDER]);
+  await q(
+    `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
+     values ($1, 'gcash', 'PH_GCASH', 'Boy Plumber', '09171234567')`,
+    [PROVIDER],
+  );
+  const [{ id: job }] = await q(
+    `insert into jobs (client_id, category_id, title, description, address, latitude, longitude, budget, recommendation_deadline, assigned_provider_id, status)
+     values ($1, 1, 'Fix kitchen faucet', 'Tumutulo yung gripo sa kusina, need ayusin.', 'QC', 14.6, 121.0, 3000, now(), $2, 'in_progress')
+     returning id`,
+    [CLIENT, PROVIDER],
+  );
+  await credit(CLIENT, 3000);
+  const [{ id: escrow }] = await q(
+    `insert into escrow_transactions (job_id, client_id, provider_id, amount, status) values ($1, $2, $3, 3000, 'held') returning id`,
+    [job, CLIENT, PROVIDER],
+  );
+  await q(`insert into wallet_transactions (profile_id, direction, kind, status, amount, title, job_id)
+           values ($1, 'debit', 'escrow_hold', 'completed', 3000, 'Hold', $2)`, [CLIENT, job]);
+  await q(`update jobs set status = 'completed' where id = $1`, [job]);
+
+  // 15% admin commission, as EscrowService.payOut computes it from platform_settings.
+  const [{ r }] = await q(`select escrow_settle($1, 'held', 'released', 450, 'Payout') as r`, [escrow]);
+  assert.equal(Number(r.commission_amount), 450);
+
+  await q('select pass_through_balances($1, true)', [PROVIDER]);
+  const [payout] = await q(
+    `select amount, status from wallet_transactions where profile_id = $1 and kind = 'withdrawal'`,
+    [PROVIDER],
+  );
+  assert.equal(Number(payout.amount), 2550);
+  assert.equal(await balance(PROVIDER), 0);
+});
