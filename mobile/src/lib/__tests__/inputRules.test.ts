@@ -4,6 +4,7 @@ import {
   EMAIL_MAX,
   FULL_NAME_MAX,
   OTP_LENGTH,
+  PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
   normalizeEmail,
   normalizeName,
@@ -212,6 +213,13 @@ describe('validatePhone', () => {
   });
 });
 
+describe('normalizeName, server form', () => {
+  it('straightens curly apostrophes and composes accents', () => {
+    expect(normalizeName('  D’Angelo   Cruz ')).toBe("D'Angelo Cruz");
+    expect(normalizeName('José Rizal')).toBe('José Rizal');
+  });
+});
+
 describe('normalizeName', () => {
   it.each([
     ['  Ana   Reyes  ', 'Ana Reyes'],
@@ -416,25 +424,31 @@ describe('validateAddress', () => {
 });
 
 describe('validatePasswordRules', () => {
-  it('keeps the eight-character minimum', () => {
+  it('keeps the 8 to 72 character range', () => {
     expect(PASSWORD_MIN_LENGTH).toBe(8);
-    expect(validatePasswordRules('1234567')).toBe('Password must be at least 8 characters.');
-    expect(validatePasswordRules('')).toBe('Password must be at least 8 characters.');
-    expect(validatePasswordRules('12345678')).toBeNull();
+    expect(PASSWORD_MAX_LENGTH).toBe(72);
+    expect(validatePasswordRules('abc1234')).toBe('Password must be 8–72 characters.');
+    expect(validatePasswordRules('')).toBe('Password must be 8–72 characters.');
+    expect(validatePasswordRules(`a1${'x'.repeat(71)}`)).toBe('Password must be 8–72 characters.');
+    expect(validatePasswordRules(`a1${'x'.repeat(70)}`)).toBeNull();
+    expect(validatePasswordRules('abcdefg1')).toBeNull();
+  });
+
+  it('needs at least one letter and one number', () => {
+    const message = 'Password must contain at least one letter and one number.';
+    expect(validatePasswordRules('12345678')).toBe(message);
+    expect(validatePasswordRules('abcdefgh')).toBe(message);
+    expect(validatePasswordRules('        ')).toBe(message);
   });
 
   it('labels the message for the field it is checking', () => {
-    expect(validatePasswordRules('short', 'New password')).toBe('New password must be at least 8 characters.');
+    expect(validatePasswordRules('short1', 'New password')).toBe('New password must be 8–72 characters.');
+    expect(validatePasswordRules('abcdefgh', 'New password')).toBe('New password must contain at least one letter and one number.');
   });
 
-  it('refuses a password made only of spaces, even when it is long enough', () => {
-    expect(validatePasswordRules('        ')).toBe("Password can't be only spaces.");
-    expect(validatePasswordRules('        ', 'New password')).toBe("New password can't be only spaces.");
-  });
-
-  it('accepts spaces inside a password that also has other characters', () => {
-    expect(validatePasswordRules('abc      ')).toBeNull();
-    expect(validatePasswordRules(' correct horse ')).toBeNull();
+  it('accepts spaces inside a password that also has a letter and a number', () => {
+    expect(validatePasswordRules('abc 1    ')).toBeNull();
+    expect(validatePasswordRules(' correct horse 1 ')).toBeNull();
   });
 });
 
@@ -487,11 +501,11 @@ describe('validateServiceRadius', () => {
     expect(validateServiceRadius('   ')).toBeNull();
   });
 
-  it.each(['0.5', '1', '8', '25', '1000'])('accepts %s km', (km) => {
+  it.each(['1', '8', '25', '50'])('accepts %s km', (km) => {
     expect(validateServiceRadius(km)).toBeNull();
   });
 
-  it.each(['0', '0.4', '1000.1', '1001', '5.', 'abc', '-3'])('refuses %s km', (km) => {
-    expect(validateServiceRadius(km)).toBe('Enter a service radius from 0.5 to 1000 km');
+  it.each(['0', '0.5', '0.4', '50.5', '51', '1000', '5.', 'abc', '-3'])('refuses %s km', (km) => {
+    expect(validateServiceRadius(km)).toBe('Choose 1 to 50 km');
   });
 });

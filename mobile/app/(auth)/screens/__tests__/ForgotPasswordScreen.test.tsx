@@ -184,7 +184,7 @@ describe('ForgotPasswordScreen — the new password', () => {
       fireEvent.press(screen.getByText('Reset password'));
     });
 
-    expect(screen.getByText('New password must be at least 8 characters.')).toBeTruthy();
+    expect(screen.getByText('New password must be 8–72 characters.')).toBeTruthy();
     expect(resetPassword).not.toHaveBeenCalled();
   });
 });
@@ -202,7 +202,7 @@ describe('ForgotPasswordScreen — a spaces-only new password', () => {
       fireEvent.press(screen.getByText('Reset password'));
     });
 
-    expect(screen.getByText("New password can't be only spaces.")).toBeTruthy();
+    expect(screen.getByText('New password must contain at least one letter and one number.')).toBeTruthy();
     expect(resetPassword).not.toHaveBeenCalled();
   });
 });

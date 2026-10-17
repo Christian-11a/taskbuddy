@@ -7,8 +7,8 @@
  * as JobRows. App.tsx passes the title and the List/Calendar switch.
  */
 
-import React, { ReactNode, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -61,6 +61,15 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
     () => api.bookings({ from, to }),
     [from, to],
   );
+  const [refreshing, setRefreshing] = useState(false);
+  // reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [data, error]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
   const bookings = useMemo(() => data ?? [], [data]);
 
   const marks = useMemo(() => bookingMarks(bookings, selectedDate, new Date()), [bookings, selectedDate]);
@@ -100,7 +109,15 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
         </View>
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        testID="calendar-scroll"
+        style={styles.body}
+        contentContainerStyle={styles.bodyContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+        }
+      >
         <View style={styles.calendarCard}>
           <View style={styles.monthRow}>
             <Text style={styles.monthTitle} accessibilityRole="header">{monthTitle(visibleMonth)}</Text>

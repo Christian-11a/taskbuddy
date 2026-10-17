@@ -34,6 +34,7 @@ import * as AuthSession from 'expo-auth-session';
 import {
   ActivityIndicator,
   BackHandler,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -64,6 +65,7 @@ import {
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { capacityConflictMessage } from '../../../src/lib/capacityConflict';
 import Banner from '../../../src/components/ui/Banner';
 import { showToast } from '../../../src/components/Toast';
 import HOProviderProfileScreen from './HOProviderProfileScreen';
@@ -99,6 +101,15 @@ function JobProposals({
     },
     [jobId],
   );
+  const [refreshing, setRefreshing] = useState(false);
+  // reload() is fire-and-forget; new proposals or an error mean the fetch settled.
+  useEffect(() => {
+    setRefreshing(false);
+  }, [apps, error]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
   // The job's title, budget and date for the summary chip. Listing the
   // proposals doesn't need it, so if it fails the chip is simply left out.
   const jobInfo = useAsyncData<Job | null>(
@@ -177,6 +188,8 @@ function JobProposals({
   }, [profileOf]);
 
   // ── Hiring: the payment choice ─────────────────────────────────────────────
+  // Set when the server answers 409 because the provider is at a capacity limit.
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   const [hireTarget, setHireTarget] = useState<JobApplication | null>(null);
   const [budget, setBudget] = useState<number | null>(null);
   const [jobTitle, setJobTitle] = useState<string | null>(null);
@@ -410,6 +423,12 @@ function JobProposals({
       setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
       await settleCardPayment(hireTarget, outcome === 'success');
     } catch (e) {
+      const capacity = capacityConflictMessage(e);
+      if (capacity) {
+        closeHire();
+        setCapacityNotice(capacity);
+        return;
+      }
       setHireMessage({
         text: e instanceof Error ? e.message : 'Could not open the payment page.',
         tone: 'error',
@@ -624,6 +643,16 @@ function JobProposals({
         onCancel={() => setConfirmReject(null)}
       />
 
+      <ConfirmationModal
+        visible={capacityNotice !== null}
+        title="This provider is unavailable"
+        message={capacityNotice ?? ''}
+        confirmLabel="OK"
+        hideCancel
+        onConfirm={() => setCapacityNotice(null)}
+        onCancel={() => setCapacityNotice(null)}
+      />
+
       <HirePaymentModal
         visible={hireTarget !== null}
         providerName={hireTarget?.provider?.full_name ?? 'this provider'}
@@ -709,9 +738,13 @@ function JobProposals({
 
       {!loading && apps && (
         <ScrollView
+          testID="applications-scroll"
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+          }
         >
           {!!chipText && (
             <View style={styles.chip}>

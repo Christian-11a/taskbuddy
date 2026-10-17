@@ -216,24 +216,18 @@ describe('RegisterScreen — create account', () => {
     (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
   });
 
-  it('shows the 8+ characters rule and ticks it at eight characters', () => {
+  it('shows the length, letter and number rules and ticks each as it is met', () => {
     render(<RegisterScreen {...baseProps} />);
     fireEvent.press(screen.getByText('Continue'));
 
     fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefg');
-    expect(screen.getByLabelText('8+ characters: not yet')).toBeTruthy();
+    expect(screen.getByLabelText('8–72 characters: not yet')).toBeTruthy();
+    expect(screen.getByLabelText('A letter: met')).toBeTruthy();
+    expect(screen.getByLabelText('A number: not yet')).toBeTruthy();
 
-    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefgh');
-    expect(screen.getByLabelText('8+ characters: met')).toBeTruthy();
-  });
-
-  it('does not show a number rule, because sign-up does not enforce one', () => {
-    render(<RegisterScreen {...baseProps} />);
-    fireEvent.press(screen.getByText('Continue'));
-
-    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefgh');
-
-    expect(screen.queryByText(/a number/i)).toBeNull();
+    fireEvent.changeText(screen.getByTestId('input-password'), 'abcdefg1');
+    expect(screen.getByLabelText('8–72 characters: met')).toBeTruthy();
+    expect(screen.getByLabelText('A number: met')).toBeTruthy();
   });
 
   it('presents Terms and Privacy as one checkbox, ticked only after both documents are accepted', () => {
@@ -412,7 +406,7 @@ describe('RegisterScreen — passwords', () => {
     (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
   });
 
-  it('refuses a password made only of spaces, even when it is eight characters long', async () => {
+  it('refuses a password with no letter or number, even when it is eight characters long', async () => {
     const onRegister = jest.fn();
     render(<RegisterScreen {...baseProps} onRegister={onRegister} />);
     fireEvent.press(screen.getByText('Continue'));
@@ -421,7 +415,7 @@ describe('RegisterScreen — passwords', () => {
 
     await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
 
-    expect(screen.getByText("Password can't be only spaces.")).toBeTruthy();
+    expect(screen.getByText('Password must contain at least one letter and one number.')).toBeTruthy();
     expect(onRegister).not.toHaveBeenCalled();
   });
 
@@ -429,11 +423,11 @@ describe('RegisterScreen — passwords', () => {
     render(<RegisterScreen {...baseProps} />);
     fireEvent.press(screen.getByText('Continue'));
     fireEvent.changeText(screen.getByTestId('input-password'), 'short');
-    expect(screen.queryByText('Password must be at least 8 characters.')).toBeNull();
+    expect(screen.queryByText('Password must be 8–72 characters.')).toBeNull();
 
     fireEvent(screen.getByTestId('input-password'), 'blur');
 
-    expect(screen.getByText('Password must be at least 8 characters.')).toBeTruthy();
+    expect(screen.getByText('Password must be 8–72 characters.')).toBeTruthy();
   });
 });
 

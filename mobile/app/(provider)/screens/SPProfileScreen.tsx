@@ -14,6 +14,7 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   BadgeCheck,
@@ -65,6 +66,7 @@ interface MenuItem {
 export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProfileScreenProps) {
   const { V6Colors, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
+  const statusInset = useSafeAreaInsets().top;
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('sp.profile');
   const { profile, providerProfile, refreshProfile } = useAuth();
@@ -285,6 +287,8 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
 
         <View style={styles.bottomGap} />
       </ScrollView>
+      {/* Opaque status-bar backdrop: the header scrolls with the content, so without it rows draw under the clock and icons. */}
+      <View pointerEvents="none" style={[styles.statusBackdrop, { height: statusInset }]} />
     </View>
   );
 }
@@ -343,6 +347,7 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
     body: { flex: 1 },
+    statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.canvas },
     scrollContent: { paddingHorizontal: Spacing.screenH, paddingBottom: 20 },
     bottomGap: { height: 20 },
 

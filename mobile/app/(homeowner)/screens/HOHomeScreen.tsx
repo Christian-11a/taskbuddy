@@ -30,6 +30,7 @@ import { HOScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
@@ -232,6 +233,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const { dark } = useTheme();
   const headerTop = useHeaderTop();
+  const statusInset = useSafeAreaInsets().top;
   const { profile } = useAuth();
   const jobs = useAsyncData(() => api.myJobs(), [], 'ho-home-jobs', { persist: true, validate: isList });
   const categories = useAsyncData(() => api.categories(), [], 'categories', {
@@ -344,7 +346,7 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
             </Tap>
             {/* The name column yields first: the greeting stays on one line and a long name wraps to two before it truncates, and the actions keep their size. */}
             <View testID="hero-text" style={styles.greetingColumn}>
-              <Text style={styles.greeting} numberOfLines={1} ellipsizeMode="tail">{greeting}</Text>
+              <Text style={styles.greeting} numberOfLines={2} ellipsizeMode="tail" maxFontSizeMultiplier={1.3}>{greeting}</Text>
               <Text
                 style={styles.userName}
                 numberOfLines={2}
@@ -485,6 +487,8 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
         </View>
         <View style={{ height: 24 }} />
       </ScrollView>
+      {/* Opaque status-bar backdrop: the header scrolls with the content, so without it rows draw under the clock and icons. */}
+      <View pointerEvents="none" style={[styles.statusBackdrop, { height: statusInset }]} />
     </View>
   );
 }
@@ -496,6 +500,7 @@ function createThemedStyles(theme: ThemePalette) {
     flex: { flex: 1 },
     screen: { flex: 1, backgroundColor: C.canvas },
 
+    statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.canvas },
     header: { paddingHorizontal: Spacing.screenH },
     headerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
     avatar: {
@@ -505,7 +510,7 @@ function createThemedStyles(theme: ThemePalette) {
     },
     avatarText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
     greetingColumn: { flex: 1, flexShrink: 1, minWidth: 0, gap: 2 },
-    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 18 },
+    greeting: { color: C.ink500, fontSize: 13, fontWeight: '400', fontFamily: 'Inter', lineHeight: 20 },
     userName: { color: C.ink900, fontSize: 18, fontWeight: '700', fontFamily: 'Inter', lineHeight: 24 },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0 },
     bell: {

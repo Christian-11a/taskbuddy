@@ -7,7 +7,7 @@
  *
  * The backend checks phone only as a string, so the app enforces the Philippine
  * mobile format here. Name, email and password rules follow the backend limits
- * (name 1-120, email format, password at least 8) and are stricter where asked.
+ * (name 2-120, email format, password 8-72 with a letter and a number) and are stricter where asked.
  */
 
 // ── Phone ─────────────────────────────────────────────────────────────────────
@@ -88,9 +88,12 @@ export const FULL_NAME_MAX = 120;
 /** The longest city or municipality the rule takes. Also the field's maxLength. */
 export const CITY_MAX = 80;
 
-/** Trims and collapses runs of whitespace to one space. */
+/**
+ * The form sent to the server: accents composed (NFC), curly apostrophes made straight (the backend's
+ * name rule allows only the straight one), runs of whitespace collapsed to one space, and trimmed.
+ */
 export function normalizeName(raw: string | null | undefined): string {
-  return (raw ?? '').replace(/\s+/g, ' ').trim();
+  return (raw ?? '').normalize('NFC').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -181,18 +184,23 @@ export function validateAddress(
 // ── Passwords and codes ───────────────────────────────────────────────────────
 
 export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 72;
+
+/** The hint shown under or inside a new-password field. */
+export const PASSWORD_HINT = '8–72 characters, with a letter and a number';
 
 /**
- * The rule every new password meets: at least eight characters, and not only
- * spaces. The label names the field in the message (for example "New password").
- * The minimum is the backend's own, so it is never weaker here.
+ * The rule every new password meets, the same as the backend's: 8 to 72 characters with at least one
+ * letter and one number. The label names the field in the message (for example "New password").
  */
 export function validatePasswordRules(value: string | null | undefined, label = 'Password'): string | null {
   const password = value ?? '';
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return `${label} must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
+    return `${label} must be ${PASSWORD_MIN_LENGTH}–${PASSWORD_MAX_LENGTH} characters.`;
   }
-  if (!password.trim()) return `${label} can't be only spaces.`;
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return `${label} must contain at least one letter and one number.`;
+  }
   return null;
 }
 
@@ -219,14 +227,14 @@ export function validateOtpCode(value: string | null | undefined): string | null
 
 // ── Service radius ────────────────────────────────────────────────────────────
 
-const RADIUS_MIN_KM = 0.5;
-const RADIUS_MAX_KM = 1000;
+const RADIUS_MIN_KM = 1;
+const RADIUS_MAX_KM = 50;
 
-/** Optional. When given, a number from 0.5 to 1000 km, the backend's own bounds. */
+/** Optional. When given, a whole number from 1 to 50 km, matching the backend's service-radius bounds. */
 export function validateServiceRadius(value: string | null | undefined): string | null {
   const text = (value ?? '').trim();
   if (!text) return null;
   const km = Number(text);
-  const valid = /^\d+(\.\d+)?$/.test(text) && km >= RADIUS_MIN_KM && km <= RADIUS_MAX_KM;
-  return valid ? null : 'Enter a service radius from 0.5 to 1000 km';
+  const valid = /^\d+$/.test(text) && km >= RADIUS_MIN_KM && km <= RADIUS_MAX_KM;
+  return valid ? null : 'Choose 1 to 50 km';
 }

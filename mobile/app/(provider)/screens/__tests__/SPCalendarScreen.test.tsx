@@ -269,3 +269,15 @@ it('every control has an accessible name: the month chevrons, the day cells and 
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+it('pulling the schedule down reloads it', async () => {
+  render(<SPCalendarScreen onNavigate={jest.fn()} />);
+  await waitFor(() => expect(api.bookings as jest.Mock).toHaveBeenCalledTimes(1));
+  await screen.findByTestId('calendar-scroll');
+
+  act(() => {
+    screen.getByTestId('calendar-scroll').props.refreshControl.props.onRefresh();
+  });
+
+  await waitFor(() => expect(api.bookings as jest.Mock).toHaveBeenCalledTimes(2));
+});

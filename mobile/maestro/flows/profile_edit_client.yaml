@@ -79,10 +79,11 @@ env:
     timeout: 20000
 - scrollUntilVisible:
     element:
-      text: "I agree to the Terms & Conditions"
+      id: "terms-agree"
     direction: DOWN
     timeout: 20000
-- tapOn: "I agree to the Terms & Conditions"
+- tapOn:
+    id: "terms-agree"
 - tapOn:
     id: "chk-terms"
 - extendedWaitUntil:
@@ -90,10 +91,11 @@ env:
     timeout: 20000
 - scrollUntilVisible:
     element:
-      text: "I agree to the Privacy Policy"
+      id: "terms-agree"
     direction: DOWN
     timeout: 20000
-- tapOn: "I agree to the Privacy Policy"
+- tapOn:
+    id: "terms-agree"
 - scrollUntilVisible:
     element:
       id: "chk-data-collection"
