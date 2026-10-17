@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     default: "TaskBuddy",
     template: "%s",
   },
-  description: "TaskBuddy connects homeowners in Lipa City with verified local service providers.",
+  description: "TaskBuddy connects clients in Lipa City with verified local providers.",
 };
 
 /**

@@ -35,15 +35,15 @@
 
   var stories = {
     customer: {
-      kicker: "For homeowners",
-      role: "Homeowner",
+      kicker: "For clients",
+      role: "Client",
       heading: "Find the right person for the job.",
-      lede: "Describe what you need, compare service providers, and choose with confidence.",
+      lede: "Describe what you need, compare providers, and choose with confidence.",
       steps: [
         {
           image: "/film/story/customer-1.jpg",
           video: "/film/story/customer-1.mp4",
-          alt: "TaskBuddy homeowner home screen with wallet balance, services, and the Post button",
+          alt: "TaskBuddy client home screen with wallet balance, services, and the Post button",
           caption: "Start with what you need.",
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
@@ -52,25 +52,25 @@
         {
           image: "/film/story/customer-2.jpg",
           video: "/film/story/customer-2.mp4",
-          alt: "Homeowner posting a job: title, location, urgency, and budget",
-          caption: "Tell service providers what you need.",
-          title: "Tell service providers what you need.",
+          alt: "Client posting a job: title, location, urgency, and budget",
+          caption: "Tell providers what you need.",
+          title: "Tell providers what you need.",
           body: "Add the service, location, schedule, and details in one request.",
           points: ["Describe the task clearly", "Choose a schedule", "Edit the request later"]
         },
         {
           image: "/film/story/customer-3.jpg",
           video: "/film/story/customer-3.mp4",
-          alt: "Homeowner comparing three proposals and hiring a verified provider",
-          caption: "Compare proposals, then hire.",
-          title: "Compare proposals, then hire.",
-          body: "See each service provider’s price, rating, and message side by side, then hire with one tap.",
-          points: ["Compare prices and ratings", "Read each proposal", "Hire with one tap"]
+          alt: "Client comparing three offers and hiring a verified provider",
+          caption: "Compare offers, then hire.",
+          title: "Compare offers, then hire.",
+          body: "See each provider’s price, rating, and message side by side, then hire with one tap.",
+          points: ["Compare prices and ratings", "Read each offer", "Hire with one tap"]
         },
         {
           image: "/film/story/customer-4.jpg",
           video: "/film/story/customer-4.mp4",
-          alt: "Homeowner wallet showing payment held in escrow, then released",
+          alt: "Client wallet showing payment held in escrow, then released",
           caption: "Know what you will pay.",
           title: "Know what you will pay.",
           body: "See the payment details and what happens next in one place.",
@@ -79,7 +79,7 @@
         {
           image: "/film/story/customer-5.jpg",
           video: "/film/story/customer-5.mp4",
-          alt: "Homeowner rating the provider five stars and submitting a review",
+          alt: "Client rating the provider five stars and submitting a review",
           caption: "Finish the job and leave a review.",
           title: "Finish the job and leave a review.",
           body: "Mark the job complete and share your experience.",
@@ -88,15 +88,15 @@
       ]
     },
     provider: {
-      kicker: "For service providers",
-      role: "Service Provider",
+      kicker: "For providers",
+      role: "Provider",
       heading: "Find jobs that fit your skills.",
       lede: "Find jobs, show your skills, and get hired.",
       steps: [
         {
           image: "/film/story/provider-1.jpg",
           video: "/film/story/provider-1.mp4",
-          alt: "Service provider feed of jobs near you with a new job arriving",
+          alt: "Provider feed of jobs near you with a new job arriving",
           caption: "Find jobs that fit your skills.",
           title: "Find jobs that fit your skills.",
           body: "Browse requests and look for jobs that match your services.",
@@ -105,7 +105,7 @@
         {
           image: "/film/story/provider-2.jpg",
           video: "/film/story/provider-2.mp4",
-          alt: "Service provider verification: government ID, face scan, and automated check",
+          alt: "Provider verification: government ID, face scan, and automated check",
           caption: "Verify your account first.",
           title: "Verify your account first.",
           body: "Verify your account before you apply to a job.",
@@ -114,25 +114,25 @@
         {
           image: "/film/story/provider-3.jpg",
           video: "/film/story/provider-3.mp4",
-          alt: "Service provider profile with jobs done, rating, and a new review",
+          alt: "Provider profile with jobs done, rating, and a new review",
           caption: "Show what you can do.",
           title: "Show what you can do.",
-          body: "Add your services and experience so homeowners know what you offer.",
-          points: ["List your services", "Show your experience", "Help homeowners choose you"]
+          body: "Add your services and experience so clients know what you offer.",
+          points: ["List your services", "Show your experience", "Help clients choose you"]
         },
         {
           image: "/film/story/provider-4.jpg",
           video: "/film/story/provider-4.mp4",
-          alt: "Service provider reviewing job details and submitting a proposal",
+          alt: "Provider reviewing job details and submitting an offer",
           caption: "See the job details first.",
           title: "See the job details first.",
-          body: "Check the request, schedule, location, and homeowner details before you apply.",
-          points: ["See the work and schedule", "Read the homeowner’s request", "Decide before you apply"]
+          body: "Check the request, schedule, location, and client details before you apply.",
+          points: ["See the work and schedule", "Read the client’s request", "Decide before you apply"]
         },
         {
           image: "/film/story/provider-5.jpg",
           video: "/film/story/provider-5.mp4",
-          alt: "Service provider accepting a booking request after being hired",
+          alt: "Provider accepting a booking request after being hired",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
           body: "See the job details and start when you are ready.",
