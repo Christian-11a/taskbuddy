@@ -137,6 +137,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0057_price_change_payments.sql` | Price change requests without a wallet: decreases refunded, increases wait for the client to pay the difference (`awaiting_payment`, 24 h). |
    | `0058_xendit_payouts.sql` | Xendit replaces PayMongo: payout accounts carry a Xendit channel code, and provider payouts can be queued for Xendit's sandbox Payouts API. **Apply before deploying the updated API.** |
    | `0059_photo_evidence.sql` | Photo evidence: up to 6 photos on complaints and each statement/appeal (private `dispute-evidence` bucket), and 1–4 proof photos required to tick a checklist task done (`task-proof` bucket). |
+   | `0060_release_on_completion.sql` | No holding period: a job's payment is released as soon as the client confirms completion (an open complaint still blocks release). Replaces the 72-hour warranty from 0040. |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -727,6 +728,10 @@ currency. This is a prototype: no real money moves.
   codes; check new ones against Xendit's Philippine channel list).
 - `wallet_transactions` remains the internal ledger the escrow functions write
   to; balances only exist between a settlement and its pass-through.
+- **Release on completion (migration 0060):** there is no warranty hold. When the
+  client confirms completion, `JobsService.complete` releases the payment at once
+  (the payments tick retries if that attempt fails). Terms v3 state that a
+  released payment is final and the platform is not liable after release.
 - **Price changes (migration 0057):** a decrease is refunded to the client's
   payment method as soon as it is accepted. An accepted increase waits in
   `awaiting_payment` for up to 24 hours while the client pays the difference

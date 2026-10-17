@@ -10,7 +10,13 @@ import { moneyError } from './escrow-errors';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import { XenditService } from '../payments/xendit.service';
 
-export const WARRANTY_DURATION_MS = 72 * 60 * 60 * 1000;
+/**
+ * How long a completed job's payment is held before it is released. Zero since
+ * migration 0060: the payment is released as soon as the client confirms the
+ * job is complete. Kept as a constant so `warranty_expires_at` (= completion
+ * time) and the reconciliation sweep keep one definition.
+ */
+export const WARRANTY_DURATION_MS = 0;
 
 export type EscrowStatus =
   'held' | 'released' | 'disputed' | 'refunded' | 'cancelled';
@@ -143,7 +149,7 @@ export class EscrowService {
   }
 
   /**
-   * Called after the completed job’s three-day warranty: pay the provider.
+   * Called when the client confirms the job is complete: pay the provider.
    *
    * Raises rather than returning null when there is nothing to release. This
    * used to no-op silently, which was safe only because `JobsService.complete`

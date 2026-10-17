@@ -72,7 +72,7 @@ describe('PaymentsScheduler.reconcileSettledJobs', () => {
     expect(calls).toContainEqual({ method: 'eq', args: ['status', 'held'] });
     expect(calls).toContainEqual({
       method: 'lte',
-      args: ['jobs.completed_at', '2026-10-01T00:00:00.000Z'],
+      args: ['jobs.completed_at', '2026-10-04T00:00:00.000Z'],
     });
     expect(calls).toContainEqual({
       method: 'lte',

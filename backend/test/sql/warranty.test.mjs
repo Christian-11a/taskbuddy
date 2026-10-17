@@ -39,13 +39,13 @@ async function payouts(job) {
   return (await db.query("select amount::float as amount from wallet_transactions where job_id = $1 and kind = 'payout'", [job])).rows;
 }
 
-it('refuses automatic payout during work and just before 72 hours, without moving money', async () => {
+it('refuses payout while work is going on, and releases as soon as the job is completed (0060)', async () => {
   const { job, escrow } = await heldJob();
   assert.equal(await release(escrow), null);
-  await complete(job, '71 hours 59 minutes');
-  assert.equal(await release(escrow), null);
   assert.deepEqual(await payouts(job), []);
-  assert.equal((await db.query('select status from escrow_transactions where id = $1', [escrow])).rows[0].status, 'held');
+  await complete(job, '1 minute');
+  assert.equal((await release(escrow)).status, 'released');
+  assert.equal((await payouts(job)).length, 1);
 });
 
 it('releases exactly at 72 hours, only once, with commission and card transfer pending', async () => {

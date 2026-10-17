@@ -475,12 +475,24 @@ export class JobsService {
       );
     }
     await this.setStatus(jobId, 'completed', ['in_progress']);
-    // The payments sweep releases escrow after the 72-hour warranty.
+    // Confirming completion is the client's acceptance of the work: the
+    // payment is released now (migration 0060). If this attempt fails, the
+    // payments sweep releases it on its next tick.
+    let released = false;
+    try {
+      released = (await this.escrow.releaseIfHeld(jobId)) !== null;
+    } catch (err) {
+      this.logger.error(
+        `Job ${jobId} completed but its payment was not released yet: ${(err as Error).message}`,
+      );
+    }
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
       body:
         Number(job.budget) > 0
-          ? `The client marked "${job.title}" as completed. Payment stays held for the three-day warranty; an open dispute blocks release.`
-          : `The client marked "${job.title}" as completed. The three-day warranty has started.`,
+          ? released
+            ? `The client marked "${job.title}" as completed. Your payment has been released.`
+            : `The client marked "${job.title}" as completed. Your payment is being released.`
+          : `The client marked "${job.title}" as completed.`,
       job_id: jobId,
     });
     // The AFTER UPDATE trigger stamps completed_at in a second update, which

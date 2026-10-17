@@ -523,7 +523,7 @@ describe('CreateJobDto scheduled_at', () => {
 });
 
 describe('JobsService.complete', () => {
-  it('returns the persisted warranty when the completion trigger stamps a later update', async () => {
+  it('releases the payment as soon as the client confirms completion (0060)', async () => {
     const { service, calls, releaseIfHeld } = createService({
       jobs: [
         ok(job({ client_id: 'c1', status: 'in_progress', budget: 1500 })),
@@ -539,9 +539,10 @@ describe('JobsService.complete', () => {
     });
 
     const completed = await service.complete({ id: 'c1' } as Profile, 'j1');
-    expect(completed.warranty_expires_at).toBe('2026-10-07T00:00:00.000Z');
+    // No hold after completion: the release time is the completion time.
+    expect(completed.warranty_expires_at).toBe('2026-10-04T00:00:00.000Z');
 
-    expect(releaseIfHeld).not.toHaveBeenCalled();
+    expect(releaseIfHeld).toHaveBeenCalledWith('j1');
     expect(
       calls.find((c) => c.table === 'jobs' && c.method === 'update')?.args[0],
     ).toEqual({ status: 'completed' });
@@ -566,7 +567,7 @@ describe('JobsService.complete', () => {
       calls.find((c) => c.table === 'notifications' && c.method === 'insert')
         ?.args[0],
     ).toMatchObject({
-      body: 'The client marked "Fix the sink" as completed. The three-day warranty has started.',
+      body: 'The client marked "Fix the sink" as completed.',
     });
   });
 

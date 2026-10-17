@@ -668,8 +668,9 @@ describe('DisputesService', () => {
     rpcs: Record<string, QueryResult[]> = {},
   ) {
     const { supabase, calls, rpc } = createSupabaseMock(tables, rpcs);
+    const assertOwnedPaths = jest.fn();
     const uploads = {
-      assertOwnedPaths: jest.fn(),
+      assertOwnedPaths,
       assertValidImage: jest.fn().mockResolvedValue(undefined),
       signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
     } as unknown as UploadsService;
@@ -677,7 +678,7 @@ describe('DisputesService', () => {
       service: new DisputesService(supabase, payouts, uploads),
       calls,
       rpc,
-      uploads,
+      assertOwnedPaths,
     };
   }
   const participantJob = {
@@ -701,7 +702,7 @@ describe('DisputesService', () => {
     expect(calls.some((c) => c.table === 'notifications')).toBe(false);
   });
   it("attaches the reporter's photos to a new complaint", async () => {
-    const { service, calls, uploads } = build(
+    const { service, calls, assertOwnedPaths } = build(
       { jobs: [ok(participantJob)], disputes: [ok(null)] },
       { raise_job_dispute: [ok({ id: 'd1', photo_paths: [] })] },
     );
@@ -709,7 +710,7 @@ describe('DisputesService', () => {
       reason: 'Leak is back',
       photo_paths: [`${client.id}/leak.jpg`],
     });
-    expect(uploads.assertOwnedPaths).toHaveBeenCalledWith(client, [
+    expect(assertOwnedPaths).toHaveBeenCalledWith(client, [
       `${client.id}/leak.jpg`,
     ]);
     expect(

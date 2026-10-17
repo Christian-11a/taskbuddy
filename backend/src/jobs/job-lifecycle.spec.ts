@@ -972,13 +972,7 @@ describe('job lifecycle, end to end', () => {
       });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'released',
@@ -1040,13 +1034,7 @@ describe('job lifecycle, end to end', () => {
       });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     // The client paid the full budget; the provider received it less the cut.
     expect(await wallet.balanceFor('c1')).toBe(0);
@@ -1276,13 +1264,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
       });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     await flush();
     expect(await wallet.balanceFor('p1')).toBe(BUDGET);
@@ -1339,7 +1321,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 
 describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
   async function completedCardJob(world: ReturnType<typeof buildWorld>) {
-    const { db, jobs, applications, escrow, wallet, hireFunding } = world;
+    const { jobs, applications, hireFunding } = world;
     const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
@@ -1357,13 +1339,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
       });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
     await flush();
     return posted;
   }
@@ -1453,8 +1429,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
 
   it('does not send money the provider already withdrew by hand', async () => {
     const world = buildWorld({ payable: true });
-    const { db, escrow, jobs, applications, wallet, hireFunding, fakeStripe } =
-      world;
+    const { db, escrow, jobs, applications, hireFunding, fakeStripe } = world;
     fakeStripe.refuse('Temporarily unavailable');
     const posted = await postJob(world);
     const application = (await applications.apply(
@@ -1473,13 +1448,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
       });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
     await flush();
 
     // Between attempts, the provider withdraws the whole payout by request.
