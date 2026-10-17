@@ -42,6 +42,7 @@ interface NotificationRow {
   created_at: string;
   /** Job/application updates carry the job (and application) they are about. */
   data: { job_id?: string; application_id?: string; conversation_id?: string; request_id?: string; dispute_id?: string } | null;
+  target?: { screen: string; job_id?: string; request_id?: string };
 }
 
 // The header back button is 38 dp; the extra 5 dp on each side reaches 48.
@@ -62,13 +63,10 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
   const headerTop = useHeaderTop();
   const { notifications, loading, error, reload, unreadCount } = useNotifications();
   const [refreshing, setRefreshing] = useState(false);
-  // The notifications reload is fire-and-forget; a new list or error means the fetch settled, so the spinner can stop.
-  useEffect(() => {
-    setRefreshing(false);
-  }, [notifications, error]);
+  // The spinner stops when the fetch settles, even when it failed (the error state shows below).
   const onRefresh = () => {
     setRefreshing(true);
-    reload();
+    void Promise.resolve(reload()).finally(() => setRefreshing(false));
   };
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingReadId, setPendingReadId] = useState<string | null>(null);
@@ -112,7 +110,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
    * and reloads on return, and a failed mark-read should not block the job.
    */
   const openNotification = (notif: NotificationRow) => {
-    const target = resolveNotificationTarget('homeowner', notif.data ?? {});
+    const target = resolveNotificationTarget('homeowner', notif.data ?? {}, notif.target);
     if (target.kind === 'none') {
       if (!notif.read_at) void markRead(notif.id);
       return;
@@ -127,7 +125,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
   const renderRow = (notif: NotificationRow) => {
     // The same resolver that decides where a tap goes tells chat and complaint
     // notifications apart from job updates; the icon follows what happened.
-    const kind = resolveNotificationTarget('homeowner', notif.data ?? {}).kind;
+    const kind = resolveNotificationTarget('homeowner', notif.data ?? {}, notif.target).kind;
     const tone = notificationTone({ title: notif.title, body: notif.body, type: notif.type });
     const icon = NOTIFICATION_ICONS[notificationIconName({ type: notif.type, title: notif.title, body: notif.body, kind, tone })];
     return (

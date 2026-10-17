@@ -199,7 +199,7 @@ function AppFlow() {
   // The splash plays for a minimum duration; we also wait for session restore.
   const [minSplashDone, setMinSplashDone] = useState(false);
   // Sub-screen within the Google signup pending gate (role → SP details)
-  const [googleSubScreen, setGoogleSubScreen] = useState<'role' | 'sp-details'>('role');
+  const [googleSubScreen, setGoogleSubScreen] = useState<'role' | 'sp-details' | 'client-details'>('role');
 
   const handleLogout = () => {
     void signOut();
@@ -342,7 +342,7 @@ function AppFlow() {
       }
 
       if (isGoogleSignupPending) {
-        if (googleSubScreen === 'sp-details') {
+        if (googleSubScreen === 'sp-details' || googleSubScreen === 'client-details') {
           setGoogleSubScreen('role');
           return true;
         }
@@ -436,7 +436,7 @@ function AppFlow() {
     // The welcome holds the push until it is over, so its tour and finish card never sit over the screen the push opens.
     if (!isAuthenticated || isGoogleSignupPending || showOnboarding !== false || !role || pushHeld) return;
 
-    const target = resolveNotificationTarget(role, pendingPushTarget);
+    const target = resolveNotificationTarget(role, pendingPushTarget, pendingPushTarget.target);
     if (target.kind === 'proposals') {
       hoNavigateRef.current('Job Applications', target.jobId);
     } else if (target.kind === 'chat' || target.kind === 'dispute') {
@@ -445,6 +445,10 @@ function AppFlow() {
       else spNavigateRef.current(screen, target.jobId);
     } else if (target.kind === 'services') {
       spNavigateRef.current('My Services');
+    } else if (target.kind === 'payouts') {
+      spNavigateRef.current('Payout Account');
+    } else if (target.kind === 'verification') {
+      spNavigateRef.current('Verification');
     } else if (target.kind === 'job') {
       if (role === 'homeowner') hoNavigateRef.current('Job Detail', target.jobId);
       else spNavigateRef.current('Job Detail', target.jobId);
@@ -571,6 +575,7 @@ function AppFlow() {
     if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
     if (action === 'setupProfile' && role === 'provider') spNavigate('Edit Profile');
+    if (action === 'linkPayout' && role === 'provider') spNavigate('Payout Account');
   };
 
   // Home is on screen: the tour is due once Home's real content is up (its controls rendered, not still behind the
@@ -607,12 +612,31 @@ function AppFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tourFlow.phase]);
 
+  // Whether a provider has a payout account, for the finish card's last step. A failed lookup is "unknown",
+  // treated as linked so nothing new shows.
+  const [hasPayoutAccount, setHasPayoutAccount] = useState(true);
+  const finishingAsProvider = tourFlow.phase === 'finishing' && isAuthenticated && role === 'provider';
+  useEffect(() => {
+    if (!finishingAsProvider) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const account = await api.payoutAccount();
+        if (!cancelled) setHasPayoutAccount(!!account);
+      } catch {
+        if (!cancelled) setHasPayoutAccount(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [finishingAsProvider]);
+
   // The finish card, once the tour is over. It is drawn beside whichever screen is up (see wrap).
   const tourFinish = tourFlow.phase === 'finishing' && isAuthenticated && role ? (
     <TourFinishCard
       role={role}
       verified={isVerified}
       hasServiceProfile={profileReadyToVerify(profile, providerProfile)}
+      hasPayoutAccount={hasPayoutAccount}
       firstName={firstName}
       firstRun={tourFlow.firstRun}
       onAction={handleFinishAction}
@@ -704,6 +728,23 @@ function AppFlow() {
   // dashboard routing. Once completeGoogleProfile() clears the flag the gate
   // disappears automatically.
   if (isAuthenticated && isGoogleSignupPending) {
+    if (googleSubScreen === 'client-details') {
+      return wrap(
+        <GoogleSPDetailsScreen
+          role="client"
+          onBack={() => setGoogleSubScreen('role')}
+          onComplete={async (input) => {
+            await completeGoogleProfile({
+              role: 'homeowner',
+              consentedTerms: input.consentedTerms,
+              consentedPrivacy: input.consentedPrivacy,
+              consentedDataCollection: input.consentedDataCollection,
+            });
+          }}
+        />
+      );
+    }
+
     if (googleSubScreen === 'sp-details') {
       return wrap(
         <GoogleSPDetailsScreen
@@ -727,7 +768,8 @@ function AppFlow() {
       <GoogleRoleSelectionScreen
         email={profile?.email as string | null | undefined}
         onSelectHomeowner={async () => {
-          await completeGoogleProfile({ role: 'homeowner' });
+          // A client accepts the same three consents as a provider before the profile is saved.
+          setGoogleSubScreen('client-details');
         }}
         onSelectProvider={() => setGoogleSubScreen('sp-details')}
       />
@@ -954,6 +996,8 @@ function AppFlow() {
           onOpenChat={(jobId) => spNavigate('Chat', jobId)}
           onOpenDispute={(jobId) => spNavigate('Dispute Status', jobId)}
           onOpenServices={() => spNavigate('My Services')}
+          onOpenPayouts={() => spNavigate('Payout Account')}
+          onOpenVerification={() => spNavigate('Verification')}
         />
       </ScreenFrame>
     );
