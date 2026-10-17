@@ -421,11 +421,11 @@ describe('homeowner edit profile address', () => {
   });
 });
 
-const RADIUS_RANGE = 'Enter a service radius from 0.5 to 1000 km';
+const RADIUS_RANGE = 'Choose 1 to 50 km';
 const radiusField = () => screen.getByLabelText('Service radius (km)');
 
 describe('provider edit profile service radius', () => {
-  it('refuses a radius below 0.5 km, and says why, without saving', async () => {
+  it('refuses a radius below 1 km, and says why, without saving', async () => {
     await renderEditor('provider');
     fireEvent.changeText(radiusField(), '0');
 
@@ -436,9 +436,9 @@ describe('provider edit profile service radius', () => {
     expect(api.upsertProviderProfile).not.toHaveBeenCalled();
   });
 
-  it('refuses a radius above 1000 km', async () => {
+  it('refuses a radius above 50 km', async () => {
     await renderEditor('provider');
-    fireEvent.changeText(radiusField(), '1500');
+    fireEvent.changeText(radiusField(), '60');
 
     fireEvent.press(screen.getByLabelText('Save changes'));
 

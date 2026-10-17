@@ -601,7 +601,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
             <FormInput
               label="Password"
               required
-              placeholder="At least 8 characters"
+              placeholder="8–72 characters, letter and number"
               testID="input-password"
               value={password}
               onChangeText={(v) => { setPassword(v); clearError('password'); }}
@@ -610,18 +610,25 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               onLayout={locateField('password')}
               error={fieldErrors.password}
             />
-            {/* Live password rule. Only the rule the sign-up check enforces (8+). */}
+            {/* Live password rules, the same three the server checks. */}
             <View style={styles.rules}>
-              <View
-                style={styles.ruleRow}
-                accessible
-                accessibilityLabel={password.length >= 8 ? '8+ characters: met' : '8+ characters: not yet'}
-              >
-                {password.length >= 8
-                  ? <CheckCircle2 size={15} color={V6Colors.successText} />
-                  : <Circle size={15} color={V6Colors.ink300} />}
-                <Text style={[styles.ruleText, password.length >= 8 && styles.ruleTextOk]}>8+ characters</Text>
-              </View>
+              {[
+                { label: '8–72 characters', ok: password.length >= 8 && password.length <= 72 },
+                { label: 'A letter', ok: /[A-Za-z]/.test(password) },
+                { label: 'A number', ok: /\d/.test(password) },
+              ].map((rule) => (
+                <View
+                  key={rule.label}
+                  style={styles.ruleRow}
+                  accessible
+                  accessibilityLabel={`${rule.label}: ${rule.ok ? 'met' : 'not yet'}`}
+                >
+                  {rule.ok
+                    ? <CheckCircle2 size={15} color={V6Colors.successText} />
+                    : <Circle size={15} color={V6Colors.ink300} />}
+                  <Text style={[styles.ruleText, rule.ok && styles.ruleTextOk]}>{rule.label}</Text>
+                </View>
+              ))}
             </View>
 
             <FormInput

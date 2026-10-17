@@ -158,6 +158,7 @@ export default function TermsAndConditions({
           {!isRead && <Text style={styles.hint}>Scroll to the end to continue</Text>}
           <Tap
             style={[styles.primaryBtn, !isRead && styles.primaryBtnOff]}
+            testID="terms-agree"
             onPress={agree}
             disabled={!isRead}
             activeOpacity={0.85}

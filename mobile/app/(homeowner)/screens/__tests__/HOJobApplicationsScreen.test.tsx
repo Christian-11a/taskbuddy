@@ -1259,3 +1259,33 @@ it('every control has an accessible name: back, the proposal card and its action
   expect(await screen.findByText('Alex Reyes')).toBeTruthy();
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+it('pulling the list down reloads the proposals', async () => {
+  await renderScreen();
+  expect(await screen.findByText('Alex Reyes')).toBeTruthy();
+  const before = (api.jobApplications as jest.Mock).mock.calls.length;
+
+  act(() => {
+    screen.getByTestId('applications-scroll').props.refreshControl.props.onRefresh();
+  });
+
+  await waitFor(() => expect((api.jobApplications as jest.Mock).mock.calls.length).toBeGreaterThan(before));
+});
+
+it('a hire the server refuses with a 409 at the provider limit opens a capacity dialog with its message', async () => {
+  (api.createHireCheckoutSession as jest.Mock).mockRejectedValue(
+    Object.assign(new Error('This provider already has 3 active jobs'), { status: 409 }),
+  );
+  await renderScreen();
+  fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+  fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
+  fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+  await act(async () => {
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+  });
+
+  expect(await screen.findByText('This provider is unavailable')).toBeTruthy();
+  expect(screen.getByText('This provider already has 3 active jobs')).toBeTruthy();
+  fireEvent.press(screen.getByRole('button', { name: 'OK' }));
+  await waitFor(() => expect(screen.queryByText('This provider is unavailable')).toBeNull());
+});

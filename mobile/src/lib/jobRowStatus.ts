@@ -8,6 +8,7 @@ import { jobStatusMeta } from './format';
  * that count is still loading (an open job then reads as waiting).
  */
 export function jobRowStatus(job: Job, pendingCount?: number): { tone: JobRowTone; meta: string } {
+  if (job.display_status === 'disputed') return { tone: 'needsYou', meta: 'Disputed' };
   switch (job.status) {
     case 'open':
     case 'recommending': {

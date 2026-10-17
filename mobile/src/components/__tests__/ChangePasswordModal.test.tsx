@@ -29,7 +29,7 @@ describe('ChangePasswordModal', () => {
     expect(screen.getByText('Current password')).toBeTruthy();
     expect(screen.getByText('New password')).toBeTruthy();
     expect(screen.getByText('Confirm new password')).toBeTruthy();
-    expect(screen.getByText('At least 8 characters')).toBeTruthy();
+    expect(screen.getByText('8–72 characters')).toBeTruthy();
     expect(screen.getByText('Different from your current password')).toBeTruthy();
     expect(screen.getByText('Both new passwords match')).toBeTruthy();
     expect(isDisabled()).toBe(true);
@@ -121,11 +121,11 @@ describe('ChangePasswordModal — field messages', () => {
     renderModal();
     fireEvent.changeText(screen.getByLabelText('New password'), 'abc');
 
-    expect(screen.queryByText('New password must be at least 8 characters.')).toBeNull();
+    expect(screen.queryByText('New password must be 8–72 characters.')).toBeNull();
 
     blurField('New password');
 
-    expect(screen.getByText('New password must be at least 8 characters.')).toBeTruthy();
+    expect(screen.getByText('New password must be 8–72 characters.')).toBeTruthy();
   });
 
   it('says the two new passwords do not match once the confirm field is left', () => {
@@ -166,13 +166,13 @@ describe('ChangePasswordModal — field messages', () => {
     expect(isDisabled()).toBe(false);
   });
 
-  it('a new password made only of spaces shows its message, and Update password cannot send it', async () => {
+  it('a new password with no letter or number shows its message, and Update password cannot send it', async () => {
     renderModal();
     fill('oldpassword', '        ', '        ');
 
     blurField('New password');
 
-    expect(screen.getByText("New password can't be only spaces.")).toBeTruthy();
+    expect(screen.getByText('New password must contain at least one letter and one number.')).toBeTruthy();
     expect(isDisabled()).toBe(true);
     fireEvent.press(updateButton());
     await act(async () => {

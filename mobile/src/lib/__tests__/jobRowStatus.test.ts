@@ -28,3 +28,15 @@ describe('jobRowStatus', () => {
     expect(jobRowStatus(job('expired'))).toEqual({ tone: 'done', meta: 'Expired' });
   });
 });
+
+describe('jobRowStatus disputed', () => {
+  it('shows a disputed badge in a warning tone whatever the work status', () => {
+    const disputed = { ...job('in_progress'), display_status: 'disputed' } as Job;
+    expect(jobRowStatus(disputed)).toEqual({ tone: 'needsYou', meta: 'Disputed' });
+  });
+
+  it('falls back to the work status when display_status is not disputed', () => {
+    const shown = { ...job('completed'), display_status: 'completed' } as Job;
+    expect(jobRowStatus(shown)).toEqual({ tone: 'done', meta: 'Completed' });
+  });
+});

@@ -60,6 +60,8 @@ export interface NotificationRow {
   read_at: string | null;
   created_at: string;
   data: { job_id?: string; application_id?: string; conversation_id?: string; message_id?: string; request_id?: string; dispute_id?: string } | null;
+  /** Where a tap goes; absent on rows from an older backend. */
+  target?: { screen: string; job_id?: string; request_id?: string };
 }
 export interface NotificationSnapshot {
   notifications: NotificationRow[];
@@ -382,6 +384,8 @@ export interface Job {
   title: string;
   description: string;
   urgency: 'urgent' | 'normal' | 'flexible';
+  /** The status list badges show: 'disputed' while a complaint is open, otherwise the work status. */
+  display_status?: string;
   status:
     | 'open'
     | 'recommending'

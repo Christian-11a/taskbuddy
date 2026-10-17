@@ -500,40 +500,6 @@ export class JobsService {
     return this.findJob(jobId);
   }
 
-  async releasePayment(user: Profile, jobId: string) {
-    const escrow = await this.escrow.releaseEarly(jobId, user.id);
-    const job = await this.findJob(jobId);
-    return { job, escrow };
-  }
-
-  async requestPaymentRelease(user: Profile, jobId: string) {
-    const { data, error } = await this.supabase.admin.rpc(
-      'request_early_payment_release',
-      { p_job_id: jobId, p_provider_id: user.id },
-    );
-    if (error?.code === 'TB409')
-      throw new ConflictException({
-        message: error.message,
-        next_allowed_at: error.details || null,
-      });
-    if (error?.code === 'TB403') throw new ForbiddenException(error.message);
-    if (error) throw new BadRequestException(error.message);
-    return data;
-  }
-
-  async listPaymentReleaseRequests(user: Profile, jobId: string) {
-    const job = await this.findJob(jobId);
-    if (user.id !== job.client_id && user.id !== job.assigned_provider_id)
-      throw new ForbiddenException('Not a participant in this job');
-    const { data, error } = await this.supabase.admin
-      .from('provider_release_requests')
-      .select('*')
-      .eq('job_id', jobId)
-      .order('created_at', { ascending: false });
-    if (error) throw new BadRequestException(error.message);
-    return data;
-  }
-
   async listChanges(user: Profile, jobId: string) {
     const job = await this.findJob(jobId);
     if (user.id !== job.client_id && user.id !== job.assigned_provider_id)
@@ -721,8 +687,8 @@ export class JobsService {
 
   /**
    * Is a payment held for this job, and was it paid from the wallet or by card?
-   * Job Details needs both: early release is offered only while money is held,
-   * and price changes only for wallet-funded jobs. A failed lookup reads as
+   * Job Details needs both: whether money is held, and that price changes
+   * are only for wallet-funded jobs. A failed lookup reads as
    * unknown (null) rather than failing the whole job read.
    */
   private async escrowSummary(

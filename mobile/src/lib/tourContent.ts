@@ -12,7 +12,7 @@ export type WelcomeRole = 'homeowner' | 'provider';
 
 export type IntroCard = { title: string; body: string };
 
-export type FinishAction = 'postJob' | 'getVerified' | 'setupProfile' | 'close';
+export type FinishAction = 'postJob' | 'getVerified' | 'setupProfile' | 'linkPayout' | 'close';
 export type ChecklistState = 'done' | 'next' | 'later';
 export type ChecklistItem = { label: string; state: ChecklistState };
 export type FinishButton = { label: string; action: FinishAction };
@@ -100,12 +100,14 @@ export function tourSteps(role: WelcomeRole, verified = true): TourStep[] {
  * main action follow their real verification status and whether their profile
  * is ready to verify (address and bio); nothing here is a number.
  */
-export function finishCard({ role, verified, firstName, hasServiceProfile = true }: {
+export function finishCard({ role, verified, firstName, hasServiceProfile = true, hasPayoutAccount = true }: {
   role: WelcomeRole;
   verified: boolean;
   firstName: string | null | undefined;
   /** The profile is ready to verify (address and bio). Until it is, verification waits, so the first step is the profile. */
   hasServiceProfile?: boolean;
+  /** A verified provider has linked a payout account. Without one, proposals are refused, so linking one is the next step. */
+  hasPayoutAccount?: boolean;
 }): FinishCard {
   const title = `You're all set, ${firstNameFrom(firstName)}`;
   const lookAround: FinishButton = { label: 'Look around first', action: 'close' };
@@ -130,6 +132,7 @@ export function finishCard({ role, verified, firstName, hasServiceProfile = true
         { label: 'Account created', state: 'done' },
         { label: 'Add your address and bio', state: 'next' },
         { label: 'Get verified', state: 'later' },
+        { label: 'Link payout account', state: 'later' },
       ],
       primary: { label: 'Finish my profile', action: 'setupProfile' },
       secondary: lookAround,
@@ -142,9 +145,24 @@ export function finishCard({ role, verified, firstName, hasServiceProfile = true
       checklist: [
         { label: 'Account created', state: 'done' },
         { label: 'Get verified', state: 'next' },
+        { label: 'Link payout account', state: 'later' },
         { label: 'Send your first offer', state: 'later' },
       ],
       primary: { label: 'Get verified', action: 'getVerified' },
+      secondary: lookAround,
+    };
+  }
+
+  if (!hasPayoutAccount) {
+    return {
+      title,
+      checklist: [
+        { label: 'Account created', state: 'done' },
+        { label: 'Get verified', state: 'done' },
+        { label: 'Link payout account', state: 'next' },
+        { label: 'Send your first offer', state: 'later' },
+      ],
+      primary: { label: 'Link payout account', action: 'linkPayout' },
       secondary: lookAround,
     };
   }

@@ -40,9 +40,12 @@ const SKILL_CATEGORIES = [
 ] as const;
 
 interface GoogleSPDetailsScreenProps {
+  /** 'client' skips the skill category and collects only the three consents. Defaults to 'provider'. */
+  role?: 'client' | 'provider';
   onBack: () => void;
   onComplete: (input: {
-    categoryId: number;
+    /** Set for a provider only. */
+    categoryId?: number;
     consentedTerms: boolean;
     consentedPrivacy: boolean;
     consentedDataCollection: boolean;
@@ -96,9 +99,11 @@ type FieldErrors = {
 };
 
 export default function GoogleSPDetailsScreen({
+  role = 'provider',
   onBack,
   onComplete,
 }: GoogleSPDetailsScreenProps) {
+  const isClient = role === 'client';
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
@@ -119,7 +124,7 @@ export default function GoogleSPDetailsScreen({
 
   const validate = (): FieldErrors => {
     const errors: FieldErrors = {};
-    if (!categoryId)             errors.category       = 'Please select your skill category.';
+    if (!isClient && !categoryId) errors.category       = 'Please select your skill category.';
     if (!termsAccepted)          errors.terms          = 'Please accept the Terms & Conditions.';
     if (!privacyAccepted)        errors.privacy        = 'Please accept the Privacy Policy.';
     if (!dataCollectionAccepted) errors.dataCollection = 'Please accept the Data Collection consent.';
@@ -138,7 +143,7 @@ export default function GoogleSPDetailsScreen({
     setSubmitting(true);
     try {
       await onComplete({
-        categoryId: categoryId!,
+        ...(isClient ? {} : { categoryId: categoryId! }),
         consentedTerms: termsAccepted,
         consentedPrivacy: privacyAccepted,
         consentedDataCollection: dataCollectionAccepted,
@@ -188,10 +193,13 @@ export default function GoogleSPDetailsScreen({
           <View style={styles.card}>
             <Text style={styles.title}>Complete your profile</Text>
             <Text style={styles.subtitle}>
-              A few more details before you start as a Service Provider.
+              {isClient
+                ? 'Please review and accept the agreements before you start as a client.'
+                : 'A few more details before you start as a provider.'}
             </Text>
 
-            {/* Skill category */}
+            {/* Skill category (providers only) */}
+            {!isClient && (
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Skill Category<Text style={styles.asterisk}> *</Text></Text>
               <Tap
@@ -244,6 +252,7 @@ export default function GoogleSPDetailsScreen({
                 <Text style={styles.fieldError} accessibilityLiveRegion="polite">{fieldErrors.category}</Text>
               )}
             </View>
+            )}
 
             {/* Consents */}
             <View style={styles.consentSection}>

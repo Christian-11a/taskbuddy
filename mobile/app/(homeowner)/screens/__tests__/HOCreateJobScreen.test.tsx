@@ -12,10 +12,16 @@ import { showToast } from '../../../../src/components/Toast';
 import { isBackBlockedByScreen } from '../../../../src/hooks/useLeaveGuard';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
-jest.mock('../../../../src/lib/api', () => ({ api: {
-  categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
-  estimatePrice: jest.fn(),
-} }));
+jest.mock('../../../../src/lib/api', () => ({
+  ApiError: class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) { super(message); this.status = status; }
+  },
+  api: {
+    categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
+    estimatePrice: jest.fn(),
+  },
+}));
 const PRICE_OPTIONS = [
   { tier: 'basic', amount: 1250, min: 1150, max: 1400 },
   { tier: 'standard', amount: 1500, min: 1350, max: 1650 },
@@ -81,6 +87,30 @@ it('posts from review without another terms acceptance and retains form state af
   await act(async () => fireEvent.press(screen.getByText('Post job')));
   expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({price_tier: 'standard', tasks: ['Fix leaking faucet'], task_efforts: ['moderate']}));
   expect(await screen.findByText('Post another job')).toBeTruthy();
+});
+
+it('opens a job-limit dialog with the server message when posting answers 409', async () => {
+  (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+  (api.createJob as jest.Mock).mockRejectedValue(
+    Object.assign(new Error('You have 3 active jobs. Finish one to create another.'), { status: 409 }),
+  );
+  render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+  await screen.findByText('Location confirmed');
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Fix leaking faucet'));
+  fireEvent.press(screen.getByText('Next'));
+  fireEvent.press(await screen.findByText('Pick a date'));
+  fireEvent.press(screen.getByText('Choose test date'));
+  fireEvent.press(screen.getByText('Pick a time'));
+  fireEvent.press(screen.getByText('Choose test time'));
+  if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
+  fireEvent.press(await screen.findByTestId('price-option-standard'));
+  fireEvent.press(screen.getByText('Next'));
+  await act(async () => fireEvent.press(await screen.findByText('Post job')));
+  expect(await screen.findByText('Job limit reached')).toBeTruthy();
+  expect(screen.getByText('You have 3 active jobs. Finish one to create another.')).toBeTruthy();
+  fireEvent.press(screen.getByRole('button', { name: 'OK' }));
+  await waitFor(() => expect(screen.queryByText('Job limit reached')).toBeNull());
 });
 
 const NO_TASKS_MESSAGE = 'Pick at least one task so providers know what the job involves.';
@@ -366,7 +396,7 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     (api.estimatePrice as jest.Mock).mockRejectedValue(new Error('Not found'));
     await openBudgetStep();
 
-    expect(await screen.findByText("Couldn't load prices. Check your connection and try again.")).toBeTruthy();
+    expect(await screen.findByText("Couldn't reach TaskBuddy. Check your connection and try again.")).toBeTruthy();
     const callsBefore = (api.estimatePrice as jest.Mock).mock.calls.length;
     (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
     fireEvent.press(screen.getByRole('button', { name: 'Try loading prices again' }));

@@ -174,23 +174,6 @@ export class EscrowService {
     return this.payOut(escrow);
   }
 
-  async releaseEarly(jobId: string, clientId: string): Promise<EscrowRow> {
-    const { data, error } = await this.supabase.admin.rpc(
-      'escrow_release_early',
-      {
-        p_job_id: jobId,
-        p_client_id: clientId,
-      },
-    );
-    if (error) throw moneyError(error);
-    const released = data as EscrowRow;
-    if (released.transfer_status === 'pending') {
-      void this.connectPayouts.processEscrow(released.id);
-    }
-    await this.passThrough([released.provider_id]);
-    return released;
-  }
-
   /**
    * Sends the money a settlement just put on the ledger straight back out:
    * a payout to the provider's linked GCash/Maya/bank account, a refund to

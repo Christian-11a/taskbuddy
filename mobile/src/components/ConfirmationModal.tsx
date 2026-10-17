@@ -11,6 +11,8 @@ interface ConfirmationModalProps {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** A notice with one OK button: no cancel action. */
+  hideCancel?: boolean;
   busy?: boolean;
   /** Red confirm button, for actions that discard or reject something. */
   destructive?: boolean;
@@ -31,7 +33,7 @@ interface ConfirmationModalProps {
  * a bottom sheet instead.
  */
 export default function ConfirmationModal({
-  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', busy = false, destructive = false, cancelTone = 'default', icon, onConfirm, onCancel, onDismiss,
+  visible, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', hideCancel = false, busy = false, destructive = false, cancelTone = 'default', icon, onConfirm, onCancel, onDismiss,
 }: ConfirmationModalProps) {
   const { styles, tones, onPrimary } = useThemedStyles(createThemedStyles);
   const tone = destructive ? tones.destructive : tones.default;
@@ -56,7 +58,7 @@ export default function ConfirmationModal({
           ? <ActivityIndicator color={onPrimary} testID="confirm-spinner" />
           : <Text style={styles.confirmText}>{confirmLabel}</Text>}
       </Tap>
-      <Tap
+      {!hideCancel && <Tap
         style={styles.cancelButton}
         onPress={onCancel}
         disabled={busy}
@@ -65,7 +67,7 @@ export default function ConfirmationModal({
         accessibilityLabel={cancelLabel}
       >
         <Text style={[styles.cancelText, cancelTone === 'danger' && styles.cancelTextDanger]}>{cancelLabel}</Text>
-      </Tap>
+      </Tap>}
     </SheetFrame>
   );
 }

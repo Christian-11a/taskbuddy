@@ -16,7 +16,8 @@ import { useAuth } from './AuthContext';
 interface NotificationsState extends NotificationSnapshot {
   loading: boolean;
   error: string | null;
-  reload: () => void;
+  /** Resolves when the fetch has settled, whether it worked or failed. */
+  reload: () => Promise<void>;
 }
 const NotificationsContext = createContext<NotificationsState | null>(null);
 const empty: NotificationSnapshot = { notifications: [], unreadCount: 0 };
@@ -69,9 +70,9 @@ function AccountNotifications({
   const revision = useRef(0);
   const alive = useRef(true);
   const reload = useCallback(() => {
-    if (!enabled || AppState.currentState !== 'active') return;
+    if (!enabled || AppState.currentState !== 'active') return Promise.resolve();
     const request = ++revision.current;
-    void api
+    return api
       .notificationSnapshot()
       .then((result) => {
         if (alive.current && request === revision.current) {

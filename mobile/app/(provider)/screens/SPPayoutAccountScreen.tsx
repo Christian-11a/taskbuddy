@@ -26,6 +26,29 @@ export function accountLabel(account: Pick<PayoutAccount, 'method' | 'bank_name'
   return `${name} ••••${account.account_last4}`;
 }
 
+/**
+ * How a payout row's status reads. The server sends `completed`, `pending` or
+ * `failed`; any other value is shown as its raw text in neutral colour.
+ */
+export function payoutStatus(status: string): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
+  switch (status) {
+    case 'completed': return { label: 'Sent', tone: 'success' };
+    case 'pending': return { label: 'Pending', tone: 'warning' };
+    case 'failed': return { label: 'Failed', tone: 'danger' };
+    default: return { label: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown', tone: 'neutral' };
+  }
+}
+
+/**
+ * The title shown under a payout amount. Old wallet-era rows are titled
+ * "Withdrawal" (or have no title); those read as "Payout". Other titles pass through.
+ */
+export function payoutTitle(title: string | null | undefined): string {
+  const trimmed = (title ?? '').trim();
+  if (!trimmed || trimmed.toLowerCase() === 'withdrawal') return 'Payout';
+  return title as string;
+}
+
 /** The first thing wrong with the form, or null. */
 export function payoutProblem(input: { method: PayoutMethod; bankCode: string; accountName: string; accountNumber: string }): string | null {
   if (input.method === 'bank' && !input.bankCode) return 'Choose your bank.';
@@ -176,16 +199,27 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
 
         <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">Payouts sent</Text>
         {history.data && payouts.length === 0 && <Text style={styles.intro}>No payouts yet.</Text>}
-        {payouts.map((row) => (
-          <View key={row.id} style={styles.payout}>
-            <View style={styles.payoutText}>
-              <Text style={styles.cardValue}>{peso(row.amount)}</Text>
-              <Text style={styles.cardMeta}>
-                {[row.withdrawal_destination, shortDate(row.created_at), row.review_note].filter(Boolean).join(' · ')}
-              </Text>
+        {payouts.map((row) => {
+          const status = payoutStatus(row.status);
+          const statusColor = status.tone === 'success' ? V6Colors.successText
+            : status.tone === 'warning' ? V6Colors.warningText
+            : status.tone === 'danger' ? V6Colors.dangerText
+            : V6Colors.ink500;
+          return (
+            <View key={row.id} style={styles.payout}>
+              <View style={styles.payoutText}>
+                <View style={styles.payoutHead}>
+                  <Text style={styles.cardValue}>{peso(row.amount)}</Text>
+                  <Text style={[styles.statusText, { color: statusColor }]} testID="payout-status">{status.label}</Text>
+                </View>
+                <Text style={styles.cardMeta}>{payoutTitle(row.title)}</Text>
+                <Text style={styles.cardMeta}>
+                  {[row.withdrawal_destination, shortDate(row.created_at), row.review_note].filter(Boolean).join(' · ')}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </KeyboardAwareScrollView>
 
       <BottomActionBar
@@ -238,6 +272,8 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
     },
     payoutText: { flex: 1, gap: 2 },
+    payoutHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    statusText: { fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
     errorText: { color: Colors.dangerText, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
     savedText: { color: Colors.primary, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
   });

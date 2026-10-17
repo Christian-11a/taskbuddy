@@ -323,24 +323,23 @@ describe('providerJobView: a job hired to me', () => {
     );
   });
 
-  it('completed inside the warranty: DONE, the warranty line, View in wallet and the report option', () => {
+  it('completed: DONE, no release line, View in wallet and no report option', () => {
     const result = view({
       status: 'completed',
       assigned_provider_id: ME.id,
       completed_at: noon(at(-2)),
-      warranty_expires_at: noon(at(1)),
     });
     expect(result.card.tone).toBe('done');
     expect(result.card.overline).toMatch(/^DONE · [A-Z]{3} \d{1,2}$/);
     expect(result.card.title).toBe('Nice work! Your payment is on its way');
-    expect(result.card.body).toMatch(/^Released to you on [A-Z][a-z]{2} \d{1,2}\.$/);
+    expect(result.card.body).toBeUndefined();
     expect(result.step).toBe('done');
     expect(result.main).toEqual({ kind: 'viewWallet' });
     expect(result.link).toBeNull();
-    expect(result.menu).toEqual([{ kind: 'reportProblem' }]);
+    expect(result.menu).toEqual([]);
   });
 
-  it('completed after the warranty: no warranty line and no report option', () => {
+  it('completed with an old warranty date: no warranty line and no report option', () => {
     const result = view({
       status: 'completed',
       assigned_provider_id: ME.id,
@@ -353,8 +352,8 @@ describe('providerJobView: a job hired to me', () => {
     expect(result.main).toEqual({ kind: 'viewWallet' });
   });
 
-  it('completed with no warranty date gives no warranty line', () => {
-    const result = view({ status: 'completed', assigned_provider_id: ME.id, warranty_expires_at: null });
+  it('completed with a future legacy warranty date still shows no release line and no report', () => {
+    const result = view({ status: 'completed', assigned_provider_id: ME.id, warranty_expires_at: noon(at(1)) });
     expect(result.card.body).toBeUndefined();
     expect(result.menu).toEqual([]);
   });
@@ -480,7 +479,7 @@ describe('providerJobView: complaints on a hired job, by state', () => {
     expect(result.menu).toEqual([{ kind: 'viewCase' }]);
   });
 
-  it('a complaint outside the warranty on a completed job still offers View Complaint Status', () => {
+  it('a complaint on a completed job still offers View Complaint Status', () => {
     const result = view(
       { status: 'completed', assigned_provider_id: ME.id, warranty_expires_at: noon(at(-3)) },
       { dispute: dispute({ status: 'resolved' }) },
@@ -523,5 +522,19 @@ describe('providerJobView: edge cases', () => {
     expect(view({ status: 'open' }, { isVerified: false }).step).toBeNull();
     expect(view({ status: 'open' }, { myApplication: makeApplication('rejected') }).step).toBeNull();
     expect(view({ status: 'confirmed', assigned_provider_id: 'other' }).step).toBeNull();
+  });
+});
+
+describe('providerJobView while disputed', () => {
+  it('hides decline, adds the case banner', () => {
+    const v = view({ status: 'confirmed', assigned_provider_id: ME.id, display_status: 'disputed' });
+    expect(v.link).toBeNull();
+    expect(v.banner).toEqual({ text: 'A complaint is open. An admin is reviewing it.', action: { kind: 'viewCase' } });
+  });
+
+  it('keeps decline and no banner otherwise', () => {
+    const v = view({ status: 'confirmed', assigned_provider_id: ME.id });
+    expect(v.link).toEqual({ kind: 'declineBooking' });
+    expect(v.banner).toBeUndefined();
   });
 });

@@ -5,7 +5,7 @@ import { api } from '../../../../src/lib/api';
 
 jest.mock('../../../../src/context/AuthContext', () => ({ useAuth: () => ({ profile: { id: 'provider' } }) }));
 jest.mock('../../../../src/lib/api', () => ({ api: {
-  jobDispute: jest.fn(), addDisputeEntry: jest.fn(), respondToCancellation: jest.fn(), openConversation: jest.fn(), messages: jest.fn(),
+  jobDispute: jest.fn(), addDisputeEntry: jest.fn(), respondToCancellation: jest.fn(),
 } }));
 const base = { id: 'case', job_id: 'job', reason: 'Repair quality', details: null, status: 'open',
   resolution: null, resolution_note: null, resolved_at: null, created_at: '2026-10-04T00:00:00Z',
@@ -18,8 +18,6 @@ beforeEach(() => {
   (api.jobDispute as jest.Mock).mockResolvedValue(base);
   (api.addDisputeEntry as jest.Mock).mockResolvedValue({});
   (api.respondToCancellation as jest.Mock).mockResolvedValue({});
-  (api.openConversation as jest.Mock).mockResolvedValue({ id: 'conversation' });
-  (api.messages as jest.Mock).mockResolvedValue([]);
 });
 function show(props: { onMessage?: () => void } = {}) { render(<HODisputeStatusScreen jobId="job" onBack={jest.fn()} {...props} />); }
 /** Opens the one sheet for adding details (open case) and waits for it. */
@@ -34,9 +32,10 @@ it('shows a zero-budget case without claiming that an admin has reviewed it', as
   expect(screen.queryByText('Under Review')).toBeNull();
   expect(screen.queryByText('Our support team is looking into this.')).toBeNull();
   await openDetailsSheet();
+  expect(screen.getByText('Your full chat with the other party is attached.')).toBeTruthy();
   fireEvent.changeText(screen.getByLabelText(SHEET_FIELD), 'My account of the repair');
   await act(async () => { fireEvent.press(screen.getByText('Send details')); });
-  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith('case', { kind: 'statement', body: 'My account of the repair', message_id: undefined }));
+  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith('case', { kind: 'statement', body: 'My account of the repair' }));
 });
 it('shows actual clarification activity, its author, timestamp, and photo evidence', async () => {
   (api.jobDispute as jest.Mock).mockResolvedValue({ ...base, entries: [{ id: 'entry', kind: 'clarification',
@@ -67,10 +66,11 @@ it('lets the assigned provider agree or contest before the response deadline', a
   (api.jobDispute as jest.Mock).mockResolvedValue(pendingCase);
   show();
   await screen.findByText('Agree to cancel');
+  expect(screen.getByText('Your full chat with the other party is attached.')).toBeTruthy();
   fireEvent.changeText(screen.getByLabelText('Your note'), 'I contest the cancellation');
   fireEvent.press(screen.getByLabelText('Contest and explain'));
   await act(async () => { fireEvent.press(await screen.findByLabelText('Contest')); });
-  await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', false, 'I contest the cancellation', undefined));
+  await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', false, 'I contest the cancellation'));
   expect(api.respondToCancellation).toHaveBeenCalledTimes(1);
 });
 it('asks before agreeing, and sends the answer only once the refund is confirmed', async () => {
@@ -87,7 +87,7 @@ it('asks before agreeing, and sends the answer only once the refund is confirmed
   expect(api.respondToCancellation).not.toHaveBeenCalled();
   fireEvent.press(screen.getByText('Agree to cancel'));
   await act(async () => { fireEvent.press(await screen.findByLabelText('Agree and refund ₱800.00')); });
-  await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', true, 'Agreed, sorry for the trouble', undefined));
+  await waitFor(() => expect(api.respondToCancellation).toHaveBeenCalledWith('case', true, 'Agreed, sorry for the trouble'));
   expect(api.respondToCancellation).toHaveBeenCalledTimes(1);
 });
 it('does not open a confirm from "Go back" on the contest sheet', async () => {
@@ -114,18 +114,15 @@ it('keeps both answers disabled until the required note has text', async () => {
   expect(screen.queryByText('Contest this cancellation?')).toBeNull();
   expect(api.respondToCancellation).not.toHaveBeenCalled();
 });
-it('attaches only the selected own job message as case evidence', async () => {
-  (api.messages as jest.Mock).mockResolvedValue([
-    { id: 'own', sender_id: 'provider', body: 'Own evidence', created_at: '2026-10-04T00:00:00Z' },
-    { id: 'other', sender_id: 'client', body: 'Other person evidence', created_at: '2026-10-04T00:00:00Z' },
-  ]);
+it('has no job chat picker: the whole chat is attached, and no message id is sent', async () => {
   show();
   await openDetailsSheet();
-  fireEvent.press(await screen.findByText(/Own evidence/));
-  expect(screen.queryByText(/Other person evidence/)).toBeNull();
+  expect(screen.queryByText("From this job's chat")).toBeNull();
+  expect(screen.queryByText('Choose job chat evidence')).toBeNull();
   fireEvent.changeText(screen.getByLabelText(SHEET_FIELD), 'Evidence description');
   await act(async () => { fireEvent.press(screen.getByText('Send details')); });
-  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith('case', expect.objectContaining({ message_id: 'own' })));
+  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledTimes(1));
+  expect((api.addDisputeEntry as jest.Mock).mock.calls[0][1]).not.toHaveProperty('message_id');
 });
 it('shows save failures and preserves the draft for retry', async () => {
   (api.addDisputeEntry as jest.Mock).mockRejectedValue(new Error('Case is already closed'));
@@ -145,21 +142,6 @@ it('shows the decision in plain words with a timeline, never a raw code', async 
   expect(screen.getByText('What happened')).toBeTruthy();
   expect(screen.getByText('Case closed · ₱800.00 refunded to the client')).toBeTruthy();
   expect(screen.queryByText(/refunded_to_client/)).toBeNull();
-});
-it('offers photos from my job chat as thumbnails, and sends the chosen one as evidence', async () => {
-  (api.messages as jest.Mock).mockResolvedValue([
-    { id: 'photo', sender_id: 'provider', body: '', attachment_path: 'chat.jpg', attachment_url: 'https://storage.test/chat.jpg', created_at: '2026-10-04T00:00:00Z' },
-    { id: 'theirs', sender_id: 'client', body: '', attachment_path: 'x.jpg', attachment_url: 'https://storage.test/x.jpg', created_at: '2026-10-04T00:00:00Z' },
-  ]);
-  show();
-  await openDetailsSheet();
-  expect(await screen.findByLabelText('Photo from the job chat')).toBeTruthy();
-  expect(screen.getAllByLabelText('Photo from the job chat')).toHaveLength(1);
-  expect(screen.getByLabelText('Photo from the job chat').props.source.uri).toBe('https://storage.test/chat.jpg');
-  await act(async () => { fireEvent.press(screen.getByLabelText('Photo message')); });
-  fireEvent.changeText(screen.getByLabelText(SHEET_FIELD), 'Photo of the leak');
-  await act(async () => { fireEvent.press(screen.getByText('Send details')); });
-  await waitFor(() => expect(api.addDisputeEntry).toHaveBeenCalledWith('case', expect.objectContaining({ message_id: 'photo' })));
 });
 it('keeps Send disabled until the sheet has text', async () => {
   show();
@@ -211,12 +193,6 @@ it('a job with no complaint says so inside the card', async () => {
   show();
   const card = await screen.findByTestId('empty-card');
   expect(within(card).getByText('No complaint filed')).toBeTruthy();
-});
-it('the sheet says when there is no message of the person’s own to attach, inside the card', async () => {
-  show();
-  await openDetailsSheet();
-  const card = await screen.findByTestId('empty-card');
-  expect(within(card).getByText('No messages from you yet')).toBeTruthy();
 });
 it('refreshes the case by pulling down, with no Refresh button', async () => {
   show();

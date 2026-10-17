@@ -95,10 +95,11 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
-import { api, type GeocodedAddress, type PriceOption } from '../../../src/lib/api';
+import { ApiError, api, type GeocodedAddress, type PriceOption } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import { capacityConflictMessage } from '../../../src/lib/capacityConflict';
 import AddressField from '../../../src/components/AddressField';
 import PostAppBar from '../../../src/components/post/PostAppBar';
 import PostFooter from '../../../src/components/post/PostFooter';
@@ -260,7 +261,8 @@ export default function HOCreateJobScreen({
   // `budget` stays the form's amount so the review and rules read one value.
   const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
   const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
-  const [priceError, setPriceError] = useState(false);
+  // The message for a failed price request: a connection problem, or a server error.
+  const [priceError, setPriceError] = useState<string | null>(null);
   // Bumped by "Try again" to re-request the price options after a failure.
   const [priceRetry, setPriceRetry] = useState(0);
   const budget = priceOptions?.find((o) => o.tier === priceTier)?.amount.toString() ?? '';
@@ -277,6 +279,8 @@ export default function HOCreateJobScreen({
   // wait, so saying so beats a single undifferentiated "Posting…".
   const [submitPhase, setSubmitPhase] = useState<'uploading' | 'posting' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set when the server answers 409 because the client is at the active-job limit.
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   // Set before the first await, so a second tap in the same frame cannot post the job twice.
   const postInFlight = useRef(false);
 
@@ -302,10 +306,19 @@ export default function HOCreateJobScreen({
   useEffect(() => {
     if (!categoryId) { setPriceOptions(null); return; }
     let live = true;
-    setPriceError(false);
+    setPriceError(null);
     api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
       .then((res) => { if (live) setPriceOptions(res.options); })
-      .catch(() => { if (live) { setPriceOptions(null); setPriceError(true); } });
+      .catch((err) => {
+        if (!live) return;
+        // An ApiError with a real HTTP status came from the server; anything
+        // else (status 0 or no ApiError at all) means no response arrived.
+        const serverError = err instanceof ApiError && err.status > 0;
+        setPriceOptions(null);
+        setPriceError(serverError
+          ? "Prices aren't available right now. Please try again in a moment."
+          : 'Couldn\'t reach TaskBuddy. Check your connection and try again.');
+      });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceKey, priceRetry]);
@@ -555,7 +568,9 @@ export default function HOCreateJobScreen({
       });
       setStep(6); // success
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not post the job.');
+      const capacity = capacityConflictMessage(e);
+      if (capacity) setCapacityNotice(capacity);
+      else setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
       postInFlight.current = false;
       setSubmitting(false);
@@ -1073,7 +1088,7 @@ export default function HOCreateJobScreen({
                 {priceError && (
                   <View style={styles.priceRetryRow}>
                     <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">
-                      Couldn't load prices. Check your connection and try again.
+                      {priceError}
                     </Text>
                     <Tap
                       onPress={() => setPriceRetry((n) => n + 1)}
@@ -1150,6 +1165,16 @@ export default function HOCreateJobScreen({
           />
         )}
       </KeyboardAvoidingView>
+
+      <ConfirmationModal
+        visible={capacityNotice !== null}
+        title="Job limit reached"
+        message={capacityNotice ?? ''}
+        confirmLabel="OK"
+        hideCancel
+        onConfirm={() => setCapacityNotice(null)}
+        onCancel={() => setCapacityNotice(null)}
+      />
 
       <ConfirmationModal
         visible={showExitConfirmation}
@@ -1280,7 +1305,7 @@ function createThemedStyles(theme: ThemePalette) {
   const URGENCY_OPTIONS = [
     { value: 'flexible' as const, label: 'Flexible', blurb: 'Any day that works for you', icon: CalendarDays },
     { value: 'normal' as const, label: 'Normal', blurb: 'Within a few days', icon: Clock },
-    { value: 'urgent' as const, label: 'Urgent', blurb: 'You need someone today', icon: Zap },
+    { value: 'urgent' as const, label: 'Urgent', blurb: 'As soon as possible', icon: Zap },
   ];
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: Colors.background },

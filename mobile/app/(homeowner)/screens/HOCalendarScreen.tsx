@@ -7,8 +7,8 @@
  * as JobRows. App.tsx passes the title and the List/Calendar switch.
  */
 
-import React, { ReactNode, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Calendar } from 'react-native-calendars';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -69,6 +69,15 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
     'ho-jobs',
     { persist: true, validate: isList },
   );
+  const [pulling, setPulling] = useState(false);
+  // reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
+  useEffect(() => {
+    setPulling(false);
+  }, [data, error]);
+  const onRefresh = () => {
+    setPulling(true);
+    reload();
+  };
   // A failed refresh with saved jobs keeps the jobs on screen; the hint says so. The error card is for no data.
   const failedWithoutData = !!error && data === null;
   const jobs = useMemo(() => data ?? [], [data]);
@@ -118,9 +127,13 @@ export default function HOCalendarScreen({ onNavigate, title = 'Calendar', heade
       {header}
 
       <ScrollView
+        testID="calendar-scroll"
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+        }
       >
         <StaleHint stale={stale} refreshing={refreshing} error={error} onRetry={reload} />
         <View style={styles.calendarCard}>

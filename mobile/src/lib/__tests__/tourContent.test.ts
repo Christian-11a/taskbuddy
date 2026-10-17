@@ -139,6 +139,7 @@ describe('finishCard', () => {
       checklist: [
         { label: 'Account created', state: 'done' },
         { label: 'Get verified', state: 'next' },
+        { label: 'Link payout account', state: 'later' },
         { label: 'Send your first offer', state: 'later' },
       ],
       primary: { label: 'Get verified', action: 'getVerified' },
@@ -153,6 +154,7 @@ describe('finishCard', () => {
         { label: 'Account created', state: 'done' },
         { label: 'Add your address and bio', state: 'next' },
         { label: 'Get verified', state: 'later' },
+        { label: 'Link payout account', state: 'later' },
       ],
       primary: { label: 'Finish my profile', action: 'setupProfile' },
       secondary: { label: 'Look around first', action: 'close' },
@@ -175,6 +177,20 @@ describe('finishCard', () => {
         { label: 'Send your first offer', state: 'next' },
       ],
       primary: { label: 'Find my first job', action: 'close' },
+    });
+  });
+
+  it('sends a verified provider with no payout account to link one, before the first offer', () => {
+    expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasPayoutAccount: false })).toEqual({
+      title: "You're all set, Ana",
+      checklist: [
+        { label: 'Account created', state: 'done' },
+        { label: 'Get verified', state: 'done' },
+        { label: 'Link payout account', state: 'next' },
+        { label: 'Send your first offer', state: 'later' },
+      ],
+      primary: { label: 'Link payout account', action: 'linkPayout' },
+      secondary: { label: 'Look around first', action: 'close' },
     });
   });
 

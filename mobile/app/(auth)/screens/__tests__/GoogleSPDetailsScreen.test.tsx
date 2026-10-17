@@ -21,3 +21,21 @@ it('completes Google provider onboarding with the same three signup consents', a
   expect(complete).toHaveBeenCalledWith({categoryId: 1, consentedTerms: true,
     consentedPrivacy: true, consentedDataCollection: true});
 });
+
+it('collects the same three consents for a client, without a skill category', async () => {
+  const complete = jest.fn().mockResolvedValue(undefined);
+  render(<GoogleSPDetailsScreen role="client" onBack={jest.fn()} onComplete={complete} />);
+  expect(screen.queryByText('Select your skill…')).toBeNull();
+  await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
+  expect(complete).not.toHaveBeenCalled();
+  fireEvent.press(screen.getByTestId('chk-gsp-terms-privacy'));
+  for (const doc of ['Terms & Conditions', 'Privacy Policy']) {
+    fireEvent.scroll(screen.getByTestId('terms-body'), {
+      nativeEvent: { contentOffset: { y: 1000 }, layoutMeasurement: { height: 400 }, contentSize: { height: 1400 } },
+    });
+    fireEvent.press(screen.getByTestId('terms-agree'));
+  }
+  fireEvent.press(screen.getByTestId('chk-gsp-data'));
+  await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
+  expect(complete).toHaveBeenCalledWith({ consentedTerms: true, consentedPrivacy: true, consentedDataCollection: true });
+});

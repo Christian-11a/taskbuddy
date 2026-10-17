@@ -284,3 +284,15 @@ it('a saved job list of the wrong shape is ignored, and the screen loads as it d
 
   await expectSavedCopyIgnored('ho-jobs', {}, () => render(<HOCalendarScreen onNavigate={jest.fn()} />));
 });
+
+it('pulling the schedule down reloads it', async () => {
+  render(<HOCalendarScreen onNavigate={jest.fn()} />);
+  await waitFor(() => expect(api.myJobs as jest.Mock).toHaveBeenCalledTimes(1));
+  await screen.findByTestId('calendar-scroll');
+
+  act(() => {
+    screen.getByTestId('calendar-scroll').props.refreshControl.props.onRefresh();
+  });
+
+  await waitFor(() => expect(api.myJobs as jest.Mock).toHaveBeenCalledTimes(2));
+});

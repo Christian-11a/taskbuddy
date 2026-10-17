@@ -266,7 +266,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
         ref={newRef}
         secure
         label="New password"
-        placeholder="At least 8 characters"
+        placeholder="8–72 characters, letter and number"
         value={newPassword}
         onChangeText={setNewPassword}
         editable={!busy}

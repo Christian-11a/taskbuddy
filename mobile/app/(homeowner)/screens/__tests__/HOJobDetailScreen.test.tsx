@@ -5,6 +5,7 @@ import HOJobDetailScreen from '../HOJobDetailScreen';
 import { ApiError, api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
+import { StyleSheet } from 'react-native';
 
 jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 
@@ -216,19 +217,32 @@ describe('FullTest homeowner job details', () => {
     expect(screen.queryByText('Confirm job is done')).toBeNull();
   });
 
-  it.each([1, 4])('shows a post-completion dispute only within three days (age %i)', async (days) => {
+  it('a completed job offers no Report a problem, even with an old warranty date on the record', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'completed',
-      completed_at: new Date(Date.now() - days * 86400000).toISOString(),
-      warranty_expires_at: new Date(Date.now() + (3 - days) * 86400000).toISOString() });
+      completed_at: new Date(Date.now() - 86400000).toISOString(),
+      warranty_expires_at: new Date(Date.now() + 2 * 86400000).toISOString() });
     render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText('Jane Provider');
-    // The complaint moved into the ⋮ menu: offered there inside the warranty, and no menu at all after it.
-    if (days < 3) {
-      fireEvent.press(screen.getByLabelText('More job actions'));
-      expect(await screen.findByText('Report a problem')).toBeTruthy();
-    } else {
-      expect(screen.queryByLabelText('More job actions')).toBeNull();
-    }
+    // Payment is released on confirmation, so there is no complaint left to file: no ⋮ menu at all.
+    expect(screen.queryByLabelText('More job actions')).toBeNull();
+    expect(screen.queryByText('Report a problem')).toBeNull();
+  });
+
+  it('a completed job with an existing case still shows View case', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'completed',
+      completed_at: new Date(Date.now() - 86400000).toISOString() });
+    (api.jobDispute as jest.Mock).mockResolvedValue({
+      id: 'd2', job_id: 'job-1', reason: 'Work not finished', details: null, status: 'open',
+      resolution: null, resolution_note: null, resolved_at: null, created_at: new Date().toISOString(),
+      cancellation_state: null,
+    });
+    const onNavigate = jest.fn();
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={onNavigate} />);
+    await screen.findByText('Jane Provider');
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    expect(screen.queryByText('Report a problem')).toBeNull();
+    fireEvent.press(await screen.findByText('View case'));
+    expect(onNavigate).toHaveBeenCalledWith('Dispute Status', 'job-1');
   });
 });
 
@@ -273,6 +287,47 @@ describe('HOJobDetailScreen — Cancel Job once the work is done', () => {
     render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
     fireEvent.press(await screen.findByLabelText('More job actions'));
     expect(await screen.findByText('Cancel job')).toBeTruthy();
+  });
+});
+
+describe('HOJobDetailScreen — task checklist is read-only with proof', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('a ticked task shows a checked, disabled checkbox, a Done label and its proof photos', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      job_tasks: [
+        { id: 't1', job_id: 'job-1', label: 'Fix tap', is_done: true, position: 1, completed_at: '2026-10-16T00:00:00Z', proof_photo_urls: ['https://public/proof.jpg'] },
+        { id: 't2', job_id: 'job-1', label: 'Clean up', is_done: false, position: 2, completed_at: null, proof_photo_urls: [] },
+      ],
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    const row = await screen.findByTestId('task-row-t1');
+    expect(within(row).getByText('Done')).toBeTruthy();
+    expect(within(screen.getByTestId('task-row-t2')).queryByText('Done')).toBeNull();
+    const ticked = screen.getByLabelText('Fix tap');
+    expect(ticked.props.accessibilityRole).toBe('checkbox');
+    expect(ticked.props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(screen.getByLabelText('Clean up').props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(screen.getByLabelText('Proof for Fix tap, photo 1 of 1')).toBeTruthy();
+  });
+
+  it('lays each task row out centred, with a fixed 24dp box beside the text', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      job_tasks: [{ id: 't1', job_id: 'job-1', label: 'Fix tap', is_done: false, position: 1, completed_at: null }],
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    const row = await screen.findByTestId('task-row-t1');
+    expect(StyleSheet.flatten(row.props.style)).toMatchObject({ flexDirection: 'row', alignItems: 'center', gap: 12 });
+    const box = row.findAll((node) => StyleSheet.flatten(node.props.style)?.width === 24)[0];
+    expect(StyleSheet.flatten(box.props.style)).toMatchObject({ width: 24, height: 24, flexShrink: 0 });
   });
 });
 
@@ -384,6 +439,17 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
 
     fireEvent.press(await screen.findByText('Message Jane Provider'));
     expect(onNavigate).toHaveBeenCalledWith('Chat', 'job-1');
+  });
+
+  it('a disputed job shows the complaint banner, opens the case, and hides confirm and cancel', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, display_status: 'disputed' });
+    const onNavigate = jest.fn();
+    renderJob(onNavigate);
+
+    expect(await screen.findByText('A complaint is open. An admin is reviewing it.')).toBeTruthy();
+    expect(screen.queryByText(/Confirm Completion/i)).toBeNull();
+    fireEvent.press(screen.getByTestId('dispute-banner'));
+    expect(onNavigate).toHaveBeenCalledWith('Dispute Status', 'job-1');
   });
 
   it('a finished job with no review offers Leave a review', async () => {

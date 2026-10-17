@@ -2,7 +2,7 @@ import { findUnnamedControls } from '../../testing/a11yAudit';
 import React from 'react';
 import { Ban, ShieldAlert, UserPlus } from 'lucide-react-native';
 import { ScrollView } from 'react-native';
-import { render, screen, fireEvent, act, within } from '@testing-library/react-native';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react-native';
 import HONotificationsScreen from '../../../app/(homeowner)/screens/HONotificationsScreen';
 import SPNotificationsScreen from '../../../app/(provider)/screens/SPNotificationsScreen';
 import NotificationCard from '../../components/ui/NotificationCard';
@@ -270,7 +270,7 @@ it.each([HONotificationsScreen, SPNotificationsScreen])(
 describe('notification pull to refresh', () => {
   it.each([HONotificationsScreen, SPNotificationsScreen])(
     'pulling reloads the list and spins until a fresh list arrives',
-    (Screen) => {
+    async (Screen) => {
       const reload = jest.fn();
       (useNotifications as jest.Mock).mockReturnValue({
         notifications: [row], unreadCount: 1, loading: false, error: null, reload,
@@ -288,7 +288,35 @@ describe('notification pull to refresh', () => {
         notifications: [{ ...row }], unreadCount: 1, loading: false, error: null, reload,
       });
       view.rerender(<Screen {...callbacks} />);
+      await waitFor(() =>
+        expect(screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.refreshing).toBe(false),
+      );
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'the spinner stops after a failed pull and the error state shows',
+    async (Screen) => {
+      let fail: () => void = () => {};
+      const reload = jest.fn(() => new Promise<void>((resolve) => { fail = resolve; }));
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [], unreadCount: 0, loading: false, error: null, reload,
+      });
+      const view = render(<Screen {...callbacks} />);
+      act(() => {
+        screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.onRefresh();
+      });
+      expect(screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.refreshing).toBe(true);
+
+      (useNotifications as jest.Mock).mockReturnValue({
+        notifications: [], unreadCount: 0, loading: false, error: 'Network request failed', reload,
+      });
+      await act(async () => {
+        fail();
+      });
+      view.rerender(<Screen {...callbacks} />);
       expect(screen.UNSAFE_getByType(ScrollView).props.refreshControl.props.refreshing).toBe(false);
+      expect(screen.getByText('Network request failed')).toBeTruthy();
     },
   );
 });

@@ -16,6 +16,7 @@ import { validateNewPasswordDiffers, validatePasswordRules } from '../lib/inputR
 import PasswordInput from './PasswordInput';
 
 const MIN_LENGTH = 8;
+const MAX_LENGTH = 72;
 const LINK_HIT_SLOP = { top: 15, bottom: 15, left: 8, right: 8 } as const;
 
 interface ChangePasswordModalProps {
@@ -48,7 +49,8 @@ export default function ChangePasswordModal({ visible, onClose }: ChangePassword
   const confirmRef = useRef<TextInput>(null);
 
   const rules = [
-    { label: `At least ${MIN_LENGTH} characters`, ok: newPassword.length >= MIN_LENGTH },
+    { label: `${MIN_LENGTH}–${MAX_LENGTH} characters`, ok: newPassword.length >= MIN_LENGTH && newPassword.length <= MAX_LENGTH },
+    { label: 'A letter and a number', ok: /[A-Za-z]/.test(newPassword) && /\d/.test(newPassword) },
     { label: 'Different from your current password', ok: !!newPassword && !!currentPassword && newPassword !== currentPassword },
     { label: 'Both new passwords match', ok: !!confirmPassword && newPassword === confirmPassword },
   ];

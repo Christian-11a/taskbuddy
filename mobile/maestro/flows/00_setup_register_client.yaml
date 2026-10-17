@@ -84,10 +84,11 @@ appId: com.taskbuddy.app
     timeout: 20000
 - scrollUntilVisible:
     element:
-      text: "I agree to the Terms & Conditions"
+      id: "terms-agree"
     direction: DOWN
     timeout: 20000
-- tapOn: "I agree to the Terms & Conditions"
+- tapOn:
+    id: "terms-agree"
 - tapOn:
     id: "chk-terms"
 - extendedWaitUntil:
@@ -95,10 +96,11 @@ appId: com.taskbuddy.app
     timeout: 20000
 - scrollUntilVisible:
     element:
-      text: "I agree to the Privacy Policy"
+      id: "terms-agree"
     direction: DOWN
     timeout: 20000
-- tapOn: "I agree to the Privacy Policy"
+- tapOn:
+    id: "terms-agree"
 
 # This one is a straight toggle — no screen, nothing to accept.
 - scrollUntilVisible:

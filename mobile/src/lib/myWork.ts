@@ -147,14 +147,15 @@ export function myWorkSections(rows: readonly MyWorkRow[], filter: MyWorkFilter)
 function hiredRow(job: Job): MyWorkRow | null {
   const group = HIRED_GROUP[job.status];
   if (!group) return null;
+  const disputed = job.display_status === 'disputed';
   const scheduledTime = timeOf(job.scheduled_at);
   return {
     key: `job:${job.id}`,
     jobId: job.id,
     group,
     title: job.title,
-    meta: hiredMeta(job, group),
-    tone: TONE[group],
+    meta: disputed ? `Disputed · ${hiredMeta(job, group)}` : hiredMeta(job, group),
+    tone: disputed ? 'needsYou' : TONE[group],
     budget: job.budget ?? null,
     scheduledAt: job.scheduled_at ?? null,
     scheduledTime,
