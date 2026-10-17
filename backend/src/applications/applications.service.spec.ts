@@ -118,6 +118,7 @@ describe('ApplicationsService', () => {
         provider_profiles: [
           { data: { profile_id: 'p1', is_verified: true }, error: null },
         ],
+        linked_payout_accounts: [{ data: { profile_id: 'p1' }, error: null }],
         recommendation_candidates: [{ data: null, error: null }],
         job_applications: [{ data: { id: 'app1' }, error: null }],
         notifications: [{ data: null, error: null }],
@@ -159,6 +160,7 @@ describe('ApplicationsService', () => {
         provider_profiles: [
           { data: { profile_id: 'p1', is_verified: true }, error: null },
         ],
+        linked_payout_accounts: [{ data: { profile_id: 'p1' }, error: null }],
         recommendation_candidates: [
           { data: { id: 'cand1' }, error: null },
           { data: null, error: null },
@@ -265,6 +267,39 @@ describe('ApplicationsService', () => {
       expect(writesTo(calls, 'job_applications', 'insert')).toEqual([]);
     });
 
+    it('refuses a verified provider with no payout account', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        jobs: [
+          {
+            data: {
+              id: 'j1',
+              title: 'Fix sink',
+              status: 'open',
+              client_id: 'c1',
+            },
+            error: null,
+          },
+        ],
+        provider_profiles: [
+          { data: { profile_id: 'p1', is_verified: true }, error: null },
+        ],
+        linked_payout_accounts: [{ data: null, error: null }],
+      });
+      const service = new ApplicationsService(
+        supabase,
+        createEscrowMock().escrow,
+      );
+
+      const err: unknown = await service
+        .apply(provider, 'j1', {})
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getResponse()).toMatchObject({
+        code: 'payout_account_required',
+      });
+      expect(writesTo(calls, 'job_applications', 'insert')).toEqual([]);
+    });
+
     it('turns the unique-violation on a second apply into a readable error', async () => {
       const { supabase } = createSupabaseMock({
         jobs: [
@@ -281,6 +316,7 @@ describe('ApplicationsService', () => {
         provider_profiles: [
           { data: { profile_id: 'p1', is_verified: true }, error: null },
         ],
+        linked_payout_accounts: [{ data: { profile_id: 'p1' }, error: null }],
         recommendation_candidates: [{ data: null, error: null }],
         job_applications: [
           { data: null, error: { message: 'duplicate key', code: '23505' } },

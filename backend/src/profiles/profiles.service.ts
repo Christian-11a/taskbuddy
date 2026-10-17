@@ -1,3 +1,4 @@
+import { SERVICE_RADIUS_DEFAULT_KM } from './service-radius';
 import {
   BadRequestException,
   ForbiddenException,
@@ -203,7 +204,7 @@ export class ProfilesService {
           category_id: dto.category_id,
           bio: dto.bio,
           years_experience: dto.years_experience ?? 0,
-          service_radius_km: dto.service_radius_km ?? 15.0,
+          service_radius_km: dto.service_radius_km ?? SERVICE_RADIUS_DEFAULT_KM,
           ...(inheritsApproval ? { is_verified: true } : {}),
         },
         { onConflict: 'profile_id' },

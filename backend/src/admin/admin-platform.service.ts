@@ -413,7 +413,51 @@ export class AdminPlatformService {
 
   // ── Commission ────────────────────────────────────────────────────────────
 
+  /**
+   * The current rate plus what it has earned, so the commission page can lead
+   * with the money rather than the percentage. Earned is read off released
+   * escrows (the commission is withheld there and has no ledger row of its
+   * own); pending is what held escrows would yield at today's rate.
+   */
   async getCommission() {
+    const setting = await this.readCommissionRate();
+    const [released, held] = await Promise.all([
+      this.supabase.admin
+        .from('escrow_transactions')
+        .select('commission_amount, released_at')
+        .eq('status', 'released')
+        .gt('commission_amount', 0),
+      this.supabase.admin
+        .from('escrow_transactions')
+        .select('amount')
+        .eq('status', 'held'),
+    ]);
+    if (released.error) throw new BadRequestException(released.error.message);
+    if (held.error) throw new BadRequestException(held.error.message);
+
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    let totalEarned = 0;
+    let thisMonth = 0;
+    for (const row of released.data ?? []) {
+      const amount = Number(row.commission_amount);
+      totalEarned += amount;
+      if ((row.released_at ?? '').startsWith(currentMonth)) thisMonth += amount;
+    }
+    const rate = Number(setting.commission_rate ?? 0);
+    const heldTotal = (held.data ?? []).reduce(
+      (sum, row) => sum + Number(row.amount),
+      0,
+    );
+    return {
+      ...setting,
+      total_earned: round2(totalEarned),
+      earned_this_month: round2(thisMonth),
+      released_jobs: (released.data ?? []).length,
+      pending_estimate: round2(heldTotal * rate),
+    };
+  }
+
+  private async readCommissionRate() {
     const { data, error } = await this.supabase.admin
       .from('platform_settings')
       .select('commission_rate, updated_at')
@@ -434,7 +478,7 @@ export class AdminPlatformService {
    * offers and the reason a change is worth announcing.
    */
   async setCommission(admin: Profile, dto: UpdateCommissionDto) {
-    const previous = await this.getCommission();
+    const previous = await this.readCommissionRate();
     const { data, error } = await this.supabase.admin
       .from('platform_settings')
       .update({
@@ -522,3 +566,5 @@ export class AdminPlatformService {
     return data ?? null;
   }
 }
+
+const round2 = (n: number) => Math.round(n * 100) / 100;

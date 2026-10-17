@@ -481,6 +481,33 @@ describe('JobsService review flag', () => {
     expect(result).toMatchObject({ has_review: false, review: null });
   });
 
+  it.each([
+    [null, 'in_progress'],
+    ['open', 'disputed'],
+    ['resolved', 'in_progress'],
+  ])(
+    'derives display_status when dispute_state is %s',
+    async (state, shown) => {
+      const { service } = createService({
+        jobs: [
+          ok(
+            job({ status: 'in_progress', dispute_state: state, reviews: null }),
+          ),
+        ],
+      });
+
+      const result = (await service.getById(client, 'j1')) as Record<
+        string,
+        unknown
+      >;
+
+      expect(result).toMatchObject({
+        status: 'in_progress',
+        display_status: shown,
+      });
+    },
+  );
+
   it('flags every row of a list, not just a fetched one', async () => {
     const { service } = createService({
       jobs: [

@@ -34,6 +34,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'update',
       'eq',
       'neq',
+      'gt',
       'is',
       'not',
       'order',
@@ -356,6 +357,40 @@ describe('AdminPlatformService', () => {
         push_queued: 0,
         failed: 1,
         audience: 'all',
+      });
+    });
+  });
+
+  describe('getCommission', () => {
+    it('leads with what the commission has earned', async () => {
+      const month = new Date().toISOString().slice(0, 7);
+      const { supabase } = createSupabaseMock({
+        platform_settings: [
+          { data: { commission_rate: 0.1, updated_at: 't' }, error: null },
+        ],
+        escrow_transactions: [
+          {
+            data: [
+              { commission_amount: 15, released_at: '2025-01-15T00:00:00Z' },
+              { commission_amount: 7.58, released_at: `${month}-01T08:00:00Z` },
+            ],
+            error: null,
+          },
+          { data: [{ amount: 1000 }, { amount: 250.5 }], error: null },
+        ],
+      });
+      const service = new AdminPlatformService(
+        supabase,
+        createAdminActionsMock().mock,
+      );
+
+      await expect(service.getCommission()).resolves.toEqual({
+        commission_rate: 0.1,
+        updated_at: 't',
+        total_earned: 22.58,
+        earned_this_month: 7.58,
+        released_jobs: 2,
+        pending_estimate: 125.05,
       });
     });
   });

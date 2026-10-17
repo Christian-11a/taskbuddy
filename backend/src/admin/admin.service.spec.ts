@@ -99,7 +99,35 @@ describe('AdminService', () => {
 
       expect(result).toEqual({ users: rows, total: 1 });
       const orCall = calls.find((c) => c.method === 'or');
-      expect(orCall?.args[0]).toBe('full_name.ilike.%ali%,email.ilike.%ali%');
+      expect(orCall?.args[0]).toBe(
+        'full_name.ilike."%ali%",email.ilike."%ali%"',
+      );
+    });
+
+    it('keeps filter syntax in the search term literal', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        admin_user_overview: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.listUsers({ search: 'x),role.eq.admin,100%' });
+
+      const orCall = calls.find((c) => c.method === 'or');
+      expect(orCall?.args[0]).toBe(
+        'full_name.ilike."%x),role.eq.admin,100\\\\%%",' +
+          'email.ilike."%x),role.eq.admin,100\\\\%%"',
+      );
+    });
+
+    it('skips the filter for a blank search', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        admin_user_overview: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.listUsers({ search: '   ' });
+
+      expect(calls.find((c) => c.method === 'or')).toBeUndefined();
     });
 
     it('filters suspended users via deactivated_at', async () => {

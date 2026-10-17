@@ -244,6 +244,30 @@ export class DisputesService {
       ...row,
       photo_urls: await this.signPhotos(row.photo_paths),
       entries,
+      chat: await this.chatSummary(row.job_id),
+    };
+  }
+
+  /**
+   * The job's whole conversation is part of every case, so nobody has to pick
+   * messages as evidence. Admins read it at GET /admin/jobs/:jobId/conversation;
+   * this says whether there is anything to read. A failed lookup reads as
+   * unknown (null) rather than failing the case.
+   */
+  private async chatSummary(jobId: string) {
+    const { data, error } = await this.supabase.admin
+      .from('conversations')
+      .select('id, messages(count)')
+      .eq('job_id', jobId)
+      .maybeSingle();
+    if (error) return null;
+    const row = data as {
+      id: string;
+      messages: { count: number }[] | null;
+    } | null;
+    return {
+      conversation_id: row?.id ?? null,
+      message_count: row?.messages?.[0]?.count ?? 0,
     };
   }
 

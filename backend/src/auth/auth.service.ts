@@ -1,3 +1,4 @@
+import { SERVICE_RADIUS_DEFAULT_KM } from '../profiles/service-radius';
 import * as crypto from 'crypto';
 import {
   BadRequestException,
@@ -169,7 +170,7 @@ export class AuthService implements OnModuleInit {
             bio: null,
             years_experience: 0,
             is_available: false,
-            service_radius_km: 15,
+            service_radius_km: SERVICE_RADIUS_DEFAULT_KM,
           },
           { onConflict: 'profile_id', ignoreDuplicates: true },
         );
@@ -903,7 +904,7 @@ export class AuthService implements OnModuleInit {
           bio: null,
           years_experience: 0,
           is_available: false,
-          service_radius_km: 15,
+          service_radius_km: SERVICE_RADIUS_DEFAULT_KM,
         },
         { onConflict: 'profile_id', ignoreDuplicates: true },
       );

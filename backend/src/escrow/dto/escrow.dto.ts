@@ -82,6 +82,10 @@ export class AddDisputeEntryDto {
   @IsString()
   @Length(1, 1000)
   body!: string;
+  /**
+   * @deprecated The whole job chat is attached to every case now, so there is
+   * no message to pick. Still accepted so older app builds keep working.
+   */
   @IsOptional()
   @IsUUID()
   message_id?: string;
@@ -113,6 +117,7 @@ export class EvidenceRequestDto {
   recipient?: 'client' | 'provider' | 'both';
 }
 export class CancellationResponseDto {
+  /** @deprecated See AddDisputeEntryDto.message_id. */
   @IsOptional()
   @IsUUID()
   message_id?: string;

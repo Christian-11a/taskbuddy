@@ -1,4 +1,8 @@
 import {
+  SERVICE_RADIUS_MAX_KM,
+  SERVICE_RADIUS_MIN_KM,
+} from '../service-radius';
+import {
   IsBoolean,
   IsInt,
   IsNumber,
@@ -70,8 +74,12 @@ export class UpsertProviderProfileDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(0.5)
-  @Max(1000)
+  @Min(SERVICE_RADIUS_MIN_KM, {
+    message: `service_radius_km must be at least ${SERVICE_RADIUS_MIN_KM} km`,
+  })
+  @Max(SERVICE_RADIUS_MAX_KM, {
+    message: `service_radius_km must be at most ${SERVICE_RADIUS_MAX_KM} km`,
+  })
   service_radius_km?: number;
 }
 
