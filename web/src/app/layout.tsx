@@ -1,11 +1,20 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque } from "next/font/google";
+import { Bricolage_Grotesque, Inter } from "next/font/google";
 import "./globals.css";
 
 const bricolageGrotesque = Bricolage_Grotesque({
   variable: "--font-bricolage-grotesque",
   weight: "variable",
   axes: ["opsz"],
+  subsets: ["latin"],
+  display: "swap",
+});
+
+/** Public-site body text (promo.css --font-body). Named apart from the admin
+ *  layout's --font-inter so globals.css (body font) and admin portals stay
+ *  exactly as they were. */
+const inter = Inter({
+  variable: "--font-inter-promo",
   subsets: ["latin"],
   display: "swap",
 });
@@ -35,7 +44,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={bricolageGrotesque.variable} data-theme="light">
+    <html lang="en" className={`${bricolageGrotesque.variable} ${inter.variable}`} data-theme="light">
       {/* suppressHydrationWarning: browser extensions (Grammarly, Dashlane,
           etc.) inject their own attributes onto <body> before React
           hydrates — data-gr-ext-installed and similar. React sees the

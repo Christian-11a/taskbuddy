@@ -49,12 +49,6 @@ export function HomePage() {
       <a className="skip-link" href="#main">Skip to content</a>
       <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP_WITH_CLICKABLE_CONSENT_LINKS }} />
 
-      {/* Switzer remains on Fontshare because no licensed local font files are
-          part of this repository. Bricolage Grotesque is self-hosted by
-          next/font in the root layout. */}
-      <link rel="preconnect" href="https://api.fontshare.com" />
-      <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap" />
-
       {/* Load the motion dependencies sequentially. Next's afterInteractive
           scripts can otherwise race: script.js may initialize before
           ScrollTrigger exists and permanently select the heavier fallback. */}
