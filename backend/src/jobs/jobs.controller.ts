@@ -115,32 +115,6 @@ export class JobsController {
     return this.jobsService.cancel(user, id);
   }
 
-  @Post(':id/release')
-  @Roles('client')
-  releasePayment(
-    @CurrentUser() user: Profile,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.jobsService.releasePayment(user, id);
-  }
-
-  @Post(':id/release-request')
-  @Roles('provider')
-  requestPaymentRelease(
-    @CurrentUser() user: Profile,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.jobsService.requestPaymentRelease(user, id);
-  }
-
-  @Get(':id/release-requests')
-  listPaymentReleaseRequests(
-    @CurrentUser() user: Profile,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
-    return this.jobsService.listPaymentReleaseRequests(user, id);
-  }
-
   @Get(':id/change-requests')
   listChanges(
     @CurrentUser() user: Profile,

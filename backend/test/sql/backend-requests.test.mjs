@@ -23,13 +23,13 @@ it('caps clients at three active jobs',async()=>{
  await refusal(`insert into jobs(client_id,category_id,title,description,address,latitude,longitude)
  values($1,1,'Fourth job','Repair the leaking kitchen sink and check fittings.','Lipa',13.94,121.14)`,[client],'TB409');
 });
-it('releases a completed hold only once',async()=>{
+it('keeps the early-release functions disabled',async()=>{
  const id=await job(1,'completed');
  await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
- await q(`update jobs set completed_at=now() where id=$1`,[id]);
- assert.equal((await q(`select status from escrow_release_early($1,$2)`,[id,client]))[0].status,'released');
- assert.equal((await q(`select count(*)::int as n from wallet_transactions where job_id=$1 and kind='payout'`,[id]))[0].n,1);
  await refusal(`select escrow_release_early($1,$2)`,[id,client],'TB409');
+ await refusal(`select request_early_payment_release($1,$2)`,[id,provider],'TB409');
+ assert.equal((await q(`select status from escrow_transactions where job_id=$1`,[id]))[0].status,'held');
+ assert.equal((await q(`select has_function_privilege('service_role','escrow_release_early(uuid,uuid)','execute') as ok`))[0].ok,false);
 });
 it('rejects a stale platform identity edit',async()=>{
  assert.equal((await q(`select platform_name from admin_update_platform_identity($1,1,'TaskBuddy UAT','')`,[admin]))[0].platform_name,'TaskBuddy UAT');
@@ -77,14 +77,6 @@ it('expires an unpaid price increase and keeps the old price',async()=>{
  assert.equal((await q(`select job_change_expire_all() as n`))[0].n,1);
  await refusal(`select job_change_apply_payment($1,200)`,[r[0].id],'TB409');
  assert.equal(Number((await q(`select budget from jobs where id=$1`,[id]))[0].budget),1000);
-});
-it('limits provider release requests and notifies the client',async()=>{
- const id=await job(1,'completed');
- await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
- const first=(await q(`select * from request_early_payment_release($1,$2)`,[id,provider]))[0];
- assert.ok(new Date(first.next_allowed_at)>new Date(first.created_at));
- await assert.rejects(q(`select request_early_payment_release($1,$2)`,[id,provider]),e=>e.code==='TB409' && Boolean(e.detail));
- assert.equal((await q(`select count(*)::int as n from notifications where recipient_id=$1 and title='Provider requested payment release'`,[client]))[0].n,1);
 });
 it('expires pending job changes without a participant opening the job',async()=>{
  const id=await job(1,'assigned');
