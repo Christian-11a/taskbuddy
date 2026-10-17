@@ -16,6 +16,7 @@ import type { SupabaseService } from '../supabase/supabase.service';
 import type { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
 import type { Profile } from '../common/types';
 import type { XenditService } from '../payments/xendit.service';
+import type { UploadsService } from '../uploads/uploads.service';
 
 /** Xendit not configured: payouts fall back to simulated pass-through. */
 const NO_XENDIT = { configured: false } as unknown as XenditService;
@@ -667,7 +668,18 @@ describe('DisputesService', () => {
     rpcs: Record<string, QueryResult[]> = {},
   ) {
     const { supabase, calls, rpc } = createSupabaseMock(tables, rpcs);
-    return { service: new DisputesService(supabase, payouts), calls, rpc };
+    const assertOwnedPaths = jest.fn();
+    const uploads = {
+      assertOwnedPaths,
+      assertValidImage: jest.fn().mockResolvedValue(undefined),
+      signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
+    } as unknown as UploadsService;
+    return {
+      service: new DisputesService(supabase, payouts, uploads),
+      calls,
+      rpc,
+      assertOwnedPaths,
+    };
   }
   const participantJob = {
     client_id: client.id,
@@ -688,6 +700,39 @@ describe('DisputesService', () => {
       p_details: null,
     });
     expect(calls.some((c) => c.table === 'notifications')).toBe(false);
+  });
+  it("attaches the reporter's photos to a new complaint", async () => {
+    const { service, calls, assertOwnedPaths } = build(
+      { jobs: [ok(participantJob)], disputes: [ok(null)] },
+      { raise_job_dispute: [ok({ id: 'd1', photo_paths: [] })] },
+    );
+    const result = await service.raise(client, 'j1', {
+      reason: 'Leak is back',
+      photo_paths: [`${client.id}/leak.jpg`],
+    });
+    expect(assertOwnedPaths).toHaveBeenCalledWith(client, [
+      `${client.id}/leak.jpg`,
+    ]);
+    expect(
+      calls.find((c) => c.table === 'disputes' && c.method === 'update')
+        ?.args[0],
+    ).toEqual({ photo_paths: [`${client.id}/leak.jpg`] });
+    expect(result).toMatchObject({ photo_paths: [`${client.id}/leak.jpg`] });
+  });
+  it('attaches photos to a statement', async () => {
+    const { service, calls } = build(
+      { dispute_entries: [ok(null)] },
+      { add_dispute_entry: [ok({ id: 'e1' })] },
+    );
+    await service.addEntry(client, 'd1', {
+      kind: 'statement',
+      body: 'Photo of the wet floor',
+      photo_paths: [`${client.id}/floor.jpg`],
+    });
+    expect(
+      calls.find((c) => c.table === 'dispute_entries' && c.method === 'update')
+        ?.args[0],
+    ).toEqual({ photo_paths: [`${client.id}/floor.jpg`] });
   });
   it('refuses outsiders before requesting case creation', async () => {
     const { service, rpc } = build({ jobs: [ok(participantJob)] });

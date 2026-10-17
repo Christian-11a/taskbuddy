@@ -371,6 +371,8 @@ export interface JobTask {
   position: number;
   is_done: boolean;
   completed_at: string | null;
+  /** Proof the task is done (migration 0059); required for new ticks. */
+  proof_photo_urls?: string[];
 }
 
 export interface Job {
@@ -488,6 +490,8 @@ export interface DisputeEntry {
   author: { id: string; full_name: string; role: string } | null;
   message: { id: string; body: string; attachment_path: string | null } | null;
   attachment_url: string | null;
+  /** Photos attached to this statement or appeal (signed, short-lived). */
+  photo_urls?: string[];
 }
 
 export interface Dispute {
@@ -497,6 +501,8 @@ export interface Dispute {
   cancellation_state?: 'pending' | 'contested' | 'accepted' | 'expired' | null;
   cancellation_deadline?: string | null;
   entries?: DisputeEntry[];
+  /** Photos attached when the complaint was raised (signed, short-lived). */
+  photo_urls?: string[];
   jobs?: { client_id: string; assigned_provider_id: string | null };
   escrow_transactions?: { status: string; amount: number | string } | null;
   details: string | null;
@@ -615,6 +621,8 @@ export interface Conversation {
   counterpart_avatar_url: string | null;
   last_message_at: string | null;
   created_at: string;
+  /** Messages from the other person not read yet (migration 0061). */
+  unread_count?: number;
 }
 
 export interface Message {
@@ -1295,10 +1303,10 @@ export const api = {
   },
 
   /** Assigned provider ticks a checklist item off. Returns the updated job. */
-  updateJobTask(jobId: string, taskId: string, is_done: boolean) {
+  updateJobTask(jobId: string, taskId: string, is_done: boolean, proof_photo_paths?: string[]) {
     return authRequest<Job>(`/jobs/${jobId}/tasks/${taskId}`, {
       method: 'PATCH',
-      body: { is_done },
+      body: is_done ? { is_done, proof_photo_paths } : { is_done },
     });
   },
 
@@ -1432,7 +1440,7 @@ export const api = {
    * storage *path*, which is what job/verification payloads carry.
    */
   async uploadImage(
-    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio' | 'provider-credentials',
+    bucket: 'job-photos' | 'verification-docs' | 'avatars' | 'chat-attachments' | 'provider-portfolio' | 'provider-credentials' | 'dispute-evidence' | 'task-proof',
     uri: string,
   ): Promise<string> {
     const contentType = contentTypeFor(uri);
@@ -1529,7 +1537,7 @@ export const api = {
   },
 
   // ── Disputes ──────────────────────────────────────────────────────────────
-  raiseDispute(jobId: string, input: { reason: string; details?: string }) {
+  raiseDispute(jobId: string, input: { reason: string; details?: string; photo_paths?: string[] }) {
     return authRequest<Dispute>(`/jobs/${jobId}/disputes`, {
       method: 'POST',
       body: input,
@@ -1540,7 +1548,7 @@ export const api = {
     return authRequest<Dispute | null>(`/jobs/${jobId}/disputes`);
   },
 
-  addDisputeEntry(id: string, input: { kind: 'statement' | 'appeal'; body: string; message_id?: string }) {
+  addDisputeEntry(id: string, input: { kind: 'statement' | 'appeal'; body: string; message_id?: string; photo_paths?: string[] }) {
     return authRequest(`/disputes/${id}/entries`, { method: 'POST', body: input });
   },
   respondToCancellation(id: string, accept: boolean, note: string, message_id?: string) {
@@ -1589,6 +1597,11 @@ export const api = {
   },
 
   // ── Chat ────────────────────────────────────────────────────────────────────
+  /** Unread chat messages, in total and per conversation: the Messages badge. */
+  chatUnread() {
+    return authRequest<{ total: number; conversations: Record<string, number> }>('/conversations/unread');
+  },
+
   conversations() {
     return authRequest<Conversation[]>('/conversations');
   },

@@ -212,7 +212,7 @@ function bookedCard(job: Job, paid: boolean): JobView['card'] {
   const lines = [
     time ? `${time}.` : null,
     paid
-      ? `The client already paid ${peso(job.budget)}. It's held safely and released to you after the job is done and its 3-day warranty ends.`
+      ? `The client already paid ${peso(job.budget)}. It's held safely and released to you as soon as the client confirms the job is done.`
       : null,
   ].filter((line): line is string => line !== null);
   return card(
@@ -224,7 +224,7 @@ function bookedCard(job: Job, paid: boolean): JobView['card'] {
 }
 
 function workingCard(tasks: JobTask[], paid: boolean): JobView['card'] {
-  const paidLine = paid ? ' Payment is released after the 3-day warranty.' : '';
+  const paidLine = paid ? ' Payment is released as soon as the client confirms.' : '';
   const doneCount = tasks.filter((task) => task.is_done).length;
   if (tasks.length === 0) {
     return card('booked', 'WORKING', 'Work in progress', `When the work is done, the client is asked to confirm.${paidLine}`);
@@ -242,7 +242,7 @@ function doneCard(job: Job, paid: boolean, warrantyActive: boolean): JobView['ca
     'done',
     finished ? `DONE · ${finished.toUpperCase()}` : 'DONE',
     paid ? 'Nice work! Your payment is on its way' : 'Nice work! This job is complete',
-    release ? `Held for the 3-day warranty, then released to you on ${release}.` : undefined,
+    release ? `Released to you on ${release}.` : undefined,
   );
 }
 

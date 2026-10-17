@@ -8,6 +8,8 @@
  * - `avatars`           — public read; referenced by profiles.avatar_url (migration 0011).
  * - chat-attachments — PRIVATE; referenced by messages.attachment_path (migration 0030).
  * - provider-credentials — PRIVATE; certificate photos, provider_credentials.document_path (migration 0054).
+ * - dispute-evidence — PRIVATE; complaint photos, disputes/dispute_entries.photo_paths (migration 0059).
+ * - task-proof — public like job-photos; proof a checklist task is done, job_tasks.proof_photo_paths (0059).
  */
 export const UPLOAD_BUCKETS = [
   'job-photos',
@@ -16,6 +18,8 @@ export const UPLOAD_BUCKETS = [
   'chat-attachments',
   'provider-portfolio',
   'provider-credentials',
+  'dispute-evidence',
+  'task-proof',
 ] as const;
 export type UploadBucket = (typeof UPLOAD_BUCKETS)[number];
 

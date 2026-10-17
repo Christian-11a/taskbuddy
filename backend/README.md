@@ -136,6 +136,9 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0056_retire_wallet.sql` | Retires the in-app wallet: linked GCash/Maya/bank payout accounts, `pass_through_balances()` (simulated payouts and refunds, so no balance is ever kept), and a cut-over that removes existing balances. **Apply before deploying the updated API.** |
    | `0057_price_change_payments.sql` | Price change requests without a wallet: decreases refunded, increases wait for the client to pay the difference (`awaiting_payment`, 24 h). |
    | `0058_xendit_payouts.sql` | Xendit replaces PayMongo: payout accounts carry a Xendit channel code, and provider payouts can be queued for Xendit's sandbox Payouts API. **Apply before deploying the updated API.** |
+   | `0059_photo_evidence.sql` | Photo evidence: up to 6 photos on complaints and each statement/appeal (private `dispute-evidence` bucket), and 1–4 proof photos required to tick a checklist task done (`task-proof` bucket). |
+   | `0060_release_on_completion.sql` | No holding period: a job's payment is released as soon as the client confirms completion (an open complaint still blocks release). Replaces the 72-hour warranty from 0040. |
+   | `0061_chat_alerts.sql` | Chat stops writing to `notifications`. Adds unread counts per conversation (`chat_unread_counts`) and a per-conversation push throttle (`claim_chat_push`). |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -330,7 +333,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
 | `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
-| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done }` — assigned provider ticks a checklist item; allowed only while `in_progress`; returns the whole job (migration 0019) |
+| `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done, proof_photo_paths? }` — assigned provider ticks a checklist item; allowed only while `in_progress`. Ticking done needs 1–4 proof photos uploaded to the `task-proof` bucket (migration 0059); un-ticking clears them. Returns the whole job; each task carries `proof_photo_urls` for both sides |
 | `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 
@@ -360,6 +363,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | ~~`/wallet/*`~~ | **Retired in migration 0056.** There is no user-facing wallet: see *Payments without a wallet* below |
+| `GET /conversations/unread` 🔒 | `{ total, conversations: { [id]: count } }` — unread chat messages for the Messages tab badge; `GET /conversations` rows also carry `unread_count` (0061). Chat messages no longer create Notifications rows; the recipient gets a chat push on the Android `chat` channel, at most one per conversation per 60 s and none while they have that chat open |
 | `GET /payouts/history` 🔒 | every payment in, payout and refund on the account, newest first (the ledger rows, read-only) |
 | `GET /payouts/account` 🔒 (provider) | the linked payout account, masked: `{ method, bank_name, account_name, account_last4 }` or `null` |
 | `PUT /payouts/account` 🔒 (provider) | `{ method: gcash\|maya\|bank, bank_code? (bank only, from `GET /payouts/banks`), account_name, account_number (6–20 digits) }` — also sends any payout that was waiting for an account |
@@ -426,7 +430,7 @@ the flag can only be set by an approval or a Stripe Identity webhook.
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
+| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000), photo_paths? (≤6, private `dispute-evidence` bucket, 0059) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
 | `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
 
 **Settings** (🔒 — migration 0011)
@@ -726,6 +730,10 @@ currency. This is a prototype: no real money moves.
   codes; check new ones against Xendit's Philippine channel list).
 - `wallet_transactions` remains the internal ledger the escrow functions write
   to; balances only exist between a settlement and its pass-through.
+- **Release on completion (migration 0060):** there is no warranty hold. When the
+  client confirms completion, `JobsService.complete` releases the payment at once
+  (the payments tick retries if that attempt fails). Terms v3 state that a
+  released payment is final and the platform is not liable after release.
 - **Price changes (migration 0057):** a decrease is refunded to the client's
   payment method as soon as it is accepted. An accepted increase waits in
   `awaiting_payment` for up to 24 hours while the client pays the difference

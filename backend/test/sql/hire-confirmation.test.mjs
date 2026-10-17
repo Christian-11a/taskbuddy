@@ -67,9 +67,9 @@ it('keeps future scheduling and locks checklist until the provider starts work',
   const { rows: [booking] } = await db.query('select * from bookings where job_id = $1', [job.id]);
   assert.equal(booking.scheduled_at.toISOString(), scheduled);
   const { rows: [task] } = await db.query("insert into job_tasks(job_id, label, position) values ($1, 'Repair tap', 0) returning id", [job.id]);
-  await assert.rejects(db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [task.id]), /Start the job/);
+  await assert.rejects(db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [task.id]), /Start the job/);
   await db.query("update jobs set status = 'in_progress' where id = $1", [job.id]);
-  await db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [task.id]);
+  await db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [task.id]);
 });
 
 it('promotes historical assignments without changing closed work, dates, or existing bookings', async () => {

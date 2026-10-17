@@ -21,6 +21,7 @@ import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 
 import { api } from '../../../src/lib/api';
+import EvidencePhotoPicker from '../../../src/components/EvidencePhotoPicker';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { heldAmount } from '../../../src/lib/heldMoney';
@@ -49,6 +50,8 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
   const isProvider = role === 'provider';
   const [reason, setReason] = useState<string | null>(null);
   const [details, setDetails] = useState('');
+  // Device URIs; uploaded to the private evidence bucket on submit (0059).
+  const [photos, setPhotos] = useState<string[]>([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,10 +70,14 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
     setSubmitting(true);
     setError(null);
     try {
+      const photo_paths = await Promise.all(
+        photos.map((uri) => api.uploadImage('dispute-evidence', uri)),
+      );
       await api.raiseDispute(jobId, {
         reason,
         // Optional: spaces alone are no details, so nothing is sent for them.
         details: cleanText(details) || undefined,
+        photo_paths: photo_paths.length ? photo_paths : undefined,
       });
       onSubmitted();
     } catch (e) {
@@ -137,7 +144,15 @@ export default function HODisputeFilingScreen({ jobId, onBack, onSubmitted }: HO
             style={styles.detailsInput}
           />
 
-          <Text style={styles.photoNote}>You can add photos from the job chat after you send this.</Text>
+          <EvidencePhotoPicker
+            testID="dispute-photos"
+            photos={photos}
+            onChange={setPhotos}
+            max={6}
+            label="Photos (optional)"
+            helper="Show what went wrong. Only you, the other party and TaskBuddy admins can see them."
+            disabled={submitting}
+          />
 
           {error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
 
@@ -207,7 +222,6 @@ function createThemedStyles(theme: ThemePalette) {
     reasonList: { gap: 10 },
 
     detailsInput: { minHeight: 120 },
-    photoNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
 
     submitButton: {
       alignItems: 'center', justifyContent: 'center',

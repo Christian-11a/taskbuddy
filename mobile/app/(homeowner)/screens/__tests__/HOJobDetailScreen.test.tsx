@@ -69,7 +69,7 @@ describe('HOJobDetailScreen — Confirm Completion asks first (QA #6)', () => {
     // The dialog is open; completeJob must not have fired yet.
     expect(api.completeJob).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(screen.getByText(/stays held until it ends/)).toBeTruthy(),
+      expect(screen.getByText(/This confirms you are satisfied with the work/)).toBeTruthy(),
     );
 
     await act(async () => {

@@ -261,6 +261,8 @@ export default function HOCreateJobScreen({
   const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
   const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
   const [priceError, setPriceError] = useState(false);
+  // Bumped by "Try again" to re-request the price options after a failure.
+  const [priceRetry, setPriceRetry] = useState(0);
   const budget = priceOptions?.find((o) => o.tier === priceTier)?.amount.toString() ?? '';
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [urgency, setUrgency] = useState<'urgent' | 'normal' | 'flexible'>('normal');
@@ -306,7 +308,7 @@ export default function HOCreateJobScreen({
       .catch(() => { if (live) { setPriceOptions(null); setPriceError(true); } });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceKey]);
+  }, [priceKey, priceRetry]);
 
   /**
    * Resolve the category tapped on Home once the list arrives. The name (not
@@ -1069,9 +1071,19 @@ export default function HOCreateJobScreen({
                 ))}
                 {!priceOptions && !priceError && <ActivityIndicator />}
                 {priceError && (
-                  <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">
-                    Couldn't load prices. Check your connection and go back a step to retry.
-                  </Text>
+                  <View style={styles.priceRetryRow}>
+                    <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">
+                      Couldn't load prices. Check your connection and try again.
+                    </Text>
+                    <Tap
+                      onPress={() => setPriceRetry((n) => n + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Try loading prices again"
+                      hitSlop={8}
+                    >
+                      <Text style={styles.priceRetryText}>Try again</Text>
+                    </Tap>
+                  </View>
                 )}
               </View>
               {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
@@ -1341,6 +1353,8 @@ function createThemedStyles(theme: ThemePalette) {
     sectionLabel: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter', marginBottom: 10 },
 
     priceOptions: { gap: 10, marginTop: 12 },
+    priceRetryRow: { gap: 6 },
+    priceRetryText: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
     budgetHint: { color: V6Colors.ink500, fontSize: 13.5, fontFamily: 'Inter', lineHeight: 18, marginTop: 8 },
 
     reviewCard: {

@@ -266,7 +266,7 @@ describe('homeownerJobView: in progress', () => {
         tone: 'action',
         overline: 'YOUR TURN',
         title: 'The provider finished all tasks',
-        body: 'Check the work, then confirm. Payment is released to the provider after the 3-day warranty.',
+        body: 'Check the work, then confirm. Confirming releases the payment to the provider right away, so report any problem first.',
       },
       step: 'working',
       main: { kind: 'confirmDone' },
@@ -282,7 +282,7 @@ describe('homeownerJobView: in progress', () => {
         tone: 'action',
         overline: 'YOUR TURN',
         title: 'Confirm when the work is done',
-        body: 'This job has no checklist. Payment is released to the provider after the 3-day warranty.',
+        body: 'This job has no checklist. Confirming releases the payment to the provider right away, so report any problem first.',
       },
       step: 'working',
       main: { kind: 'confirmDone' },
@@ -298,7 +298,7 @@ describe('homeownerJobView: in progress', () => {
     });
     expect(view.main).toEqual({ kind: 'confirmDone' });
     expect(view.link).toEqual({ kind: 'viewCase' });
-    expect(view.card.body).toBe('Check the work, then confirm. Payment is released to the provider after the 3-day warranty. Complaint awaiting admin review.');
+    expect(view.card.body).toBe('Check the work, then confirm. Confirming releases the payment to the provider right away, so report any problem first. Complaint awaiting admin review.');
   });
 
   it('in progress without a provider on the job: no report or case is offered', () => {

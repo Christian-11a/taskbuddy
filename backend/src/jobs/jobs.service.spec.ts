@@ -89,6 +89,11 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   const { supabase, calls } = createSupabaseMock(resultsByTable);
   const uploads = {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
+    signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
+    publicUrl: jest.fn(
+      (_bucket: string, path: string) => `https://public/${path}`,
+    ),
   } as unknown as UploadsService;
   // Held as standalone jest.fn()s (the escrow.service.spec.ts pattern) so
   // assertions read them directly rather than off the cast object.
@@ -292,13 +297,30 @@ describe('JobsService.updateTask', () => {
       job_tasks: [ok({ id: 't1' })],
     });
 
-    await service.updateTask(provider, 'j1', 't1', { is_done: true });
+    await service.updateTask(provider, 'j1', 't1', {
+      is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
+    });
 
     const update = calls.find((c) => c.table === 'job_tasks');
-    expect(update?.args[0]).toMatchObject({ is_done: true });
+    expect(update?.args[0]).toMatchObject({
+      is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
+    });
     expect(
       (update?.args[0] as { completed_at: string | null }).completed_at,
     ).toEqual(expect.any(String));
+  });
+
+  it('refuses to tick a task done without a proof photo', async () => {
+    const { service, calls } = createService({
+      jobs: [ok(job({ status: 'in_progress' }))],
+    });
+
+    await expect(
+      service.updateTask(provider, 'j1', 't1', { is_done: true }),
+    ).rejects.toThrow('Add at least one photo');
+    expect(calls.some((c) => c.table === 'job_tasks')).toBe(false);
   });
 
   it('clears completed_at when an item is un-ticked', async () => {
@@ -310,13 +332,20 @@ describe('JobsService.updateTask', () => {
     await service.updateTask(provider, 'j1', 't1', { is_done: false });
 
     const update = calls.find((c) => c.table === 'job_tasks');
-    expect(update?.args[0]).toEqual({ is_done: false, completed_at: null });
+    expect(update?.args[0]).toEqual({
+      is_done: false,
+      completed_at: null,
+      proof_photo_paths: [],
+    });
   });
 
   it('refuses before the provider has accepted the booking', async () => {
     const { service } = createService({ jobs: [ok(job())] });
     await expect(
-      service.updateTask(provider, 'j1', 't1', { is_done: true }),
+      service.updateTask(provider, 'j1', 't1', {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -326,7 +355,10 @@ describe('JobsService.updateTask', () => {
       job_tasks: [ok(null)],
     });
     await expect(
-      service.updateTask(provider, 'j1', 't2', { is_done: true }),
+      service.updateTask(provider, 'j1', 't2', {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      }),
     ).rejects.toThrow('Task not found');
   });
 });
@@ -491,7 +523,7 @@ describe('CreateJobDto scheduled_at', () => {
 });
 
 describe('JobsService.complete', () => {
-  it('returns the persisted warranty when the completion trigger stamps a later update', async () => {
+  it('releases the payment as soon as the client confirms completion (0060)', async () => {
     const { service, calls, releaseIfHeld } = createService({
       jobs: [
         ok(job({ client_id: 'c1', status: 'in_progress', budget: 1500 })),
@@ -507,9 +539,10 @@ describe('JobsService.complete', () => {
     });
 
     const completed = await service.complete({ id: 'c1' } as Profile, 'j1');
-    expect(completed.warranty_expires_at).toBe('2026-10-07T00:00:00.000Z');
+    // No hold after completion: the release time is the completion time.
+    expect(completed.warranty_expires_at).toBe('2026-10-04T00:00:00.000Z');
 
-    expect(releaseIfHeld).not.toHaveBeenCalled();
+    expect(releaseIfHeld).toHaveBeenCalledWith('j1');
     expect(
       calls.find((c) => c.table === 'jobs' && c.method === 'update')?.args[0],
     ).toEqual({ status: 'completed' });
@@ -534,7 +567,7 @@ describe('JobsService.complete', () => {
       calls.find((c) => c.table === 'notifications' && c.method === 'insert')
         ?.args[0],
     ).toMatchObject({
-      body: 'The client marked "Fix the sink" as completed. The three-day warranty has started.',
+      body: 'The client marked "Fix the sink" as completed.',
     });
   });
 

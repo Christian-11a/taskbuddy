@@ -8,6 +8,7 @@ import { SettingsModule } from '../settings/settings.module';
   imports: [SettingsModule],
   controllers: [PushController],
   providers: [PushService, PushScheduler],
-  exports: [PushScheduler],
+  // PushService: chat sends its own pushes, outside the notifications feed.
+  exports: [PushScheduler, PushService],
 })
 export class PushModule {}

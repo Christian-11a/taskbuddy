@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsBoolean,
   IsUUID,
@@ -40,6 +42,13 @@ export class RaiseDisputeDto {
   @IsString()
   @MaxLength(1000)
   details?: string;
+
+  /** Up to 6 photos in the private `dispute-evidence` bucket (migration 0059). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  photo_paths?: string[];
 }
 
 export class ListDisputesQueryDto {
@@ -76,6 +85,13 @@ export class AddDisputeEntryDto {
   @IsOptional()
   @IsUUID()
   message_id?: string;
+
+  /** Up to 6 photos in the private `dispute-evidence` bucket (migration 0059). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(6)
+  @IsString({ each: true })
+  photo_paths?: string[];
 }
 export class ClarificationDto {
   @IsString()

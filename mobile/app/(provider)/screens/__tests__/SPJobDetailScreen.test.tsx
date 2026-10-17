@@ -17,6 +17,7 @@ jest.mock('../../../../src/lib/api', () => ({
     withdrawApplication: jest.fn(),
     updateJobTask: jest.fn(),
     conversations: jest.fn(),
+    uploadImage: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -29,6 +30,10 @@ jest.mock('../../../../src/lib/api', () => ({
   },
 }));
 
+jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///proof.jpg' }] }),
+}));
 jest.mock('../../../../src/context/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
@@ -350,11 +355,37 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
 
+    (api.uploadImage as jest.Mock).mockResolvedValue('provider-1/proof.jpg');
     fireEvent.press(await screen.findByLabelText('Fix tap'));
-    await waitFor(() => expect(api.updateJobTask).toHaveBeenCalledWith(JOB_ID, 'task-1', true));
+
+    // Ticking done asks for proof first; it cannot be marked done without a photo.
+    expect(await screen.findByText('Proof the task is done')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Mark as done', disabled: true })).toBeTruthy();
+    expect(api.updateJobTask).not.toHaveBeenCalled();
+
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Add photo' })));
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Mark as done' })));
+    await waitFor(() =>
+      expect(api.updateJobTask).toHaveBeenCalledWith(JOB_ID, 'task-1', true, ['provider-1/proof.jpg']),
+    );
+    expect(api.uploadImage).toHaveBeenCalledWith('task-proof', 'file:///proof.jpg');
 
     fireEvent.press(screen.getByLabelText('Message client'));
     expect(onNavigate).toHaveBeenCalledWith('Chat', JOB_ID);
+  });
+
+  it('shows the proof photos under a task that is done', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...hired,
+      status: 'in_progress' as const,
+      job_tasks: [{
+        id: 'task-1', label: 'Fix tap', position: 0, is_done: true, completed_at: '2026-10-16T00:00:00Z',
+        proof_photo_urls: ['https://public/proof.jpg'],
+      }],
+    });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByLabelText('Proof for Fix tap, photo 1 of 1')).toBeTruthy();
   });
 
   it('a hired job shows the homeowner from the conversation list and opens the chat', async () => {

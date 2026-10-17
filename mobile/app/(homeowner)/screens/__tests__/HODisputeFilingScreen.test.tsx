@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import HODisputeFilingScreen from '../HODisputeFilingScreen';
 import { api } from '../../../../src/lib/api';
 
@@ -7,7 +7,11 @@ let mockRole: 'homeowner' | 'provider' = 'homeowner';
 jest.mock('../../../../src/context/AuthContext', () => ({
   useAuth: () => ({ profile: { id: 'me' }, role: mockRole }),
 }));
-jest.mock('../../../../src/lib/api', () => ({ api: { getJob: jest.fn(), raiseDispute: jest.fn() } }));
+jest.mock('../../../../src/lib/api', () => ({ api: { getJob: jest.fn(), raiseDispute: jest.fn(), uploadImage: jest.fn() } }));
+jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
+jest.mock('expo-image-picker', () => ({
+  launchImageLibraryAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///leak.jpg' }] }),
+}));
 
 const job = {
   id: 'job-1',
@@ -48,7 +52,7 @@ it('opens as Report a problem with the job named, no reason chosen, and Send rep
     expect(screen.getByRole('radio', { name: label, selected: false })).toBeTruthy();
   }
   expect(sendButton().props.accessibilityState?.disabled).toBe(true);
-  expect(screen.getByText('You can add photos from the job chat after you send this.')).toBeTruthy();
+  expect(screen.getByText('Photos (optional)')).toBeTruthy();
 
   fireEvent.press(screen.getByLabelText('Back'));
   expect(onBack).toHaveBeenCalledTimes(1);
@@ -174,4 +178,24 @@ describe('HODisputeFilingScreen — the job failing to load', () => {
     expect(screen.queryByTestId('error-card')).toBeNull();
     expect(sendButton().props.accessibilityState?.disabled).toBe(false);
   });
+});
+
+it('uploads the chosen photos privately and sends them with the report', async () => {
+  (api.uploadImage as jest.Mock).mockResolvedValue('client-1/leak.jpg');
+  renderFiling();
+  await screen.findByText('Plumbing: Fix leaking faucet · TaskBuddyProvider');
+  fireEvent.press(screen.getByRole('radio', { name: 'Work quality issue' }));
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Add photo' })));
+  expect(screen.getByText('1 / 6')).toBeTruthy();
+
+  fireEvent.press(within(await openConfirm()).getByRole('button', { name: 'Send report' }));
+
+  await waitFor(() =>
+    expect(api.raiseDispute).toHaveBeenCalledWith('job-1', {
+      reason: 'Work quality issue',
+      details: undefined,
+      photo_paths: ['client-1/leak.jpg'],
+    }),
+  );
+  expect(api.uploadImage).toHaveBeenCalledWith('dispute-evidence', 'file:///leak.jpg');
 });

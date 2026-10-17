@@ -6,6 +6,7 @@ import { PaymentsScheduler } from './payments.scheduler';
 import { AdminActionsModule } from '../admin/admin-actions.module';
 import { ConnectModule } from '../payments/connect/connect.module';
 import { XenditModule } from '../payments/xendit.module';
+import { UploadsModule } from '../uploads/uploads.module';
 
 /**
  * Escrow lifecycle (migration 0009). JobsModule and ApplicationsModule drive it
@@ -17,7 +18,7 @@ import { XenditModule } from '../payments/xendit.module';
   // ConnectModule: a released card-funded escrow is sent on to the provider's
   // Stripe account (§29.5). ConnectModule depends only on Stripe and the audit
   // log, so this is not a cycle.
-  imports: [AdminActionsModule, ConnectModule, XenditModule],
+  imports: [AdminActionsModule, ConnectModule, XenditModule, UploadsModule],
   controllers: [DisputesController],
   providers: [EscrowService, DisputesService, PaymentsScheduler],
   exports: [EscrowService, DisputesService, PaymentsScheduler],

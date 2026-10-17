@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import PhotoViewer from '../../../src/components/PhotoViewer';
+import PhotoStrip from '../../../src/components/PhotoStrip';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import Banner from '../../../src/components/ui/Banner';
@@ -454,7 +455,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                   <View style={[styles.taskBox, task.is_done && styles.taskBoxDone]}>
                     {task.is_done && <Check size={13} color={C.onPrimary} strokeWidth={3} />}
                   </View>
-                  <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                  <View style={styles.taskText}>
+                    <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                    <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                  </View>
                 </View>
               ))}
             </View>
@@ -533,7 +537,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         }}
       />
 
-      {/* Completion starts the three-day warranty before payment release. */}
+      {/* Completion releases the payment at once (migration 0060), so it asks first. */}
       <ConfirmationModal
         visible={confirmComplete}
         title="Mark this job complete?"
@@ -541,8 +545,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           dispute?.status === 'open'
             ? 'This records completion of the work. The disputed payment stays frozen until an admin resolves it.'
             : job && Number(job.budget) > 0
-            ? `This starts the three-day warranty. ${peso(job.budget!)} stays held until it ends. A complaint filed during the warranty freezes payment for admin review.`
-            : 'This records completion and starts the three-day warranty. You can file a complaint during this period.'
+            ? `This confirms you are satisfied with the work and releases ${peso(job.budget!)} to the provider right away. A released payment is final and cannot be refunded, so report any problem before you confirm.`
+            : 'This confirms the work is done to your satisfaction. Report any problem before you confirm.'
         }
         confirmLabel="Yes, Mark Complete"
         cancelLabel="Not Yet"
@@ -637,6 +641,7 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center',
     },
     taskBoxDone: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    taskText: { flex: 1 },
     taskLabel: { flex: 1, fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900 },
     taskLabelDone: { color: C.ink500, textDecorationLine: 'line-through' },
 

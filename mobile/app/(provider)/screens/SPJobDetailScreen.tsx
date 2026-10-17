@@ -28,6 +28,8 @@ import PhotoViewer from '../../../src/components/PhotoViewer';
 import ProposalModal from '../../../src/components/ProposalModal';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
+import PhotoStrip from '../../../src/components/PhotoStrip';
+import TaskProofSheet from '../../../src/components/TaskProofSheet';
 import { showToast } from '../../../src/components/Toast';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
@@ -254,8 +256,23 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     setStartOpen(false);
   };
 
+  // Ticking a task done asks for proof photos first (migration 0059);
+  // un-ticking needs none.
+  const [proofTask, setProofTask] = useState<JobTask | null>(null);
+  const submitProof = async (photoUris: string[]) => {
+    if (!job || !proofTask) return;
+    const paths = await Promise.all(photoUris.map((uri) => api.uploadImage('task-proof', uri)));
+    await api.updateJobTask(job.id, proofTask.id, true, paths);
+    setProofTask(null);
+    reload();
+  };
+
   const toggleTask = async (task: JobTask) => {
     if (!job || !tasksEditable || pendingTaskId) return;
+    if (!task.is_done) {
+      setProofTask(task);
+      return;
+    }
     setPendingTaskId(task.id);
     setActionError(null);
     try {
@@ -422,7 +439,10 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                         task.is_done && <Check size={14} color={Colors.onPrimary} strokeWidth={3} />
                       )}
                     </View>
-                    <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                    <View style={styles.taskText}>
+                      <Text style={[styles.taskLabel, task.is_done && styles.taskLabelDone]}>{task.label}</Text>
+                      <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
+                    </View>
                   </Tap>
                 ))}
               </View>
@@ -525,6 +545,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         onConfirm={(reason) => void submitDecline(reason)}
       />
 
+      <TaskProofSheet
+        taskLabel={proofTask?.label ?? null}
+        onSubmit={submitProof}
+        onClose={() => setProofTask(null)}
+      />
       <ConfirmationModal
         visible={withdrawOpen}
         title="Withdraw your proposal?"
@@ -598,6 +623,7 @@ function createThemedStyles(theme: ThemePalette) {
     bodyText: { fontFamily: 'Inter', fontSize: 14, lineHeight: 21, color: V6Colors.ink700 },
 
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 36 },
+    taskText: { flex: 1 },
     taskBox: {
       width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: V6Colors.line,
       backgroundColor: V6Colors.surface, alignItems: 'center', justifyContent: 'center',

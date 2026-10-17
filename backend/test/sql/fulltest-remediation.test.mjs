@@ -50,26 +50,38 @@ it('allows provider appeals for historical refunded cancellations without moving
   await db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, provider, 'Work was already done']);
   assert.equal((await db.query('select status from escrow_transactions where job_id = $1', [row.id])).rows[0].status, 'cancelled');
 });
-it('creates a notification for every message including photos, with the recipient and conversation', async () => {
+it('keeps chat out of the Notifications list and counts unread messages instead (0061)', async () => {
   const row = await job();
   const { rows: [conversation] } = await db.query('insert into conversations(job_id, client_id, provider_id) values ($1, $2, $3) returning id', [row.id, client, provider]);
   for (const [sender, body, attachment] of [[client, 'Hello', null], [client, '', 'photo.jpg'], [provider, 'Reply', null]]) {
     await db.query('insert into messages(conversation_id, sender_id, body, attachment_path) values ($1, $2, $3, $4)', [conversation.id, sender, body, attachment]);
   }
   const { rows } = await db.query("select * from notifications where data->>'conversation_id' = $1", [conversation.id]);
-  assert.equal(rows.length, 3);
-  assert.equal(rows.filter((r) => r.recipient_id === provider).length, 2);
-  assert.equal(rows.filter((r) => r.recipient_id === client).length, 1);
+  assert.equal(rows.length, 0);
+  const unread = async (user) => (await db.query('select unread from chat_unread_counts($1) where conversation_id = $2', [user, conversation.id])).rows[0]?.unread ?? 0;
+  assert.equal(await unread(provider), 2);
+  assert.equal(await unread(client), 1);
+  await db.query('update messages set read_at = now() where conversation_id = $1 and sender_id = $2', [conversation.id, client]);
+  assert.equal(await unread(provider), 0);
+});
+it('lets one chat push through per conversation and recipient in the window (0061)', async () => {
+  const row = await job();
+  const { rows: [conversation] } = await db.query('insert into conversations(job_id, client_id, provider_id) values ($1, $2, $3) returning id', [row.id, client, provider]);
+  const claim = async () => (await db.query('select claim_chat_push($1, $2, 60) as ok', [conversation.id, provider])).rows[0].ok;
+  assert.equal(await claim(), true);
+  assert.equal(await claim(), false);
+  await db.query("update chat_push_state set last_pushed_at = now() - interval '61 seconds'");
+  assert.equal(await claim(), true);
 });
 it('notifies completion readiness only when all checklist tasks are done', async () => {
   const row = await job();
   const { rows: tasks } = await db.query("insert into job_tasks(job_id, label, position) values ($1, 'First', 0), ($1, 'Second', 1) returning id", [row.id]);
   const count = async () => Number((await db.query("select count(*) from notifications where data->>'job_id' = $1 and title = 'Work ready for review'", [row.id])).rows[0].count);
-  await db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [tasks[0].id]);
+  await db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [tasks[0].id]);
   assert.equal(await count(), 0);
-  await db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [tasks[1].id]);
+  await db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [tasks[1].id]);
   assert.equal(await count(), 1);
-  await db.query('update job_tasks set is_done = true where id = $1', [tasks[1].id]);
+  await db.query('update job_tasks set is_done = true, proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [tasks[1].id]);
   assert.equal(await count(), 1);
 });
 it('blocks replacing a primary skill during accepted work but allows adding secondary skills', async () => {
@@ -94,10 +106,17 @@ it('rejects direct applications outside approved skills and permits approved sec
 it('requires Start Job before checklist changes and all tasks before client completion', async () => {
   const row = await job('confirmed');
   const { rows: [task] } = await db.query("insert into job_tasks(job_id, label, position) values ($1, 'Repair tap', 0) returning id", [row.id]);
-  await assert.rejects(db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [task.id]), /Start the job/);
+  await assert.rejects(db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [task.id]), /Start the job/);
   await db.query("update jobs set status = 'in_progress' where id = $1", [row.id]);
   await assert.rejects(db.query("update jobs set status = 'completed' where id = $1", [row.id]), /Finish the task checklist/);
-  await db.query('update job_tasks set is_done = true, completed_at = now() where id = $1', [task.id]);
+  await db.query('update job_tasks set is_done = true, completed_at = now(), proof_photo_paths = array[$$p/proof.jpg$$] where id = $1', [task.id]);
   await db.query("update jobs set status = 'completed' where id = $1", [row.id]);
   await assert.rejects(db.query('update job_tasks set is_done = false, completed_at = null where id = $1', [task.id]), /closed work cannot be edited/);
+});
+
+it('a task cannot be ticked done without a proof photo (0059)', async () => {
+  const constraint = await db.query(
+    "select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'chk_job_tasks_done_needs_proof'",
+  );
+  assert.match(constraint.rows[0].def, /cardinality\(proof_photo_paths\) >= 1/);
 });

@@ -44,7 +44,7 @@ export function introCards(role: WelcomeRole, firstName: string | null | undefin
       },
       {
         title: 'Get paid safely',
-        body: "The client's payment is held and released to you after the job and a 3-day warranty.",
+        body: "The client's payment is held and released to you as soon as they confirm the job is done.",
       },
     ];
   }
@@ -59,7 +59,7 @@ export function introCards(role: WelcomeRole, firstName: string | null | undefin
     },
     {
       title: 'Your money waits until the job is done',
-      body: 'We hold your payment safely and release it after the work, with a 3-day warranty.',
+      body: 'We hold your payment safely and release it only when you confirm the job is done.',
     },
   ];
 }

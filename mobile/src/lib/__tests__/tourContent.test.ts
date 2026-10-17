@@ -21,7 +21,7 @@ describe('introCards', () => {
       { title: 'You choose who comes', body: 'Pros send you offers. Compare ratings and reviews, then hire one.' },
       {
         title: 'Your money waits until the job is done',
-        body: 'We hold your payment safely and release it after the work, with a 3-day warranty.',
+        body: 'We hold your payment safely and release it only when you confirm the job is done.',
       },
     ]);
   });
@@ -32,7 +32,7 @@ describe('introCards', () => {
       { title: 'Send an offer, get booked', body: 'Clients compare offers. When one hires you, the booking is confirmed for you.' },
       {
         title: 'Get paid safely',
-        body: "The client's payment is held and released to you after the job and a 3-day warranty.",
+        body: "The client's payment is held and released to you as soon as they confirm the job is done.",
       },
     ]);
   });

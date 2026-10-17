@@ -828,6 +828,11 @@ function buildWorld(
   } as unknown as AdminActionsService;
   const uploads = {
     assertOwnedPaths: jest.fn(),
+    assertValidImage: jest.fn().mockResolvedValue(undefined),
+    signedDownloadUrl: jest.fn(() => Promise.resolve('https://signed/photo')),
+    publicUrl: jest.fn(
+      (_bucket: string, path: string) => `https://public/${path}`,
+    ),
   } as unknown as UploadsService;
 
   if (options.payable) {
@@ -864,7 +869,7 @@ function buildWorld(
   } as never);
   const applications = new ApplicationsService(supabase, escrow);
   const reviews = new ReviewsService(supabase);
-  const disputes = new DisputesService(supabase, payouts);
+  const disputes = new DisputesService(supabase, payouts, uploads);
   // Only the webhook half runs here; opening Checkout needs Stripe itself.
   const hireFunding = new HireFundingService(
     supabase,
@@ -951,6 +956,7 @@ describe('job lifecycle, end to end', () => {
     const taskId = db.rows('job_tasks')[0].id;
     const midway = (await jobs.updateTask(provider, posted.id, taskId, {
       is_done: true,
+      proof_photo_paths: ['p1/proof.jpg'],
     })) as Record<string, any>;
     expect(midway.job_tasks.find((t: Row) => t.id === taskId).is_done).toBe(
       true,
@@ -960,16 +966,13 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     expect(await escrow.findByJob(posted.id)).toMatchObject({
       status: 'released',
@@ -1025,16 +1028,13 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     // The client paid the full budget; the provider received it less the cut.
     expect(await wallet.balanceFor('c1')).toBe(0);
@@ -1128,7 +1128,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     expect(await wallet.balanceFor('p1')).toBe(0);
@@ -1168,7 +1171,10 @@ describe('job lifecycle, end to end', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
     await reviews.create(client, posted.id, { rating: 4 });
@@ -1252,16 +1258,13 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
 
     await flush();
     expect(await wallet.balanceFor('p1')).toBe(BUDGET);
@@ -1318,7 +1321,7 @@ describe('job lifecycle, paid by card at hire (§29.4)', () => {
 
 describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
   async function completedCardJob(world: ReturnType<typeof buildWorld>) {
-    const { db, jobs, applications, escrow, wallet, hireFunding } = world;
+    const { jobs, applications, hireFunding } = world;
     const posted = await postJob(world);
     const application = (await applications.apply(
       provider,
@@ -1330,16 +1333,13 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
     await flush();
     return posted;
   }
@@ -1429,8 +1429,7 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
 
   it('does not send money the provider already withdrew by hand', async () => {
     const world = buildWorld({ payable: true });
-    const { db, escrow, jobs, applications, wallet, hireFunding, fakeStripe } =
-      world;
+    const { db, escrow, jobs, applications, hireFunding, fakeStripe } = world;
     fakeStripe.refuse('Temporarily unavailable');
     const posted = await postJob(world);
     const application = (await applications.apply(
@@ -1443,16 +1442,13 @@ describe('card-funded payouts sent to Stripe Connect (§29.5)', () => {
     for (const task of world.db
       .rows('job_tasks')
       .filter((task) => task.job_id === posted.id)) {
-      await jobs.updateTask(provider, posted.id, task.id, { is_done: true });
+      await jobs.updateTask(provider, posted.id, task.id, {
+        is_done: true,
+        proof_photo_paths: ['p1/proof.jpg'],
+      });
     }
     await jobs.complete(client, posted.id);
-    expect(await escrow.findByJob(posted.id)).toMatchObject({ status: 'held' });
-    expect(await wallet.balanceFor('p1')).toBe(0);
-    // Advance the stored completion timestamp; real deadline enforcement is
-    // covered by the SQL suite rather than transcribed into this fake.
-    db.rows('jobs').find((job) => job.id === posted.id)!.completed_at =
-      new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-    await escrow.releaseIfHeld(posted.id);
+    // Released as soon as the client confirms completion (migration 0060).
     await flush();
 
     // Between attempts, the provider withdraws the whole payout by request.

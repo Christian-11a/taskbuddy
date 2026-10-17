@@ -12,6 +12,8 @@ export type BottomNavItem<T extends string> = {
   icon: LucideIcon;
   /** Name the guided tour uses for this tab's anchor, `tab.<tourId>`. Defaults to the key. */
   tourId?: string;
+  /** A count shown on the icon (e.g. unread messages); hidden when 0 or unset. */
+  badge?: number;
 };
 
 type BottomNavBarProps<T extends string> = {
@@ -80,7 +82,7 @@ function NavTab<T extends string>({ tab, isActive, theme, onPress }: {
     <Tap
       {...anchor}
       testID={`nav-tab-${tab.key}`}
-      accessibilityLabel={tab.label}
+      accessibilityLabel={tab.badge ? `${tab.label}, ${tab.badge} unread` : tab.label}
       accessibilityRole="tab"
       accessibilityState={{ selected: isActive }}
       style={styles.tabButton}
@@ -94,6 +96,13 @@ function NavTab<T extends string>({ tab, isActive, theme, onPress }: {
           color={isActive ? Colors.activeIcon : Colors.navInactive}
           strokeWidth={isActive ? 2.4 : 2}
         />
+        {!!tab.badge && (
+          <View pointerEvents="none" style={styles.badge} testID={`nav-badge-${tab.key}`}>
+            <Text style={styles.badgeText} maxFontSizeMultiplier={1.2}>
+              {tab.badge > 99 ? '99+' : tab.badge}
+            </Text>
+          </View>
+        )}
       </View>
       <Text
         numberOfLines={1}
@@ -131,6 +140,11 @@ function createThemedStyles(theme: ThemePalette) {
       paddingTop: 10,
       paddingBottom: 8,
     },
+    badge: {
+      position: 'absolute', top: -2, right: 8, minWidth: 18, height: 18, borderRadius: 9,
+      paddingHorizontal: 4, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center',
+    },
+    badgeText: { color: '#ffffff', fontSize: 11, fontWeight: '700', fontFamily: 'Inter' },
     indicator: {
       width: 60,
       height: 32,

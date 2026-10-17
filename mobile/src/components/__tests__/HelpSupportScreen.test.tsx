@@ -31,7 +31,7 @@ describe('HelpSupportScreen — report a problem wording', () => {
     expect(screen.getByText(/Open the job and tap Report a problem/)).toBeTruthy();
     expect(screen.getByText(/On a booked or in-progress job it is under the ⋮ menu/)).toBeTruthy();
     expect(screen.getByText(/a link once the provider has finished every task/)).toBeTruthy();
-    expect(screen.getByText(/can be reported during its three-day warranty/)).toBeTruthy();
+    expect(screen.getByText(/Report problems before you confirm the job is done/)).toBeTruthy();
     expect(screen.queryByText(/File a Complaint/)).toBeNull();
   });
 });

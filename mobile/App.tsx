@@ -50,6 +50,7 @@ import GoogleSPDetailsScreen from './app/(auth)/screens/GoogleSPDetailsScreen';
 import HOHomeScreen from './app/(homeowner)/screens/HOHomeScreen';
 import MyJobs from './app/(homeowner)/screens/HOMyJobs';
 import Profile from './app/(homeowner)/screens/HOProfile';
+import { useChatUnread } from './src/hooks/useChatUnread';
 import ConversationsScreen from './src/components/ConversationsScreen';
 import HOCalendarScreen from './app/(homeowner)/screens/HOCalendarScreen';
 import HOCreateJobScreen from './app/(homeowner)/screens/HOCreateJobScreen';
@@ -110,6 +111,14 @@ import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/l
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 import { warmUpServer } from './src/lib/warmUp';
 import { profileReadyToVerify } from './src/lib/verifyReady';
+
+/** The tab list with the unread-chat count on the Messages tab. */
+export function withMessagesBadge<T extends string>(
+  tabs: readonly BottomNavItem<T>[],
+  unread: number,
+): BottomNavItem<T>[] {
+  return tabs.map((tab) => (tab.key === 'Messages' ? { ...tab, badge: unread } : tab));
+}
 
 export const HOMEOWNER_TABS: readonly BottomNavItem<HOScreen>[] = [
   { key: 'Home', label: 'Home', icon: Home },
@@ -173,6 +182,8 @@ function AppFlow() {
     signIn, signUp, signOut, signInWithGoogle, completeGoogleProfile,
     refreshProfile, authError, clearAuthError,
   } = useAuth();
+  // Unread chat messages for the Messages tab badge; chat stays out of Notifications.
+  const chatUnread = useChatUnread(isAuthenticated && !isGoogleSignupPending);
 
   // Which pre-auth screen to show while the user is signed out.
   const [preAuth, setPreAuth] = useState<PreAuthScreen>('login');
@@ -890,7 +901,7 @@ function AppFlow() {
         <View style={styles.tabContent}>{renderHOTabContent()}</View>
         <BottomNavBar
           activeTab={hoTab}
-          tabs={HOMEOWNER_TABS}
+          tabs={withMessagesBadge(HOMEOWNER_TABS, chatUnread)}
           onTabPress={hoNavigate}
         />
       </View>
@@ -1045,7 +1056,7 @@ function AppFlow() {
   return wrap(
     <View style={styles.screen}>
       <View style={styles.tabContent}>{renderSPTabContent()}</View>
-      <BottomNavBar activeTab={spTab} tabs={PROVIDER_TABS} onTabPress={spNavigate} />
+      <BottomNavBar activeTab={spTab} tabs={withMessagesBadge(PROVIDER_TABS, chatUnread)} onTabPress={spNavigate} />
     </View>
   );
 }

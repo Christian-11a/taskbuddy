@@ -65,7 +65,7 @@ function haversineKm(
 // review and read the error. `reviews.job_id` is UNIQUE, so this embed is
 // one-to-one.
 const JOB_SELECT =
-  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at), reviews(id, rating, comment, created_at)';
+  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at, proof_photo_paths), reviews(id, rating, comment, created_at)';
 
 /** The one status an incoming booking request can be accepted from. */
 const AWAITING_PROVIDER_ANSWER = ['assigned'];
@@ -475,12 +475,24 @@ export class JobsService {
       );
     }
     await this.setStatus(jobId, 'completed', ['in_progress']);
-    // The payments sweep releases escrow after the 72-hour warranty.
+    // Confirming completion is the client's acceptance of the work: the
+    // payment is released now (migration 0060). If this attempt fails, the
+    // payments sweep releases it on its next tick.
+    let released = false;
+    try {
+      released = (await this.escrow.releaseIfHeld(jobId)) !== null;
+    } catch (err) {
+      this.logger.error(
+        `Job ${jobId} completed but its payment was not released yet: ${(err as Error).message}`,
+      );
+    }
     await this.notify(job.assigned_provider_id, 'job_update', 'Job completed', {
       body:
         Number(job.budget) > 0
-          ? `The client marked "${job.title}" as completed. Payment stays held for the three-day warranty; an open dispute blocks release.`
-          : `The client marked "${job.title}" as completed. The three-day warranty has started.`,
+          ? released
+            ? `The client marked "${job.title}" as completed. Your payment has been released.`
+            : `The client marked "${job.title}" as completed. Your payment is being released.`
+          : `The client marked "${job.title}" as completed.`,
       job_id: jobId,
     });
     // The AFTER UPDATE trigger stamps completed_at in a second update, which
@@ -618,12 +630,26 @@ export class JobsService {
       );
     }
 
+    // Ticking done needs proof (migration 0059): the provider's own uploads.
+    const proof = dto.is_done ? (dto.proof_photo_paths ?? []) : [];
+    if (dto.is_done) {
+      if (proof.length === 0)
+        throw new BadRequestException(
+          'Add at least one photo as proof the task is done.',
+        );
+      this.uploads.assertOwnedPaths(user, proof);
+      await Promise.all(
+        proof.map((path) => this.uploads.assertValidImage('task-proof', path)),
+      );
+    }
+
     const { data, error } = await this.supabase.admin
       .from('job_tasks')
       .update({
         is_done: dto.is_done,
         // chk_job_tasks_done_timestamp keeps these two in step.
         completed_at: dto.is_done ? new Date().toISOString() : null,
+        proof_photo_paths: proof,
       })
       .eq('id', taskId)
       .eq('job_id', jobId)
@@ -660,6 +686,19 @@ export class JobsService {
           : this.supabase.admin.storage.from('job-photos').getPublicUrl(path)
               .data.publicUrl,
       ),
+      ...(Array.isArray(row.job_tasks)
+        ? {
+            job_tasks: (row.job_tasks as Record<string, unknown>[]).map(
+              (task) => ({
+                ...task,
+                // Public like the job's own photos; both sides see the proof.
+                proof_photo_urls: (
+                  (task.proof_photo_paths as string[] | null) ?? []
+                ).map((path) => this.uploads.publicUrl('task-proof', path)),
+              }),
+            ),
+          }
+        : {}),
       review,
       has_review: review !== null,
       warranty_expires_at:

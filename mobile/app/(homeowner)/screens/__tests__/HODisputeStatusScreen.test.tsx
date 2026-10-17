@@ -251,3 +251,21 @@ it('sends the note with the spaces and blank lines at its ends removed', async (
     'case', expect.objectContaining({ body: 'My account of the repair.\n\n\n\nThanks.' }),
   ));
 });
+
+it('shows the case photos grouped by who sent them', async () => {
+  (api.jobDispute as jest.Mock).mockResolvedValue({
+    ...base,
+    photo_urls: ['https://signed/leak.jpg'],
+    entries: [{
+      id: 'entry-1', kind: 'statement', body: 'Here is the floor', created_at: '2026-10-16T01:00:00Z',
+      author: { id: 'provider', full_name: 'Boy Plumber', role: 'provider' }, message: null, attachment_url: null,
+      photo_urls: ['https://signed/floor.jpg', 'https://signed/pipe.jpg'],
+    }],
+  });
+  show();
+
+  expect(await screen.findByText('Photo evidence')).toBeTruthy();
+  expect(screen.getByText('With the complaint')).toBeTruthy();
+  expect(screen.getByText('From you')).toBeTruthy();
+  expect(screen.getByLabelText('From you, photo 2 of 2')).toBeTruthy();
+});
