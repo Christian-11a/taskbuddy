@@ -40,7 +40,30 @@ export type JobView = {
   main: Action | null;
   link: Action | null;
   menu: Action[];
+  /** Shown above the card while a complaint is open; the money actions are hidden then. */
+  banner?: { text: string; action: Action };
 };
+
+export const DISPUTE_BANNER_TEXT = 'A complaint is open. An admin is reviewing it.';
+
+const DISPUTE_HIDDEN: readonly Action['kind'][] = ['confirmDone', 'cancelJob', 'declineBooking'];
+
+/** While a complaint is open (display_status 'disputed'): no complete, cancel or release, and a banner to the case. */
+export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'menu'>>(
+  view: V,
+  job: Pick<Job, 'display_status'>,
+  fallbackMain: Action | null = null,
+): V & { banner?: { text: string; action: Action } } {
+  if (job.display_status !== 'disputed') return view;
+  const hidden = (action: Action | null) => !!action && DISPUTE_HIDDEN.includes(action.kind);
+  return {
+    ...view,
+    main: hidden(view.main) ? fallbackMain : view.main,
+    link: hidden(view.link) ? null : view.link,
+    menu: view.menu.filter((action) => !hidden(action)),
+    banner: { text: DISPUTE_BANNER_TEXT, action: { kind: 'viewCase' } },
+  };
+}
 
 export type HomeownerJobInput = {
   job: Job;
@@ -53,7 +76,7 @@ export type HomeownerJobInput = {
   tasks: readonly JobTask[];
   /** The hired provider, or null when none is assigned or the lookup failed. */
   provider: { profiles?: { full_name: string } | null } | null;
-  /** Current time in ms, passed in so the warranty check is testable. */
+  /** Current time in ms. Kept for callers; the view no longer depends on it. */
   now: number;
 };
 
@@ -66,15 +89,19 @@ const MONTH_DAY: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' }
 const WEEKDAY_MONTH_DAY: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' };
 
 export function homeownerJobView(input: HomeownerJobInput): JobView {
-  const { job, dispute, pendingCount, tasks, provider, now } = input;
+  const view = baseHomeownerJobView(input);
+  return withDisputeBanner(view, input.job, { kind: 'message', name: providerName(input.provider) ?? 'your provider' });
+}
+
+function baseHomeownerJobView(input: HomeownerJobInput): JobView {
+  const { job, dispute, pendingCount, tasks, provider } = input;
   const hired = !!job.assigned_provider_id;
-  const inWarranty = !!job.warranty_expires_at && now < new Date(job.warranty_expires_at).getTime();
   const everyTaskDone = tasks.every((task) => task.is_done);
   const allTasksDone = tasks.length > 0 && everyTaskDone;
 
   // Today's conditions, unchanged.
   const canCancel = CANCELLABLE_STATUSES.includes(job.status) && !(job.status === 'in_progress' && allTasksDone);
-  const canDispute = hired && (DISPUTABLE_STATUSES.includes(job.status) || (job.status === 'completed' && inWarranty));
+  const canDispute = hired && DISPUTABLE_STATUSES.includes(job.status);
   const canComplete = job.status === 'in_progress' && everyTaskDone;
   const canReview = job.status === 'completed' && hired && !job.has_review;
 
@@ -192,15 +219,12 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
 
     case 'completed': {
       const finished = formatDate(job.completed_at, MONTH_DAY);
-      const warranty = inWarranty
-        ? `Warranty until ${formatDate(job.warranty_expires_at, MONTH_DAY)}. Something wrong? Report it before then.`
-        : null;
       return {
         card: {
           tone: 'done',
           overline: finished ? `DONE · ${finished}` : 'DONE',
           title: 'Job completed',
-          body: withNote(warranty, note),
+          body: withNote(null, note),
         },
         step: 'done',
         main: canReview ? { kind: 'leaveReview' } : null,

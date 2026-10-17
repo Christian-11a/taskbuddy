@@ -11,15 +11,15 @@ import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import SheetFrame from '../../../src/components/ui/SheetFrame';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { ArrowLeft, Check, MessageCircle, Paperclip, ShieldCheck, Undo2 } from 'lucide-react-native';
+import { ArrowLeft, Check, ShieldCheck, Undo2 } from 'lucide-react-native';
 import { Spacing, V6Radii, V6Shadows } from '../../../src/constants/theme';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAuth } from '../../../src/context/AuthContext';
-import { api, type Message } from '../../../src/lib/api';
+import { api } from '../../../src/lib/api';
 import EvidencePhotoPicker from '../../../src/components/EvidencePhotoPicker';
 import PhotoStrip from '../../../src/components/PhotoStrip';
-import { caseDate, caseView, type CaseStep } from '../../../src/lib/caseView';
+import { caseView, type CaseStep } from '../../../src/lib/caseView';
 import { cleanText, validateText } from '../../../src/lib/textRules';
 
 interface Props {
@@ -36,10 +36,6 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
   const { data: dispute, loading, error, reload } = useAsyncData(() => jobId ? api.jobDispute(jobId) : Promise.resolve(null), [jobId]);
   const [body, setBody] = useState('');
   const [kind, setKind] = useState<'statement' | 'appeal'>('statement');
-  const [evidence, setEvidence] = useState<Message[]>([]);
-  const [evidenceLoaded, setEvidenceLoaded] = useState(false);
-  const [evidenceLoading, setEvidenceLoading] = useState(false);
-  const [messageId, setMessageId] = useState<string | undefined>();
   // Photos for the next statement or appeal (device URIs, uploaded on send).
   const [photos, setPhotos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -74,15 +70,15 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
     if (!dispute || !cleanText(body) || busy || inFlight.current) return false;
     inFlight.current = true; setBusy(true); setActionError(null);
     try {
-      if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, cleanText(body), messageId);
+      if (accept !== undefined) await api.respondToCancellation(dispute.id, accept, cleanText(body));
       else {
         const photo_paths = await Promise.all(photos.map((uri) => api.uploadImage('dispute-evidence', uri)));
         await api.addDisputeEntry(dispute.id, {
-          kind: dispute.status === 'open' ? kind : 'appeal', body: cleanText(body), message_id: messageId,
+          kind: dispute.status === 'open' ? kind : 'appeal', body: cleanText(body),
           photo_paths: photo_paths.length ? photo_paths : undefined,
         });
       }
-      setBody(''); setMessageId(undefined); setPhotos([]); reload();
+      setBody(''); setPhotos([]); reload();
       return true;
     } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not update the complaint.'); return false; }
     finally { inFlight.current = false; setBusy(false); }
@@ -91,34 +87,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
   function confirmAgree() { setConfirm(null); void submit(true); }
   function confirmContest() { setConfirm(null); void submit(false); }
   async function sendDetails() { if (await submit()) setSheetOpen(false); }
-  async function loadEvidence() {
-    if (!jobId || busy || evidenceLoading) return;
-    setEvidenceLoading(true); setActionError(null);
-    try {
-      const conversation = await api.openConversation(jobId);
-      setEvidence((await api.messages(conversation.id)).filter((message) => message.sender_id === profile?.id));
-      setEvidenceLoaded(true);
-    } catch (e) { setActionError(e instanceof Error ? e.message : 'Could not load job evidence.'); }
-    finally { setEvidenceLoading(false); }
-  }
-  function openSheet() { setSheetOpen(true); void loadEvidence(); }
-
-  // Inline evidence picker, used by the provider's answer.
-  const evidenceTrigger = <Tap style={styles.evidenceButton} onPress={() => void loadEvidence()} disabled={busy} activeOpacity={0.8}>
-    <Paperclip size={16} color={V6Colors.link} />
-    <Text style={styles.evidenceText}>Choose job chat evidence</Text>
-  </Tap>;
-  const evidenceRows = evidence.map((message) => {
-    const selected = messageId === message.id;
-    return <Tap key={message.id} style={[styles.evidenceRow, selected && styles.evidenceRowOn]} onPress={() => setMessageId(selected ? undefined : message.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={message.body || 'Photo message'} activeOpacity={0.85}>
-      {!!message.attachment_url && <Image accessibilityLabel="Photo from the job chat" source={{ uri: message.attachment_url }} style={styles.thumb} resizeMode="cover" />}
-      <View style={styles.evidenceBodyWrap}>
-        <Text style={[styles.evidenceBody, selected && styles.evidenceRowTextOn]}>{message.body || 'Photo message'}</Text>
-        <Text style={styles.stepMeta}>{caseDate(message.created_at)}</Text>
-      </View>
-      {selected && <Check size={16} color={Colors.link} strokeWidth={3} />}
-    </Tap>;
-  });
+  function openSheet() { setSheetOpen(true); }
 
   return <View style={styles.screen}>
     <View style={[styles.header, { paddingTop: headerTop }]}>
@@ -192,8 +161,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
             label="Your note" value={body} onChangeText={setBody} helper="They'll see this with your answer." error={noteError}
             placeholder="Add a note for the client and admin" multiline maxLength={1000} keyboardAppearance={appearance}
           />
-          {evidenceTrigger}
-          {evidenceRows}
+          <Text style={styles.text}>Your full chat with the other party is attached.</Text>
           {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
           <Tap style={styles.linkButton} onPress={() => setConfirm('contest')} disabled={noNote} activeOpacity={0.8}
             accessibilityRole="button" accessibilityLabel="Contest and explain" accessibilityState={{ disabled: noNote }}>
@@ -232,6 +200,7 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
         label="What else should the admin know?" value={body} onChangeText={setBody} helper={`${body.length} / 1000`} error={noteError}
         placeholder="Explain what happened…" multiline maxLength={1000} keyboardAppearance={appearance}
       />
+      <Text style={styles.text}>Your full chat with the other party is attached.</Text>
       <EvidencePhotoPicker
         testID="dispute-entry-photos"
         photos={photos}
@@ -241,14 +210,6 @@ export default function HODisputeStatusScreen({ jobId, onBack, onMessage }: Prop
         helper="Only you, the other party and TaskBuddy admins can see them."
         disabled={busy}
       />
-      <Text style={styles.sectionTitle} accessibilityRole="header">From this job's chat</Text>
-      <Text style={styles.text}>Pick one of your messages to attach it as evidence.</Text>
-      {evidenceLoading ? <ActivityIndicator color={V6Colors.link} /> : evidenceRows}
-      {evidenceLoaded && !evidenceLoading && evidence.length === 0 && (
-        <EmptyCard>
-          <EmptyRow icon={MessageCircle} title="No messages from you yet" body="Send a message in this job's chat, then attach it here." />
-        </EmptyCard>
-      )}
       {!!actionError && <Text style={styles.error} accessibilityLiveRegion="polite">{actionError}</Text>}
       <Tap style={[styles.button, noNote && styles.buttonDisabled]} disabled={noNote} onPress={() => void sendDetails()}
         accessibilityRole="button" accessibilityLabel={sendLabel} accessibilityState={{ disabled: noNote }}>
@@ -315,14 +276,6 @@ function createThemedStyles(theme: ThemePalette) {
     segmentItemOn: { backgroundColor: C.surface, ...V6Shadows.sm },
     segmentText: { color: C.ink500, fontSize: 14.5, fontWeight: '600', fontFamily: 'Inter' },
     segmentTextOn: { color: C.ink900, fontWeight: '700' },
-    evidenceButton: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 40, alignSelf: 'flex-start' },
-    evidenceText: { color: V6Colors.link, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
-    evidenceRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface },
-    evidenceRowOn: { borderColor: C.cyan700, backgroundColor: C.primaryTonal },
-    evidenceRowTextOn: { color: C.ink900 },
-    evidenceBodyWrap: { flex: 1, gap: 2 },
-    evidenceBody: { color: C.ink700, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
-    thumb: { width: 56, height: 56, borderRadius: 10, backgroundColor: C.ink100 },
     linkButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
     linkText: { color: Colors.link, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     linkTextDisabled: { color: C.ink500 },

@@ -114,7 +114,7 @@ describe('OnboardingScreen — provider', () => {
     expect(screen.getByText('Find jobs near you in the services you offer.')).toBeTruthy();
   });
 
-  it('last card says the payment is held and released after the job and the warranty', async () => {
+  it('last card says the payment is held and released once the client confirms the job is done', async () => {
     await renderOnboarding('provider');
 
     showSlide(2);

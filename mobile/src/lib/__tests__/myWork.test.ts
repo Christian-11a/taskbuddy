@@ -255,3 +255,13 @@ describe('myWorkSections', () => {
     expect(titles(myWorkSections(sorted, 'closed')[0].rows)).toEqual(['Cancelled']);
   });
 });
+
+describe('disputed hired jobs', () => {
+  it('stay in their group with a Disputed warning row', () => {
+    const rows = buildMyWorkRows([], [makeJob({ id: 'x', title: 'Hold', status: 'in_progress', display_status: 'disputed' })]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].group).toBe('working');
+    expect(rows[0].tone).toBe('needsYou');
+    expect(rows[0].meta).toBe('Disputed · Working');
+  });
+});

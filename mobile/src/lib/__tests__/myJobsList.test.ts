@@ -256,3 +256,12 @@ describe('jobListSections for Done and Closed', () => {
     expect(jobListSections([job({ id: 'open', status: 'open' })], 'done', {}, NOW)).toEqual([]);
   });
 });
+
+describe('disputed jobs', () => {
+  it('stay in the tab of their work status', () => {
+    const disputed = job({ id: 'd', status: 'in_progress', display_status: 'disputed' });
+    expect(matchesJobFilter(disputed, 'booked', {})).toBe(true);
+    expect(matchesJobFilter(disputed, 'closed', {})).toBe(false);
+    expect(countJobsByFilter([disputed], {}).booked).toBe(1);
+  });
+});

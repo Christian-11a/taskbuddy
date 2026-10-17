@@ -125,6 +125,8 @@ export function jobStatusMeta(status: string, colors: Palette['V6Colors'] = ligh
       return { label: 'Cancelled', color: colors.ink500, bg: colors.ink100 };
     case 'expired':
       return { label: 'Expired', color: colors.ink400, bg: colors.ink50 };
+    case 'disputed':
+      return { label: 'Disputed', color: colors.warningText, bg: colors.warningSurface };
     default:
       return { label: status, color: colors.ink400, bg: colors.ink50 };
   }

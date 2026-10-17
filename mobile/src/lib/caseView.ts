@@ -359,7 +359,7 @@ export function caseView(dispute: CaseDispute, me: string | null | undefined, no
     },
     sheetTitle: isOpen ? 'Add to your case' : 'Appeal this decision',
     sheetIntro: isOpen
-      ? 'Describe your position. To add a photo, send it in the job chat, then pick that message below.'
+      ? 'Describe your position. You can add photos below.'
       : 'An appeal reopens review. It does not reverse payments that were already settled.',
   };
 }

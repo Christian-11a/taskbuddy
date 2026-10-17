@@ -74,7 +74,7 @@ describe('chatSystemLine', () => {
       .toBe('You hired TaskBuddyProvider');
   });
 
-  it('says hired without the held amount once a completed job is past its warranty', () => {
+  it('says hired without the held amount once a job is completed', () => {
     const job = { status: 'completed', budget: 1, warranty_expires_at: new Date(2026, 9, 9).toISOString() };
     expect(chatSystemLine({ role: 'homeowner', counterpartName: 'TaskBuddyProvider', job, now: NOW }))
       .toBe('You hired TaskBuddyProvider');

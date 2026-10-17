@@ -316,45 +316,39 @@ describe('homeownerJobView: completed', () => {
     warranty_expires_at: new Date(NOW + 2 * DAY).toISOString(),
   };
 
-  it('inside the warranty: DONE with the warranty date, leave a review, report a problem in the menu', () => {
+  it('completed: DONE, leave a review, no warranty line and no report, even inside the old warranty date', () => {
     expect(viewFor({ job: completedBase })).toEqual({
       card: {
         tone: 'done',
         overline: 'DONE · Oct 7',
         title: 'Job completed',
-        body: 'Warranty until Oct 11. Something wrong? Report it before then.',
+        body: undefined,
       },
       step: 'done',
       main: { kind: 'leaveReview' },
       link: null,
-      menu: [{ kind: 'reportProblem' }],
+      menu: [],
     });
   });
 
-  it('warranty expired: no warranty line, no report', () => {
+  it('completed with no review yet and an old warranty date: still no warranty line and no report', () => {
     const view = viewFor({ job: { ...completedBase, warranty_expires_at: new Date(NOW - DAY).toISOString() } });
     expect(view.card.body).toBeUndefined();
     expect(view.main).toEqual({ kind: 'leaveReview' });
     expect(view.menu).toEqual([]);
   });
 
-  it('warranty exactly at the current time counts as expired', () => {
-    const view = viewFor({ job: { ...completedBase, warranty_expires_at: new Date(NOW).toISOString() } });
-    expect(view.card.body).toBeUndefined();
-    expect(view.menu).toEqual([]);
-  });
-
-  it('no warranty field at all: no warranty line and no report', () => {
+  it('completed with no warranty field at all: no warranty line and no report', () => {
     const view = viewFor({ job: { ...completedBase, warranty_expires_at: undefined } });
     expect(view.card.body).toBeUndefined();
     expect(view.menu).toEqual([]);
   });
 
-  it('review already submitted: no main button, the report stays available inside the warranty', () => {
+  it('review already submitted: no main button and no report', () => {
     const view = viewFor({ job: { ...completedBase, has_review: true } });
     expect(view.main).toBeNull();
     expect(view.link).toBeNull();
-    expect(view.menu).toEqual([{ kind: 'reportProblem' }]);
+    expect(view.menu).toEqual([]);
   });
 
   it('no provider on the job: no review and no report', () => {
@@ -363,15 +357,15 @@ describe('homeownerJobView: completed', () => {
     expect(view.menu).toEqual([]);
   });
 
-  it('a complaint open inside the warranty: the case is in the menu and its note in the body', () => {
+  it('a complaint open on a completed job: the case is in the menu and its note in the body', () => {
     const view = viewFor({ job: completedBase, dispute: dispute() });
     expect(view.menu).toEqual([{ kind: 'viewCase' }]);
-    expect(view.card.body).toBe('Warranty until Oct 11. Something wrong? Report it before then. Complaint awaiting admin review.');
+    expect(view.card.body).toBe('Complaint awaiting admin review.');
   });
 
-  it('an old complaint after the warranty still reaches its case', () => {
+  it('a resolved complaint on a completed job still reaches its case', () => {
     const view = viewFor({
-      job: { ...completedBase, warranty_expires_at: new Date(NOW - DAY).toISOString() },
+      job: completedBase,
       dispute: dispute({ status: 'resolved', resolution: 'reviewed', resolved_at: at(2026, 9, 8) }),
     });
     expect(view.menu).toEqual([{ kind: 'viewCase' }]);
@@ -590,7 +584,7 @@ describe('homeownerJobView: permissions match the screen today, in every state',
     resolved: dispute({ status: 'resolved', resolution: 'reviewed', resolved_at: at(2026, 9, 8) }),
   };
 
-  it('every combination of status, provider, complaint, tasks, warranty, review and proposals', () => {
+  it('every combination of status, provider, complaint, tasks, legacy warranty date, review and proposals', () => {
     const problems: string[] = [];
     let checked = 0;
     for (const status of STATUSES)
@@ -623,14 +617,11 @@ describe('homeownerJobView: permissions match the screen today, in every state',
                   // Today's conditions, copied from HOJobDetailScreen (before this change).
                   const allTasksDone = tasks.length > 0 && tasks.every((t) => t.is_done);
                   const everyTaskDone = tasks.every((t) => t.is_done);
-                  const inWarranty = !!warranty && NOW < new Date(warranty).getTime();
                   const canCancel =
                     ['open', 'recommending', 'assigned', 'confirmed', 'in_progress'].includes(status) &&
                     !(status === 'in_progress' && allTasksDone);
                   const canDispute =
-                    hasProvider &&
-                    (['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(status) ||
-                      (status === 'completed' && inWarranty));
+                    hasProvider && ['assigned', 'confirmed', 'in_progress', 'cancelled'].includes(status);
                   const canComplete = status === 'in_progress' && everyTaskDone;
                   const canReview = status === 'completed' && hasProvider && !reviewed;
                   const canFindProviders = ['open', 'recommending'].includes(status);
@@ -665,5 +656,25 @@ describe('homeownerJobView: permissions match the screen today, in every state',
 
     expect(checked).toBe(STATUSES.length * 2 * 4 * 3 * 3 * 2 * 2);
     expect(problems).toEqual([]);
+  });
+});
+
+describe('homeownerJobView while disputed', () => {
+  const tasks = [{ id: 't', label: 'A', position: 0, is_done: true, completed_at: null }] as JobTask[];
+  const base = { dispute: null, pendingCount: 0, tasks, provider: PROVIDER, now: NOW };
+
+  it('hides confirm and cancel and shows the case banner', () => {
+    const j = job({ status: 'in_progress', assigned_provider_id: 'p', display_status: 'disputed' });
+    const v = homeownerJobView({ ...base, job: j });
+    expect(v.main?.kind).toBe('message');
+    expect([v.main, v.link, ...v.menu].some((a) => a?.kind === 'confirmDone' || a?.kind === 'cancelJob')).toBe(false);
+    expect(v.banner).toEqual({ text: 'A complaint is open. An admin is reviewing it.', action: { kind: 'viewCase' } });
+  });
+
+  it('keeps the usual actions and no banner when not disputed', () => {
+    const j = job({ status: 'in_progress', assigned_provider_id: 'p' });
+    const v = homeownerJobView({ ...base, job: j });
+    expect(v.main?.kind).toBe('confirmDone');
+    expect(v.banner).toBeUndefined();
   });
 });

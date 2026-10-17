@@ -12,6 +12,7 @@
 import type { Dispute, Job, JobTask } from './api';
 import type { ProgressStep } from '../components/ui/ProgressStepper';
 import type { StatusCardTone } from '../components/ui/StatusCard';
+import { withDisputeBanner } from './jobDetailView';
 import { peso, timeOfDay } from './format';
 import { dayHeading } from './jobCalendar';
 import { dateKeyOf, parseDateKey } from './localDate';
@@ -35,6 +36,7 @@ export type JobView = {
   card: { tone: StatusCardTone; overline: string; title: string; body?: string };
   step: ProgressStep | null;            // null = hide the stepper (e.g. provider before applying)
   main: Action | null; link: Action | null; menu: Action[];
+  banner?: { text: string; action: Action };
 };
 
 /** The provider's proposal for this job, as `GET /applications/mine` returns it. */
@@ -71,11 +73,12 @@ const VIEW_WALLET: Action = { kind: 'viewWallet' };
 const VIEW_CASE: Action = { kind: 'viewCase' };
 const REPORT: Action = { kind: 'reportProblem' };
 
-export function providerJobView({ job, me, myApplication, dispute, tasks, isVerified, now }: ProviderJobViewInput): JobView {
+export function providerJobView({ job, me, myApplication, dispute, tasks, isVerified }: ProviderJobViewInput): JobView {
   const mine = !!me && job.assigned_provider_id === me.id;
-  return mine
-    ? hiredView(job, dispute, tasks, now)
+  const view = mine
+    ? hiredView(job, dispute, tasks)
     : unhiredView(job, myApplication, isVerified);
+  return mine ? withDisputeBanner(view, job) : view;
 }
 
 /** A job I was not hired for: I may apply, I applied, or it is closed to me. */
@@ -105,20 +108,20 @@ function unhiredView(job: Job, application: ProviderApplication | null | undefin
 }
 
 /** A job hired to me: booked, working, done, or cancelled. */
-function hiredView(job: Job, dispute: Dispute | null | undefined, tasks: JobTask[], now: Date): JobView {
+function hiredView(job: Job, dispute: Dispute | null | undefined, tasks: JobTask[]): JobView {
   const status = job.status;
   const paid = Number(job.budget ?? 0) > 0;
   const openCase = dispute?.status === 'open' ? dispute : null;
-  const warrantyActive = !!job.warranty_expires_at && now.getTime() < new Date(job.warranty_expires_at).getTime();
   const isBooked = BOOKED_STATUSES.includes(status);
   const isWorking = status === 'in_progress';
   const isDone = status === 'completed';
   const isCancelled = status === 'cancelled';
-  // Today's rule: a complaint is offered while the job is booked, working or cancelled, or
-  // inside the warranty. Once one exists, it is the case that is shown instead of a new report.
+  // A complaint is offered only while the job is booked, working or cancelled: once the client
+  // confirms completion, payment is released and no new report can be raised. An existing case
+  // is still shown, so it can be followed up.
   const complaint: Action | null = dispute
     ? VIEW_CASE
-    : isBooked || isWorking || isCancelled || (isDone && warrantyActive) ? REPORT : null;
+    : isBooked || isWorking || isCancelled ? REPORT : null;
 
   if (isCancelled) {
     if (openCase) return jobView(cancelledCase(openCase), 'cancelled', VIEW_CASE);
@@ -132,7 +135,7 @@ function hiredView(job: Job, dispute: Dispute | null | undefined, tasks: JobTask
   } else if (isWorking) {
     result = jobView(workingCard(tasks, paid), 'working', MESSAGE);
   } else if (isDone) {
-    result = jobView(doneCard(job, paid, warrantyActive), 'done', VIEW_WALLET);
+    result = jobView(doneCard(job, paid), 'done', VIEW_WALLET);
   } else if (status === 'expired') {
     result = jobView(card('closed', 'EXPIRED', 'This job expired', 'No one was hired before it expired.'), null, FIND_JOBS);
   } else {
@@ -235,14 +238,12 @@ function workingCard(tasks: JobTask[], paid: boolean): JobView['card'] {
   return card('booked', 'WORKING', 'Tick tasks as you finish them', `When all are ticked, the client is asked to confirm.${paidLine}`);
 }
 
-function doneCard(job: Job, paid: boolean, warrantyActive: boolean): JobView['card'] {
+function doneCard(job: Job, paid: boolean): JobView['card'] {
   const finished = monthDay(job.completed_at);
-  const release = paid && warrantyActive ? monthDay(job.warranty_expires_at) : null;
   return card(
     'done',
     finished ? `DONE · ${finished.toUpperCase()}` : 'DONE',
     paid ? 'Nice work! Your payment is on its way' : 'Nice work! This job is complete',
-    release ? `Released to you on ${release}.` : undefined,
   );
 }
 

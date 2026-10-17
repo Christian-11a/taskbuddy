@@ -11,6 +11,7 @@ jest.mock('../../../../src/lib/api', () => ({ api: { getJob: jest.fn(), raiseDis
 jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
 jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: jest.fn().mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///leak.jpg' }] }),
+  UIImagePickerPreferredAssetRepresentationMode: { Automatic: 'automatic', Compatible: 'compatible', Current: 'current' },
 }));
 
 const job = {
@@ -185,7 +186,7 @@ it('uploads the chosen photos privately and sends them with the report', async (
   renderFiling();
   await screen.findByText('Plumbing: Fix leaking faucet · TaskBuddyProvider');
   fireEvent.press(screen.getByRole('radio', { name: 'Work quality issue' }));
-  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Add photo' })));
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' })));
   expect(screen.getByText('1 / 6')).toBeTruthy();
 
   fireEvent.press(within(await openConfirm()).getByRole('button', { name: 'Send report' }));
