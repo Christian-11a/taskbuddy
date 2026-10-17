@@ -3,7 +3,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
-import { GeocodingService } from './geocoding.service';
+import { GeocodingService, normalizeAddressQuery } from './geocoding.service';
 
 function configWith(key: string | undefined) {
   return {
@@ -406,5 +406,20 @@ describe('GeocodingService (Geoapify)', () => {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
       expect((error as Error).message).not.toContain('apiKey');
     });
+  });
+});
+
+describe('normalizeAddressQuery', () => {
+  it('drops stray symbols and doubled punctuation, keeping abbreviations', () => {
+    expect(
+      normalizeAddressQuery(
+        '#59, Purok 4, Dr. Gregorio ZARA St,. Tambo, lipa city, batangas, 4217',
+      ),
+    ).toBe(
+      '59, Purok 4, Dr. Gregorio ZARA St, Tambo, lipa city, batangas, 4217',
+    );
+    expect(
+      normalizeAddressQuery('  Blk 3 Lot 5,, Brgy. San Isidro;  Quezon City '),
+    ).toBe('Blk 3 Lot 5, Brgy. San Isidro, Quezon City');
   });
 });

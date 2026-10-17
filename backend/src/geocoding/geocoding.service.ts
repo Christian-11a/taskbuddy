@@ -12,8 +12,27 @@ const AUTOCOMPLETE_URL = 'https://api.geoapify.com/v1/geocode/autocomplete';
 const REVERSE_URL = 'https://api.geoapify.com/v1/geocode/reverse';
 const STATIC_MAP_URL = 'https://maps.geoapify.com/v1/staticmap';
 
-/** Geoapify answers in well under a second; past this the app should say so. */
-const GEOCODE_TIMEOUT_MS = 5000;
+/**
+ * How long to wait for Geoapify. Short queries answer in about a second, but
+ * detailed Philippine street addresses ("#59, Purok 4, Dr. … St, Tambo, Lipa
+ * City …") were measured at 10–22 s. At the old 5 s these failed as "couldn't
+ * verify addresses right now" although Geoapify would have found them.
+ */
+const GEOCODE_TIMEOUT_MS = 25_000;
+
+/**
+ * Tidies a typed address before it is geocoded: drops "#" and other stray
+ * symbols, turns ",." and repeated commas into one comma, and squeezes spaces.
+ * Geoapify answers these faster and no less accurately.
+ */
+export function normalizeAddressQuery(address: string): string {
+  return address
+    .replace(/[#*_~^|<>{}[\]\\]/g, ' ')
+    .replace(/\s*[,;]+[\s.,;]*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim();
+}
 
 /**
  * Street level or better. `building` and `amenity` (a named place) are points;
@@ -202,7 +221,7 @@ export class GeocodingService {
 
     // The DTO's length check counts whitespace; an address that is only
     // spaces would reach the geocoder as an empty query.
-    const trimmed = address.trim();
+    const trimmed = normalizeAddressQuery(address);
     if (trimmed.length < 5) {
       throw new BadRequestException(
         'Enter the full address, including the street.',
