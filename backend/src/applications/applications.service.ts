@@ -52,6 +52,21 @@ export class ApplicationsService {
         code: 'verification_required',
       });
     }
+    // Payouts go straight to the linked account when a job is paid, so a
+    // provider without one would win work they cannot be paid for.
+    const { data: payoutAccount, error: payoutError } =
+      await this.supabase.admin
+        .from('linked_payout_accounts')
+        .select('profile_id')
+        .eq('profile_id', user.id)
+        .maybeSingle();
+    if (payoutError) throw new BadRequestException(payoutError.message);
+    if (!payoutAccount) {
+      throw new ForbiddenException({
+        message: 'Link a payout account before applying to jobs',
+        code: 'payout_account_required',
+      });
+    }
 
     // Was this provider recommended for this job? Then the application is
     // 'recommended' and must be linked back to the candidate row (schema §9.3).

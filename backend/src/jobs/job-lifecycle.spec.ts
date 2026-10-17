@@ -130,6 +130,7 @@ class FakeDb {
     platform_settings: [],
     recommendation_candidates: [],
     provider_payout_accounts: [],
+    linked_payout_accounts: [],
     stripe_events: [],
   };
 
@@ -802,6 +803,10 @@ function buildWorld(
       cached_ratings_count: 0,
       cached_completed_jobs: 0,
     },
+  );
+  db.rows('linked_payout_accounts').push(
+    { profile_id: 'p1', method: 'gcash' },
+    { profile_id: 'p2', method: 'gcash' },
   );
   db.rows('platform_settings').push({
     id: true,
