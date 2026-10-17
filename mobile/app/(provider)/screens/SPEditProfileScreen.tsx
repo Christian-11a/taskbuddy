@@ -23,13 +23,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
-import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import KeyboardAwareScrollView, { useRevealOnFocus } from '../../../src/components/ui/KeyboardAwareScrollView';
 import TextField from '../../../src/components/ui/TextField';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
-import { ArrowLeft, CircleAlert, Save } from 'lucide-react-native';
+import { ArrowLeft, CircleAlert, Minus, Plus, Save } from 'lucide-react-native';
 import AvatarPicker from '../../../src/components/AvatarPicker';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import AddressField from '../../../src/components/AddressField';
@@ -54,9 +55,26 @@ import {
   validateCity,
   validateFullName,
   validatePhone,
-  validateServiceRadius,
 } from '../../../src/lib/inputRules';
 import { BIO_MAX, cleanText, validateBio } from '../../../src/lib/textRules';
+
+// Service radius bounds mirror the backend (SERVICE_RADIUS_MIN_KM / MAX_KM).
+const RADIUS_MIN_KM = 1;
+const RADIUS_MAX_KM = 50;
+const RADIUS_DEFAULT_KM = 15;
+const RADIUS_LONG_PRESS_STEP_KM = 5;
+const RADIUS_MESSAGE = 'Choose 1 to 50 km';
+
+/** The whole km the text stands for, or null when it is empty or not a number. */
+function radiusValue(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
+  return Math.round(Number(trimmed));
+}
+
+function clampRadius(km: number): number {
+  return Math.min(RADIUS_MAX_KM, Math.max(RADIUS_MIN_KM, km));
+}
 
 interface SPEditProfileScreenProps {
   onBack: () => void;
@@ -83,7 +101,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     city: profile?.city ?? '',
     pickedAddress: false,
     bio: providerProfile?.bio ?? '',
-    radius: String(providerProfile?.service_radius_km ?? ''),
+    radius: String(providerProfile?.service_radius_km ?? RADIUS_DEFAULT_KM),
     service: providerProfile?.category_id ?? null,
   }));
   const [name, setName] = useState(loaded.name);
@@ -93,6 +111,12 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const [resolvedLocation, setResolvedLocation] = useState<GeocodedAddress | null>(null);
   const [bio, setBio] = useState(loaded.bio);
   const [radius, setRadius] = useState(loaded.radius);
+  // Set when the radius was typed out of range or empty and then clamped on blur.
+  const [radiusNotice, setRadiusNotice] = useState(false);
+  const radiusRef = useRef<TextInput>(null);
+  const revealRadius = useRevealOnFocus(radiusRef);
+  // A long press steps by 5; the release must not also step by 1.
+  const radiusHeld = useRef(false);
   const [categoryId, setCategoryId] = useState<number | null>(loaded.service);
   const [submitted, setSubmitted] = useState(false);
   const [addressTouched, setAddressTouched] = useState(false);
@@ -134,8 +158,39 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
     }) ?? undefined
     : undefined;
   const cityError = changed.includes('city') ? validateCity(city) ?? undefined : undefined;
-  // The backend keeps the radius between 0.5 and 1000 km. A stored radius left alone is not re-checked.
-  const radiusError = changed.includes('radius') ? validateServiceRadius(radius) ?? undefined : undefined;
+  // Whole km from 1 to 50. A stored radius left alone is not re-checked.
+  const radiusNumber = radiusValue(radius);
+  const radiusInvalid = radiusNumber === null || radiusNumber < RADIUS_MIN_KM || radiusNumber > RADIUS_MAX_KM;
+  const radiusError = changed.includes('radius') && radiusInvalid ? RADIUS_MESSAGE : undefined;
+  const radiusNow = radiusNumber ?? RADIUS_DEFAULT_KM;
+  const radiusAtMin = radiusNow <= RADIUS_MIN_KM;
+  const radiusAtMax = radiusNow >= RADIUS_MAX_KM;
+  const showRadiusMessage = radiusNotice || (submitted && !!radiusError);
+
+  // On blur: empty or not a number becomes the default; out of range is clamped.
+  const commitRadius = () => {
+    const typed = radiusValue(radius);
+    if (typed === null || typed < RADIUS_MIN_KM || typed > RADIUS_MAX_KM) setRadiusNotice(true);
+    setRadius(String(typed === null ? RADIUS_DEFAULT_KM : clampRadius(typed)));
+  };
+
+  const stepRadius = (delta: number) => {
+    setRadius(String(clampRadius(radiusNow + delta)));
+    setRadiusNotice(false);
+  };
+
+  const radiusStepProps = (delta: number) => ({
+    onPressIn: () => { radiusHeld.current = false; },
+    onPress: () => {
+      if (radiusHeld.current) { radiusHeld.current = false; return; }
+      stepRadius(delta);
+    },
+    onLongPress: () => {
+      radiusHeld.current = true;
+      setRadius(String(clampRadius(radiusNow + delta * RADIUS_LONG_PRESS_STEP_KM)));
+      setRadiusNotice(false);
+    },
+  });
   const serviceError = categoryId ? undefined : 'Please select the service you offer.';
   // Whitespace-only counts as empty; the bio is sent cleaned, the same text it was checked as.
   const bioError = validateBio(bio) ?? undefined;
@@ -290,16 +345,54 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             submitted={submitted}
           />
 
-          <TextField
-            label="Service radius (km)"
-            value={radius}
-            onChangeText={setRadius}
-            placeholder="8"
-            keyboardType="number-pad"
-            keyboardAppearance={appearance}
-            error={radiusError}
-            submitted={submitted}
-          />
+          <View style={styles.radiusGroup}>
+            <Text style={styles.label}>Service radius (km)</Text>
+            <View style={styles.radiusRow}>
+              <Tap
+                style={[styles.stepBtn, radiusAtMin && styles.stepBtnDisabled]}
+                disabled={radiusAtMin}
+                accessibilityRole="button"
+                accessibilityLabel="Decrease radius"
+                accessibilityState={{ disabled: radiusAtMin }}
+                {...radiusStepProps(-1)}
+              >
+                <Minus size={18} color={C.ink900} />
+              </Tap>
+              <View style={[styles.radiusBox, showRadiusMessage && styles.radiusBoxError]}>
+                <TextInput
+                  ref={radiusRef}
+                  value={radius}
+                  onChangeText={(value) => { setRadius(value); setRadiusNotice(false); }}
+                  onFocus={revealRadius}
+                  onBlur={commitRadius}
+                  placeholder={String(RADIUS_DEFAULT_KM)}
+                  placeholderTextColor={C.ink500}
+                  keyboardType="number-pad"
+                  keyboardAppearance={appearance}
+                  maxLength={3}
+                  accessibilityLabel="Service radius (km)"
+                  style={styles.radiusInput}
+                />
+                <Text style={styles.radiusUnit}>km</Text>
+              </View>
+              <Tap
+                style={[styles.stepBtn, radiusAtMax && styles.stepBtnDisabled]}
+                disabled={radiusAtMax}
+                accessibilityRole="button"
+                accessibilityLabel="Increase radius"
+                accessibilityState={{ disabled: radiusAtMax }}
+                {...radiusStepProps(1)}
+              >
+                <Plus size={18} color={C.ink900} />
+              </Tap>
+            </View>
+            {showRadiusMessage ? (
+              <View style={styles.helperRow}>
+                <CircleAlert size={14} color={C.dangerText} />
+                <Text style={styles.errorHelper} accessibilityLiveRegion="polite">{RADIUS_MESSAGE}</Text>
+              </View>
+            ) : null}
+          </View>
 
           <View style={styles.serviceGroup}>
             <Text style={styles.label}>Service offered</Text>
@@ -427,6 +520,25 @@ function createThemedStyles(theme: ThemePalette) {
     chipTextActive: { color: C.onPrimary },
     helperRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     errorHelper: { flex: 1, color: V6Colors.dangerText, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
+
+    radiusGroup: { gap: 6 },
+    radiusRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    stepBtn: {
+      width: 44, height: 44, borderRadius: 14, borderWidth: 1, borderColor: V6Colors.line,
+      backgroundColor: C.surface, alignItems: 'center', justifyContent: 'center',
+    },
+    stepBtnDisabled: { opacity: 0.4 },
+    radiusBox: {
+      flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+      minHeight: 48, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 14,
+      borderWidth: 1, borderColor: V6Colors.line, backgroundColor: C.surface,
+    },
+    radiusBoxError: { borderWidth: 1.5, borderColor: V6Colors.dangerText },
+    radiusInput: {
+      minWidth: 48, paddingVertical: 0, textAlign: 'center',
+      fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink900,
+    },
+    radiusUnit: { fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink500 },
 
     errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center' },
   });
