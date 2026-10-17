@@ -61,19 +61,6 @@ it('only admins can decide and the migration replays without duplicate delivery'
   const [{ allowed }] = await query("select has_function_privilege('authenticated','review_service_request(uuid,uuid,text,text)','execute') as allowed");
   assert.equal(allowed, false);
 });
-it('text and photo messages create one recipient notice with every routing ID', async () => {
-  const [{ id: job }] = await query(`insert into jobs(client_id,category_id,title,description,address,latitude,longitude,assigned_provider_id,status)
-    values($1,1,'Repair notification','Repair the leaking faucet and inspect the water pressure','QC',14.6,121,$2,'in_progress') returning id`, [client, provider]);
-  const [{ id: conversation }] = await query('insert into conversations(job_id,client_id,provider_id) values($1,$2,$3) returning id', [job, client, provider]);
-  for (const [sender, body, path] of [[client, 'Hello provider', null], [provider, '', `${provider}/photo.jpg`]]) {
-    const [{ id }] = await query('insert into messages(conversation_id,sender_id,body,attachment_path) values($1,$2,$3,$4) returning id', [conversation, sender, body, path]);
-    const rows = await query("select * from notifications where data->>'message_id'=$1", [id]);
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].recipient_id, sender === client ? provider : client);
-    assert.equal(rows[0].data.job_id, job);
-    assert.equal(rows[0].data.conversation_id, conversation);
-  }
-});
 it('snapshot is recipient-scoped, limits rows to 50 and counts all unread rows', async () => {
   await query("insert into notifications(recipient_id,type,title,body) select $1,'job_update','Batch notice','Test' from generate_series(1,100)", [provider]);
   const [{ snapshot }] = await query('select notification_snapshot($1) as snapshot', [provider]);

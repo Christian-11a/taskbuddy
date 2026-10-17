@@ -50,16 +50,28 @@ it('allows provider appeals for historical refunded cancellations without moving
   await db.query('select raise_job_dispute($1, $2, $3, null)', [row.id, provider, 'Work was already done']);
   assert.equal((await db.query('select status from escrow_transactions where job_id = $1', [row.id])).rows[0].status, 'cancelled');
 });
-it('creates a notification for every message including photos, with the recipient and conversation', async () => {
+it('keeps chat out of the Notifications list and counts unread messages instead (0061)', async () => {
   const row = await job();
   const { rows: [conversation] } = await db.query('insert into conversations(job_id, client_id, provider_id) values ($1, $2, $3) returning id', [row.id, client, provider]);
   for (const [sender, body, attachment] of [[client, 'Hello', null], [client, '', 'photo.jpg'], [provider, 'Reply', null]]) {
     await db.query('insert into messages(conversation_id, sender_id, body, attachment_path) values ($1, $2, $3, $4)', [conversation.id, sender, body, attachment]);
   }
   const { rows } = await db.query("select * from notifications where data->>'conversation_id' = $1", [conversation.id]);
-  assert.equal(rows.length, 3);
-  assert.equal(rows.filter((r) => r.recipient_id === provider).length, 2);
-  assert.equal(rows.filter((r) => r.recipient_id === client).length, 1);
+  assert.equal(rows.length, 0);
+  const unread = async (user) => (await db.query('select unread from chat_unread_counts($1) where conversation_id = $2', [user, conversation.id])).rows[0]?.unread ?? 0;
+  assert.equal(await unread(provider), 2);
+  assert.equal(await unread(client), 1);
+  await db.query('update messages set read_at = now() where conversation_id = $1 and sender_id = $2', [conversation.id, client]);
+  assert.equal(await unread(provider), 0);
+});
+it('lets one chat push through per conversation and recipient in the window (0061)', async () => {
+  const row = await job();
+  const { rows: [conversation] } = await db.query('insert into conversations(job_id, client_id, provider_id) values ($1, $2, $3) returning id', [row.id, client, provider]);
+  const claim = async () => (await db.query('select claim_chat_push($1, $2, 60) as ok', [conversation.id, provider])).rows[0].ok;
+  assert.equal(await claim(), true);
+  assert.equal(await claim(), false);
+  await db.query("update chat_push_state set last_pushed_at = now() - interval '61 seconds'");
+  assert.equal(await claim(), true);
 });
 it('notifies completion readiness only when all checklist tasks are done', async () => {
   const row = await job();

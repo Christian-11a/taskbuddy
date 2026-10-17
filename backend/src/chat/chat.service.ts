@@ -1,14 +1,16 @@
 import {
+  Logger,
   BadRequestException,
   ForbiddenException,
   Injectable,
   MessageEvent,
   NotFoundException,
 } from '@nestjs/common';
-import { concatMap, from, interval, mergeMap, switchMap } from 'rxjs';
+import { concatMap, finalize, from, interval, mergeMap, switchMap } from 'rxjs';
 import type { Observable } from 'rxjs';
 import { SupabaseService } from '../supabase/supabase.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { PushService } from '../push/push.service';
 import {
   CHAT_ATTACHMENTS_BUCKET,
   CHAT_ATTACHMENT_TTL_SECONDS,
@@ -25,6 +27,9 @@ const STREAM_POLL_MS = 2000;
 
 /** Cap per tick, so a long backlog can't be emitted as one unbounded burst. */
 const STREAM_BATCH = 50;
+
+/** At most one chat push per conversation and recipient in this window (0061). */
+const CHAT_PUSH_WINDOW_SECONDS = 60;
 
 interface ConversationRow {
   id: string;
@@ -54,9 +59,12 @@ const CONVERSATION_SELECT =
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
+
   constructor(
     private readonly supabase: SupabaseService,
     private readonly uploads: UploadsService,
+    private readonly push: PushService,
   ) {}
 
   /** Conversations the caller participates in, most-recent first. */
@@ -68,7 +76,11 @@ export class ChatService {
       .order('last_message_at', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false });
     if (error) throw new BadRequestException(error.message);
-    return (data ?? []).map((c) => this.shape(c as ConversationRow, user));
+    const { conversations: unread } = await this.unreadCounts(user);
+    return (data ?? []).map((c) => ({
+      ...this.shape(c as ConversationRow, user),
+      unread_count: unread[(c as ConversationRow).id] ?? 0,
+    }));
   }
 
   /**
@@ -153,6 +165,9 @@ export class ChatService {
   ): Observable<MessageEvent> {
     return from(this.assertParticipant(user, conversationId)).pipe(
       switchMap(() => {
+        // While this stream is open the user is looking at the chat, so new
+        // messages need no push (see notifyRecipient).
+        this.markViewing(conversationId, user.id, +1);
         // Anything created at or before the client's last known message is
         // already on screen. Absent a cursor, start from "now" — the app has
         // just fetched the backlog through GET /messages.
@@ -185,9 +200,74 @@ export class ChatService {
             return resolved.map((row) => ({ type: 'message', data: row }));
           }),
           mergeMap((events) => events),
+          finalize(() => this.markViewing(conversationId, user.id, -1)),
         );
       }),
     );
+  }
+
+  /** Open chat streams per conversation and user, on this API instance. */
+  private readonly viewing = new Map<string, number>();
+
+  private markViewing(conversationId: string, userId: string, delta: number) {
+    const key = `${conversationId}:${userId}`;
+    const next = (this.viewing.get(key) ?? 0) + delta;
+    if (next > 0) this.viewing.set(key, next);
+    else this.viewing.delete(key);
+  }
+
+  /**
+   * Pushes a new message to the other participant on the chat channel,
+   * unless they have the chat open, and at most once per conversation in
+   * CHAT_PUSH_WINDOW_SECONDS so a burst of messages is one alert. Unread
+   * counts carry the rest. Best-effort: never throws.
+   */
+  private async notifyRecipient(sender: Profile, message: MessageRow) {
+    try {
+      const { data: conversation } = await this.supabase.admin
+        .from('conversations')
+        .select('id, job_id, client_id, provider_id')
+        .eq('id', message.conversation_id)
+        .maybeSingle();
+      if (!conversation) return;
+      const recipientId =
+        conversation.client_id === sender.id
+          ? conversation.provider_id
+          : conversation.client_id;
+      if (this.viewing.has(`${conversation.id}:${recipientId}`)) return;
+      const { data: claimed, error } = await this.supabase.admin.rpc(
+        'claim_chat_push',
+        {
+          p_conversation_id: conversation.id,
+          p_recipient_id: recipientId,
+          p_window_seconds: CHAT_PUSH_WINDOW_SECONDS,
+        },
+      );
+      if (error || claimed !== true) return;
+      await this.push.sendChat(recipientId, {
+        title: sender.full_name || 'New message',
+        body: message.body ? message.body.slice(0, 200) : 'Sent a photo',
+        data: { conversation_id: conversation.id, job_id: conversation.job_id },
+      });
+    } catch (err) {
+      this.logger.warn(`Chat push skipped: ${(err as Error).message}`);
+    }
+  }
+
+  /** Unread messages per conversation, and in total, for the Messages badge. */
+  async unreadCounts(user: Profile) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'chat_unread_counts',
+      { p_user_id: user.id },
+    );
+    if (error) throw new BadRequestException(error.message);
+    const rows = (data ?? []) as { conversation_id: string; unread: number }[];
+    return {
+      total: rows.reduce((sum, row) => sum + row.unread, 0),
+      conversations: Object.fromEntries(
+        rows.map((row) => [row.conversation_id, row.unread]),
+      ) as Record<string, number>,
+    };
   }
 
   async sendMessage(
@@ -221,6 +301,7 @@ export class ChatService {
       .select('*')
       .single();
     if (error) throw new BadRequestException(error.message);
+    void this.notifyRecipient(user, data as MessageRow);
     return this.withAttachmentUrl(data as MessageRow);
   }
 

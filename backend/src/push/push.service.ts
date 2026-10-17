@@ -14,6 +14,10 @@ export interface PushMessage {
   body: string;
   data?: Record<string, unknown>;
   notification_id?: string;
+  /** Android notification channel; the app registers 'default' and 'chat'. */
+  channelId?: string;
+  sound?: 'default' | null;
+  priority?: 'default' | 'normal' | 'high';
 }
 
 interface PushDeliveryResult {
@@ -118,6 +122,35 @@ export class PushService {
    * Never throws: the only caller is a scheduler tick with no user waiting on
    * it, and a push outage must not stop the tick from claiming the next batch.
    */
+  /**
+   * A chat push (migration 0061): sent straight to the recipient's devices on
+   * the Android 'chat' channel, and never written to `notifications`, so chat
+   * does not crowd the Notifications screen. Never throws.
+   */
+  async sendChat(
+    recipientId: string,
+    push: { title: string; body: string; data: Record<string, unknown> },
+  ): Promise<void> {
+    try {
+      const tokens =
+        (await this.tokensFor([recipientId])).get(recipientId) ?? [];
+      if (!tokens.length) return;
+      await this.sendWithResults(
+        tokens.map((to) => ({
+          to,
+          title: push.title,
+          body: push.body,
+          data: { ...push.data, type: 'chat' },
+          channelId: 'chat',
+          sound: 'default',
+          priority: 'high',
+        })),
+      );
+    } catch (err) {
+      this.logger.warn(`Chat push not sent: ${(err as Error).message}`);
+    }
+  }
+
   async send(messages: PushMessage[]): Promise<void> {
     const results = await this.sendWithResults(messages);
     const byNotification = new Map<

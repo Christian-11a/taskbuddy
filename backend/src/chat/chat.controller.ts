@@ -27,6 +27,12 @@ export class ChatController {
     return this.chatService.listConversations(user);
   }
 
+  /** `{ total, conversations: { [id]: count } }` — the Messages tab badge (0061). */
+  @Get('unread')
+  unread(@CurrentUser() user: Profile) {
+    return this.chatService.unreadCounts(user);
+  }
+
   @Post()
   open(@CurrentUser() user: Profile, @Body() dto: OpenConversationDto) {
     return this.chatService.openForJob(user, dto.job_id);

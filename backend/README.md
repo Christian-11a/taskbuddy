@@ -138,6 +138,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0058_xendit_payouts.sql` | Xendit replaces PayMongo: payout accounts carry a Xendit channel code, and provider payouts can be queued for Xendit's sandbox Payouts API. **Apply before deploying the updated API.** |
    | `0059_photo_evidence.sql` | Photo evidence: up to 6 photos on complaints and each statement/appeal (private `dispute-evidence` bucket), and 1–4 proof photos required to tick a checklist task done (`task-proof` bucket). |
    | `0060_release_on_completion.sql` | No holding period: a job's payment is released as soon as the client confirms completion (an open complaint still blocks release). Replaces the 72-hour warranty from 0040. |
+   | `0061_chat_alerts.sql` | Chat stops writing to `notifications`. Adds unread counts per conversation (`chat_unread_counts`) and a per-conversation push throttle (`claim_chat_push`). |
 
    The linked project's migration history has been reconciled after checking
    the existing schema. Migrations 0046–0052 were applied in order, and their
@@ -362,6 +363,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | ~~`/wallet/*`~~ | **Retired in migration 0056.** There is no user-facing wallet: see *Payments without a wallet* below |
+| `GET /conversations/unread` 🔒 | `{ total, conversations: { [id]: count } }` — unread chat messages for the Messages tab badge; `GET /conversations` rows also carry `unread_count` (0061). Chat messages no longer create Notifications rows; the recipient gets a chat push on the Android `chat` channel, at most one per conversation per 60 s and none while they have that chat open |
 | `GET /payouts/history` 🔒 | every payment in, payout and refund on the account, newest first (the ledger rows, read-only) |
 | `GET /payouts/account` 🔒 (provider) | the linked payout account, masked: `{ method, bank_name, account_name, account_last4 }` or `null` |
 | `PUT /payouts/account` 🔒 (provider) | `{ method: gcash\|maya\|bank, bank_code? (bank only, from `GET /payouts/banks`), account_name, account_number (6–20 digits) }` — also sends any payout that was waiting for an account |
