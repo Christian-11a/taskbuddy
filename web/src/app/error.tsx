@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import "../styles/promo.css";
 import { AlertTriangle } from "lucide-react";
 
 /**
@@ -8,6 +11,9 @@ import { AlertTriangle } from "lucide-react";
  * a single component throwing takes the whole console to a blank screen (or
  * Next's raw stack trace in production), with no way back other than the
  * browser's own reload button.
+ *
+ * This one file serves every route. Admin paths keep the admin console
+ * message; everything else gets the public promo-style page.
  */
 export default function GlobalError({
   error,
@@ -16,6 +22,9 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const pathname = usePathname();
+  const isAdmin = pathname === "/admin" || (pathname?.startsWith("/admin/") ?? false);
+
   useEffect(() => {
     // No error-reporting service is wired up yet, so the console is the only
     // place this survives. Keeps the digest, which is the one handle you get
@@ -23,6 +32,20 @@ export default function GlobalError({
     console.error("Admin console error:", error);
   }, [error]);
 
+  return isAdmin ? (
+    <AdminError error={error} reset={reset} />
+  ) : (
+    <PublicError error={error} reset={reset} />
+  );
+}
+
+function AdminError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   return (
     <div
       className="flex flex-col items-center justify-center h-screen px-6 text-center"
@@ -57,6 +80,44 @@ export default function GlobalError({
         >
           Back to dashboard
         </a>
+      </div>
+    </div>
+  );
+}
+
+function PublicError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  return (
+    <div className="promo-site">
+      <div className="account-shell">
+        <div className="account-topbar">
+          <Link className="wordmark" href="/" aria-label="TaskBuddy home">
+            <img src="/promo/taskbuddy-logo-96.png" alt="" width={42} height={42} />
+            <span className="wordmark__text">
+              <strong>TaskBuddy</strong>
+              <small>Everyday work, sorted.</small>
+            </span>
+          </Link>
+        </div>
+        <main className="account-main">
+          <div className="account-card">
+            <p className="eyebrow">Something went wrong</p>
+            <h1 className="account-heading">This page didn&apos;t load.</h1>
+            <p className="account-lede">Please try again.</p>
+            {error.digest && (
+              <p className="account-lede" style={{ fontFamily: "monospace", fontSize: ".8rem" }}>Ref: {error.digest}</p>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: ".75rem", justifyContent: "center" }}>
+              <button type="button" className="button" onClick={reset}>Try again</button>
+              <Link className="button button--quiet" href="/">Back to homepage</Link>
+            </div>
+          </div>
+        </main>
       </div>
     </div>
   );
