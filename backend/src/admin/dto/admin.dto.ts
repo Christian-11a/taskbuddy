@@ -24,6 +24,7 @@ export class ListUsersQueryDto {
   /** Matches full_name or email, case-insensitive. */
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   search?: string;
 
   @IsOptional()

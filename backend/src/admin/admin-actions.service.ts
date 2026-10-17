@@ -1,3 +1,4 @@
+import { likeSearchParam } from '../common/sanitize';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { SupabaseService } from '../supabase/supabase.service';
 import { ListAuditQueryDto } from './dto/admin.dto';
@@ -45,11 +46,12 @@ export class AdminActionsService {
   async list(query: ListAuditQueryDto) {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
-    if (query.search) {
+    const search = likeSearchParam(query.search);
+    if (search) {
       const { data, error } = await this.supabase.admin.rpc(
         'admin_search_audit',
         {
-          p_search: query.search,
+          p_search: search,
           p_action: query.action ?? null,
           p_actor_id: query.actor_id ?? null,
           p_from: query.from ?? null,

@@ -1,4 +1,9 @@
 import {
+  cleanSearch,
+  containsPattern,
+  likeSearchParam,
+} from '../common/sanitize';
+import {
   BadRequestException,
   ForbiddenException,
   Injectable,
@@ -84,8 +89,9 @@ export class AdminService {
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
-    if (query.search) {
-      const term = `%${query.search}%`;
+    const search = cleanSearch(query.search);
+    if (search) {
+      const term = containsPattern(search);
       builder = builder.or(`full_name.ilike.${term},email.ilike.${term}`);
     }
     if (query.role) builder = builder.eq('role', query.role);
@@ -181,7 +187,7 @@ export class AdminService {
     const { data, error } = await this.supabase.admin.rpc(
       'admin_list_bookings',
       {
-        p_search_term: query.search ?? null,
+        p_search_term: likeSearchParam(query.search),
         p_status: query.status ?? null,
         p_category_id: query.category_id ?? null,
         p_limit: limit,
@@ -192,7 +198,7 @@ export class AdminService {
     const result = data?.[0];
     const { data: statusCounts, error: countsError } =
       await this.supabase.admin.rpc('admin_booking_status_counts', {
-        p_search: query.search ?? null,
+        p_search: likeSearchParam(query.search),
         p_category_id: query.category_id ?? null,
       });
     if (countsError) throw new BadRequestException(countsError.message);
@@ -465,7 +471,7 @@ export class AdminService {
     const { data, error } = await this.supabase.admin.rpc(
       'admin_list_activity',
       {
-        p_search_term: query.search ?? null,
+        p_search_term: likeSearchParam(query.search),
         p_from: query.from ?? null,
         p_to: query.to ?? null,
         p_limit: limit,
