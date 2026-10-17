@@ -18,6 +18,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SupabaseService } from '../supabase/supabase.service';
 import type { Profile } from '../common/types';
 import { ListNotificationsPageDto } from './dto/notifications.dto';
+import { withTarget } from './notification-target';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
@@ -37,7 +38,7 @@ export class NotificationsController {
     if (unread === 'true') builder = builder.is('read_at', null);
     const { data, error } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return data ?? [];
+    return (data ?? []).map(withTarget);
   }
 
   @Get('page')
@@ -66,7 +67,7 @@ export class NotificationsController {
     if (page.error) throw new BadRequestException(page.error.message);
     if (unread.error) throw new BadRequestException(unread.error.message);
     return {
-      items: page.data ?? [],
+      items: (page.data ?? []).map(withTarget),
       total: page.count ?? 0,
       unread_total: unread.count ?? 0,
     };
@@ -95,7 +96,14 @@ export class NotificationsController {
       { p_recipient: user.id },
     );
     if (error) throw new BadRequestException(error.message);
-    return data as { notifications: unknown[]; unreadCount: number };
+    const snapshot = data as {
+      notifications: { type?: unknown; data?: unknown }[];
+      unreadCount: number;
+    };
+    return {
+      ...snapshot,
+      notifications: (snapshot.notifications ?? []).map(withTarget),
+    };
   }
 
   /** One consistent snapshot every five seconds per foreground session. */

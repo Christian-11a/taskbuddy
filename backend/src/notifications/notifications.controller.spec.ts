@@ -124,7 +124,7 @@ describe('Notification persistence failures', () => {
       error: null,
     });
     await expect(controller.snapshot(user)).resolves.toEqual({
-      notifications: [{ id: 'n1' }],
+      notifications: [{ id: 'n1', target: { screen: 'notifications' } }],
       unreadCount: 100,
     });
   });

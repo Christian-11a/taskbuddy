@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { isExternallyScheduled } from '../common/cron-driver';
 import { SupabaseService } from '../supabase/supabase.service';
 import { SettingsService } from '../settings/settings.service';
+import { notificationTarget } from '../notifications/notification-target';
 import { PushService, type PushMessage } from './push.service';
 
 /** Rows claimed per tick. Expo takes 100 per request; this is a few batches. */
@@ -115,6 +116,7 @@ export class PushScheduler {
             notification_id: row.id,
             recipient_id: row.recipient_id,
             type: row.type,
+            target: notificationTarget(row.type, row.data),
           },
         });
       }
