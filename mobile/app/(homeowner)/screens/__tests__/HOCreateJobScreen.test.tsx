@@ -362,6 +362,19 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     await screen.findByText('Pick a date');
   };
 
+  it('offers Try again when prices fail to load, and loads them on retry', async () => {
+    (api.estimatePrice as jest.Mock).mockRejectedValue(new Error('Not found'));
+    await openBudgetStep();
+
+    expect(await screen.findByText("Couldn't load prices. Check your connection and try again.")).toBeTruthy();
+    const callsBefore = (api.estimatePrice as jest.Mock).mock.calls.length;
+    (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
+    fireEvent.press(screen.getByRole('button', { name: 'Try loading prices again' }));
+
+    expect(await screen.findByTestId('price-option-standard')).toBeTruthy();
+    expect((api.estimatePrice as jest.Mock).mock.calls.length).toBe(callsBefore + 1);
+  });
+
   it('shows the estimated prices instead of a budget field', async () => {
     await openBudgetStep();
     expect(await screen.findByText('₱1,500.00')).toBeTruthy();
