@@ -76,6 +76,20 @@ Conflicts and gaps to raise with the owner before writing site copy:
 Effect on the running build (T1–T6): none blocking. T4's provider lesson "Get paid" becomes "Link your payout
 account and get paid"; client lessons gain the price options and paying at hire when real screenshots are made.
 
+### 2c. Update: PRs #91-#93 merged and deployed 2026-10-17 (live API at 57a30e7)
+- **Warranty removed (#91):** payment is released as soon as the client confirms completion; complaints must be
+  raised before confirming. Terms v3 (`mobile/src/lib/legalText.ts`) says "immediate release" and that a released
+  payment is final. Every account must accept v3. Early release still exists in the backend.
+- **Chat:** no longer in Notifications; its own Messages tab badge and push channel.
+- **Proof photos:** 1-4 photos to tick a task done; up to 6 on complaints.
+- **Commission:** live at 15% (a PHP 3,000 job paid PHP 2,550, kept PHP 450). Site FAQ line can still omit the rate.
+- **#93 (backend only):** providers must link a payout account before applying; service radius 1-50 km;
+  "Disputed" job status; whole chat attached to complaints; notification links; admin commission totals.
+  Its mobile and web to-do lists are not done yet.
+- **Address lookups (#92):** wait up to 25 s, so posting no longer fails on detailed Lipa addresses.
+Effect on the promo site: claims A3 can now say "released when the client confirms the job is done"
+(still no warranty); providers "link a GCash, Maya or bank account before sending proposals".
+
 ---
 
 ## 3. Each piece has one job (no repeats)
