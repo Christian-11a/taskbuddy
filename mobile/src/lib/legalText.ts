@@ -9,8 +9,8 @@
  * Philippine law (RA 7394, the Consumer Act, and RA 11967, the Internet
  * Transactions Act) limits how far a platform can exclude liability.
  */
-export const TERMS_VERSION = 2;
-export const TERMS_UPDATED = 'October 16, 2026';
+export const TERMS_VERSION = 3;
+export const TERMS_UPDATED = 'October 17, 2026';
 
 export type LegalSection = { heading: string; body: string };
 export type LegalDoc = { title: string; sections: LegalSection[]; acceptLabel: string };
@@ -20,55 +20,55 @@ export const TERMS_CONTENT: LegalDoc = {
   sections: [
     {
       heading: `TaskBuddy Terms of Use (version ${TERMS_VERSION}, ${TERMS_UPDATED})`,
-      body: 'By creating an account or continuing to use TaskBuddy, you agree to these terms. Please read the sections on pricing, payment and payment release carefully: they explain when your money moves and what TaskBuddy can and cannot do once it has.',
+      body: 'These Terms govern your use of TaskBuddy. By creating an account or continuing to use the platform, you agree to them. Please read Sections 4 to 7 carefully: they explain how payments are held and released, and that a released payment is final.',
     },
     {
-      heading: '1. What TaskBuddy is',
-      body: 'TaskBuddy is a marketplace that connects clients with independent service providers. Providers are not employees, agents or partners of TaskBuddy. When a client hires a provider, the agreement for the service is between the client and the provider. TaskBuddy facilitates the booking, holds the payment and offers a dispute process, but does not perform, supervise or guarantee the service.',
+      heading: '1. Nature of the platform',
+      body: 'TaskBuddy is an online marketplace that connects clients with independent service providers. Service providers are not employees, agents, contractors or partners of TaskBuddy. Each engagement is a contract solely between the client and the service provider. TaskBuddy facilitates the booking, collects and holds payment through its payment processor, and provides a complaint process; it does not perform, direct, supervise, inspect or guarantee any service.',
     },
     {
       heading: '2. Accounts, verification and credentials',
-      body: 'You must give accurate information and keep your account secure. Providers may verify their identity through Stripe Identity and may upload certificates such as TESDA National Certificates or PRC licences. A verified or certified badge means a document was checked when it was submitted. It is not a guarantee of the provider\'s skill, conduct or the quality of their work.',
+      body: 'You must provide accurate information and keep your account secure. Service providers may verify their identity through Stripe Identity and may submit certificates such as TESDA National Certificates or PRC licences. A "Verified" or "Certified" badge only means a document was reviewed when it was submitted. It is not a representation, warranty or guarantee by TaskBuddy of a provider\'s identity at any later time, qualifications, skill, conduct or the quality of their work. Clients remain responsible for choosing a provider.',
     },
     {
       heading: '3. Pricing and urgency levels',
-      body: 'Clients do not set a price by hand. When posting a job, TaskBuddy estimates prices from the service, the tasks listed and how demanding they are, and the urgency level, and the client picks one of the offered prices. Urgent jobs cost more than Normal jobs, and Flexible jobs cost less, because urgency changes how fast providers must respond. The price picked is the agreed price for the job. It changes only if both client and provider accept a change request in the app.',
+      body: 'Prices are not entered manually. When a job is posted, TaskBuddy estimates price options from the service, the listed tasks and how demanding they are, and the selected urgency level; the client selects one. Urgent jobs are priced higher than Normal jobs and Flexible jobs lower, because urgency affects how quickly providers must respond. The selected price is the agreed price for the job and may change only through a change request accepted in the app by both parties.',
     },
     {
       heading: '4. Payment and holding of funds',
-      body: 'The client pays the full agreed price when hiring a provider. The payment is processed by TaskBuddy\'s payment partners and held until it is released or refunded as described below. The provider is not paid while the job is in progress. TaskBuddy deducts its service commission from the provider\'s payout. Payment partners\' own terms also apply.',
+      body: 'The client pays the full agreed price when hiring a provider, through TaskBuddy\'s payment processor (Xendit). TaskBuddy does not keep a stored balance or issue any in-app currency. The payment is held for the job while the work is carried out and is not paid to the provider before the client confirms completion. TaskBuddy\'s service fee is deducted from the amount paid to the provider. The payment processor\'s own terms also apply.',
     },
     {
-      heading: '5. Release of payment',
-      body: 'After the client marks the job complete, a 3-day warranty period starts. The payment is released to the provider when (a) the client chooses to release it early, or (b) the warranty period ends with no complaint open. A provider may ask the client to release early; the client may decline. Clients should inspect the work and raise any complaint in the app before the payment is released.',
+      heading: '5. Confirmation of completion and immediate release',
+      body: 'When the client marks a job as complete, the client confirms that the service has been performed to their satisfaction and authorises TaskBuddy to release the payment. The payment is then released to the service provider immediately, with no holding or warranty period. Clients must inspect the work and raise any concern through "Report a problem" before marking the job complete. If a complaint is already open when the job is marked complete, the payment stays held until a TaskBuddy administrator resolves it under Section 7.',
     },
     {
-      heading: '6. After payment is released',
-      body: 'Once a payment has been released to the provider, by the client or automatically at the end of the warranty period, it is final. TaskBuddy, its administrators and staff are not responsible for the quality, workmanship, safety or results of the service, or for any loss or damage it causes, and will not refund, reimburse or reverse a released payment. Any claim about the service after release is between the client and the provider. Where the law allows, TaskBuddy may share the provider\'s contact details with the client and will cooperate with the proper authorities.',
+      heading: '6. Finality of released payments and disclaimer',
+      body: 'A released payment is final and irreversible. Once a payment has been released, TaskBuddy, its officers, administrators, employees and agents have no obligation to refund, reimburse, reverse, recover or compensate any amount, and accept no responsibility or liability for the quality, timeliness, safety, workmanship, legality or outcome of the service, or for any loss, damage, injury or cost arising from it. Any claim after release, including claims for defective or incomplete work, must be pursued directly between the client and the service provider. Where permitted by law, TaskBuddy may share the parties\' contact details for this purpose and will cooperate with lawful requests from the proper authorities.',
     },
     {
       heading: '7. Complaints and disputes before release',
-      body: 'While the payment is still held, either party can open a complaint with evidence. An administrator reviews it and decides whether the held amount is released to the provider, refunded to the client, or split. That decision covers only the held amount and is not a ruling on any wider legal claim.',
+      body: 'While a payment is still held, either party may raise a complaint with supporting statements and photo evidence. An open complaint prevents the payment from being released until a TaskBuddy administrator reviews it and decides whether the held amount is released to the provider, refunded to the client, or apportioned between them. The decision concerns only the held amount and is not a determination of any wider legal claim between the parties.',
     },
     {
       heading: '8. Cancellations and refunds',
-      body: 'A job can be cancelled before work starts. If the provider backs out, the client is refunded in full. If the client cancels after hiring, the refund may need the provider\'s agreement or an administrator\'s decision. Refunds go back through the original payment method.',
+      body: 'A job may be cancelled before work is completed. If the provider withdraws, the client is refunded in full. If the client cancels after hiring, the refund may require the provider\'s agreement or an administrator\'s decision. Refunds are returned to the original payment method. No refund is available once a payment has been released under Section 5.',
     },
     {
       heading: '9. Payments outside TaskBuddy',
-      body: 'Paying or being paid outside the app is not covered by these terms. TaskBuddy cannot hold, release, refund or review money that did not go through the app.',
+      body: 'Payments made or received outside the platform are not covered by these Terms. TaskBuddy cannot hold, release, refund or review any amount that was not paid through the app.',
     },
     {
       heading: '10. Limitation of liability',
-      body: 'To the extent allowed by Philippine law, TaskBuddy\'s total liability for any job is limited to the service commission it earned on that job. Nothing in these terms removes rights that cannot be waived under Philippine law, including the Consumer Act (RA 7394) and the Internet Transactions Act (RA 11967).',
+      body: 'To the fullest extent permitted by Philippine law, TaskBuddy\'s total liability arising from or relating to any job is limited to the service fee TaskBuddy received for that job, and TaskBuddy is not liable for any indirect, incidental, consequential or punitive damages. Nothing in these Terms excludes or limits any liability or consumer right that cannot be excluded or limited under applicable law, including the Consumer Act of the Philippines (RA 7394) and the Internet Transactions Act of 2023 (RA 11967).',
     },
     {
       heading: '11. Conduct',
-      body: 'Do not post false jobs or reviews, harass other users, share someone else\'s documents, or use TaskBuddy for anything unlawful. TaskBuddy may suspend accounts that break these rules.',
+      body: 'You must not post false jobs, reviews or evidence, harass other users, submit another person\'s documents, or use TaskBuddy for any unlawful purpose. TaskBuddy may suspend or close accounts that breach these Terms.',
     },
     {
-      heading: '12. Changes to these terms',
-      body: 'When these terms change, the app shows the new version and asks you to accept it before you continue. If you do not accept the new version, you cannot keep using TaskBuddy; contact support to close your account.',
+      heading: '12. Changes to these Terms',
+      body: 'When these Terms change, the app shows the new version and asks you to accept it before you continue. If you do not accept the new version, you may not continue to use TaskBuddy; you may contact support to close your account.',
     },
   ],
   acceptLabel: 'I agree to the Terms & Conditions',

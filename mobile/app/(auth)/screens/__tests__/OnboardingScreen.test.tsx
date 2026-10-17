@@ -120,7 +120,7 @@ describe('OnboardingScreen — provider', () => {
     showSlide(2);
 
     expect(screen.getByText('Get paid safely')).toBeTruthy();
-    expect(screen.getByText("The client's payment is held and released to you after the job and a 3-day warranty.")).toBeTruthy();
+    expect(screen.getByText("The client's payment is held and released to you as soon as they confirm the job is done.")).toBeTruthy();
   });
 
   it('does not look up service categories, since its pictures are icon-only', async () => {

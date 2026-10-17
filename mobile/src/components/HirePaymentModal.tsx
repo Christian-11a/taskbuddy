@@ -2,7 +2,7 @@
  * HirePaymentModal.tsx
  *
  * How the homeowner pays for a hire (BACKEND_SCHEMA.md §29.4): the job's price,
- * paid online and held in escrow through the three-day completion warranty.
+ * paid online and held in escrow until the client confirms the job is done.
  * There is no wallet (migration 0056). The client pays on a hosted checkout —
  * Xendit test mode, with GCash, Maya, card or online banking — and the hire
  * is made by the payment webhook, not by the app, so the screen behind this
@@ -118,7 +118,7 @@ export default function HirePaymentModal({
   const primaryLabel = hasBudget || loadFailed ? 'Continue' : `Hire ${providerName}`;
 
   const escrowLine = hasBudget
-    ? `${peso(budget)} is held in escrow and released to ${providerName} after the three-day warranty ends, unless a complaint is open.`
+    ? `${peso(budget)} is held in escrow and released to ${providerName} as soon as you confirm the job is done.`
     : `This job has no budget, so nothing is held — ${providerName} is hired straight away.`;
 
   const cardMeta = cardAllowed

@@ -164,8 +164,8 @@ export function homeownerJobView(input: HomeownerJobInput): JobView {
             title: noTasks ? 'Confirm when the work is done' : 'The provider finished all tasks',
             body: withNote(
               noTasks
-                ? 'This job has no checklist. Payment is released to the provider after the 3-day warranty.'
-                : 'Check the work, then confirm. Payment is released to the provider after the 3-day warranty.',
+                ? 'This job has no checklist. Confirming releases the payment to the provider right away, so report any problem first.'
+                : 'Check the work, then confirm. Confirming releases the payment to the provider right away, so report any problem first.',
               note,
             ),
           },

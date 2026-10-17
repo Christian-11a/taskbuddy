@@ -22,7 +22,7 @@ it('asks for the new terms and records the current version', async () => {
   mockProfile = { id: 'u1', terms_update_required: true };
   (api.acceptTerms as jest.Mock).mockResolvedValue({ accepted_terms_version: TERMS_VERSION });
   render(<TermsUpdatePrompt />);
-  expect(screen.getByText(/6\. After payment is released/)).toBeTruthy();
+  expect(screen.getByText(/6\. Finality of released payments/)).toBeTruthy();
   fireEvent(screen.getByTestId('terms-body'), 'accessibilityAction', { nativeEvent: { actionName: 'markAsRead' } });
   await act(async () => fireEvent.press(screen.getByText('I agree to the Terms & Conditions')));
   expect(api.acceptTerms).toHaveBeenCalledWith(TERMS_VERSION);

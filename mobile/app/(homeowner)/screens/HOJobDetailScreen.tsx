@@ -537,7 +537,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         }}
       />
 
-      {/* Completion starts the three-day warranty before payment release. */}
+      {/* Completion releases the payment at once (migration 0060), so it asks first. */}
       <ConfirmationModal
         visible={confirmComplete}
         title="Mark this job complete?"
@@ -545,8 +545,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           dispute?.status === 'open'
             ? 'This records completion of the work. The disputed payment stays frozen until an admin resolves it.'
             : job && Number(job.budget) > 0
-            ? `This starts the three-day warranty. ${peso(job.budget!)} stays held until it ends. A complaint filed during the warranty freezes payment for admin review.`
-            : 'This records completion and starts the three-day warranty. You can file a complaint during this period.'
+            ? `This confirms you are satisfied with the work and releases ${peso(job.budget!)} to the provider right away. A released payment is final and cannot be refunded, so report any problem before you confirm.`
+            : 'This confirms the work is done to your satisfaction. Report any problem before you confirm.'
         }
         confirmLabel="Yes, Mark Complete"
         cancelLabel="Not Yet"

@@ -86,7 +86,7 @@ function view(
 }
 
 const MONEY_LINE_BOOKED =
-  "The client already paid ₱500.00. It's held safely and released to you after the job is done and its 3-day warranty ends.";
+  "The client already paid ₱500.00. It's held safely and released to you as soon as the client confirms the job is done.";
 
 describe('providerJobView: a job I have not applied to', () => {
   it('verified provider sees NEW JOB with Send proposal as the only action', () => {
@@ -299,7 +299,7 @@ describe('providerJobView: a job hired to me', () => {
     expect(result.card.overline).toBe('WORKING');
     expect(result.card.title).toBe('Tick tasks as you finish them');
     expect(result.card.body).toBe(
-      'When all are ticked, the client is asked to confirm. Payment is released after the 3-day warranty.',
+      'When all are ticked, the client is asked to confirm. Payment is released as soon as the client confirms.',
     );
     expect(result.step).toBe('working');
     expect(result.main).toEqual({ kind: 'message', name: 'client' });
@@ -311,7 +311,7 @@ describe('providerJobView: a job hired to me', () => {
     const tasks = [task('a', true), task('b', true, 1)];
     const result = view({ status: 'in_progress', assigned_provider_id: ME.id, job_tasks: tasks }, { tasks });
     expect(result.card.title).toBe('Waiting for client to confirm completion');
-    expect(result.card.body).toBe('All tasks are ticked. Payment is released after the 3-day warranty.');
+    expect(result.card.body).toBe('All tasks are ticked. Payment is released as soon as the client confirms.');
     expect(result.main).toEqual({ kind: 'message', name: 'client' });
   });
 
@@ -319,7 +319,7 @@ describe('providerJobView: a job hired to me', () => {
     const result = view({ status: 'in_progress', assigned_provider_id: ME.id, job_tasks: [] }, { tasks: [] });
     expect(result.card.title).toBe('Work in progress');
     expect(result.card.body).toBe(
-      'When the work is done, the client is asked to confirm. Payment is released after the 3-day warranty.',
+      'When the work is done, the client is asked to confirm. Payment is released as soon as the client confirms.',
     );
   });
 
@@ -333,7 +333,7 @@ describe('providerJobView: a job hired to me', () => {
     expect(result.card.tone).toBe('done');
     expect(result.card.overline).toMatch(/^DONE · [A-Z]{3} \d{1,2}$/);
     expect(result.card.title).toBe('Nice work! Your payment is on its way');
-    expect(result.card.body).toMatch(/^Held for the 3-day warranty, then released to you on [A-Z][a-z]{2} \d{1,2}\.$/);
+    expect(result.card.body).toMatch(/^Released to you on [A-Z][a-z]{2} \d{1,2}\.$/);
     expect(result.step).toBe('done');
     expect(result.main).toEqual({ kind: 'viewWallet' });
     expect(result.link).toBeNull();
