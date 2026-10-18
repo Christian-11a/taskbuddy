@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { UploadsService } from './uploads.service';
 import type { SupabaseService } from '../supabase/supabase.service';
+import type { Profile } from '../common/types';
 
 function createSupabaseMock(
   listResult: {
@@ -143,5 +144,36 @@ describe('portfolio signed uploads', () => {
       }),
     ).rejects.toThrow('Only providers');
     expect(storageFrom).not.toHaveBeenCalled();
+  });
+});
+
+const me = { id: '11111111-1111-4111-8111-111111111111' } as Profile;
+const other = '22222222-2222-4222-8222-222222222222';
+const object = '0f8fad5b-d9cb-469f-a165-70867728950e';
+
+describe('UploadsService.assertOwnedPaths', () => {
+  const service = new UploadsService({} as SupabaseService);
+
+  it('accepts paths exactly as createSignedUpload issues them', () => {
+    expect(() =>
+      service.assertOwnedPaths(me, [
+        `${me.id}/${object}.jpg`,
+        `${me.id}/${object}.png`,
+        `${me.id}/${object}.webp`,
+      ]),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['another user', `${other}/${object}.jpg`],
+    ['a traversal out of my folder', `${me.id}/../${other}/${object}.jpg`],
+    ['a nested folder', `${me.id}/x/${object}.jpg`],
+    ['a non-uuid name', `${me.id}/photo.jpg`],
+    ['another extension', `${me.id}/${object}.svg`],
+    ['a trailing suffix', `${me.id}/${object}.jpg.html`],
+  ])('refuses %s', (_name, path) => {
+    expect(() => service.assertOwnedPaths(me, [path])).toThrow(
+      BadRequestException,
+    );
   });
 });
