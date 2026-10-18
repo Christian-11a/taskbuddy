@@ -329,6 +329,8 @@ export interface AdminWalletTxnApiRow {
   amount: number | string;
   title: string;
   created_at: string;
+  /** Sent by the API (select *); carries the Xendit marker on a withdrawal. */
+  review_note?: string | null;
   profile: { id: string; full_name: string } | null;
 }
 

@@ -355,6 +355,7 @@ function mapWalletTxnRow(row: AdminWalletTxnApiRow): WalletTransaction {
     amount: Number(row.amount),
     title: row.title,
     createdAt: row.created_at,
+    reviewNote: row.review_note ?? null,
   };
 }
 
@@ -623,25 +624,6 @@ export async function getPendingVerifications(): Promise<Verification[]> {
   return rows.map(mapVerificationRow).filter((v) => v.status === "PENDING");
 }
 
-/**
- * Escrow transactions, with overlapping callers sharing one request — same
- * in-flight dedup as getAnalyticsSummary below, and for the same reason.
- * (The disputes list no longer reads this; it carries its own names and amounts.)
- *
- * In-flight only, no TTL: once the batch settles the next call fetches fresh,
- * so a resolved dispute or released escrow never renders from a stale cache.
- */
-let transactionsInFlight: Promise<Transaction[]> | null = null;
-
-export async function getTransactions(): Promise<Transaction[]> {
-  transactionsInFlight ??= fetchAllRows<AdminTransactionApiRow>("/admin/transactions", "transactions")
-    .then((rows) => rows.map(mapTransactionRow))
-    .finally(() => {
-      transactionsInFlight = null;
-    });
-  return transactionsInFlight;
-}
-
 export interface PageQuery {
   search: string;
   page: number;
@@ -707,20 +689,6 @@ export async function searchWalletTransactions(query: PageQuery): Promise<{ item
   return { items: res.transactions.map(mapWalletTxnRow), total: res.total };
 }
 
-/** Transfer states that mean an automatic payout did not reach the provider. */
-const FAILED_PAYOUT_STATES: ReadonlySet<Transaction["transferStatus"]> = new Set(["failed", "abandoned", "not_eligible"]);
-
-/**
- * Older card jobs (before Xendit payouts) whose automatic transfer did not go
- * out. No dedicated endpoint: this reads GET /admin/transactions and keeps the
- * released escrows whose transfer failed, was given up on, or found the
- * provider not yet payable. Retry reuses retryEscrowTransfer.
- */
-export async function getFailedCardPayouts(): Promise<Transaction[]> {
-  const all = await getTransactions();
-  return all.filter((t) => t.status === "COMPLETED" && FAILED_PAYOUT_STATES.has(t.transferStatus));
-}
-
 export interface PayoutFailures extends PayoutFailureSplit<AdminWithdrawal> {
   /** Providers with an unresolved Xendit failure and a balance to send, with that balance. */
   owed: OwedProvider[];
@@ -763,10 +731,9 @@ export async function getPayoutFailures(): Promise<PayoutFailures> {
   return { ...split, owed: owedProviders(split.providers, balances) };
 }
 
-/** Same rule as the Failed payouts header: providers still owed after a refused Xendit payout, plus older card transfers still failing. */
+/** Same rule as the Failed payouts header: providers still owed after a refused Xendit payout. */
 export async function getFailedPayoutCount(): Promise<number> {
-  const [xendit, card] = await Promise.all([getPayoutFailures(), getFailedCardPayouts()]);
-  return payoutHeadline(xendit.owed, card).count;
+  return payoutHeadline((await getPayoutFailures()).owed).count;
 }
 
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {

@@ -575,8 +575,8 @@ export function owedProviders(
     .filter((p) => p.owed > 0);
 }
 
-/** The one rule behind the page header and the sidebar count: owed providers plus each older card failure. A card failure adds its shown escrow amount (the console has no commission figure for it). */
-export function payoutHeadline(owed: { owed: number }[], cardFailures: { amount: number }[]): { count: number; total: number } {
-  const total = owed.reduce((n, o) => n + o.owed, 0) + cardFailures.reduce((n, c) => n + c.amount, 0);
-  return { count: owed.length + cardFailures.length, total: Math.round(total * 100) / 100 };
+/** The one rule behind the page header and the sidebar count: providers still owed after a refused Xendit payout, and the sum of their balances. */
+export function payoutHeadline(owed: { owed: number }[]): { count: number; total: number } {
+  const total = owed.reduce((n, o) => n + o.owed, 0);
+  return { count: owed.length, total: Math.round(total * 100) / 100 };
 }

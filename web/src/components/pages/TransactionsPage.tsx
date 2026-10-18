@@ -6,6 +6,7 @@ import * as services from "@/lib/services";
 import { useApp } from "@/context/AppContext";
 import { RETRY_OUTCOME_MESSAGE, toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
 import { exportMasks } from "@/lib/export/anonymize";
+import { isLegacyEscrowRow, isLegacyWalletRow } from "@/lib/legacyRecords";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -120,7 +121,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
       })
       .then((result) => {
         if (!cancelled) {
-          setTransactions(result.items.map(toTransactionRow));
+          // Card-funded rows are hidden per page; the server total still counts them (see report).
+          setTransactions(result.items.filter((t) => !isLegacyEscrowRow(t)).map(toTransactionRow));
           setTotalCount(result.total);
           setLoadFailed(false);
           setSearchError(null);
@@ -435,7 +437,8 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
       .searchWalletTransactions({ search: debouncedSearch, page, pageSize: PAGE_SIZE })
       .then((result) => {
         if (!cancelled) {
-          setRows(result.items.map(toWalletTxnRow));
+          // Wallet-era rows are hidden per page; the server total still counts them (see report).
+          setRows(result.items.filter((r) => !isLegacyWalletRow(r)).map(toWalletTxnRow));
           setTotalCount(result.total);
           setSearchError(null);
           const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));

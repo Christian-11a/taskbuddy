@@ -111,12 +111,15 @@ const wallet = Array.from({ length: 19 }, (_, i) => {
     kind,
     amount: String(200 + ((i * 457) % 5000)),
     title: kind === "topup" ? "GCash top-up" : kind === "withdrawal" ? "Withdrawal to GCash" : kind === "payout" ? "Payout for Deep clean 2BR condo" : kind === "refund" ? "Refund for cancelled job" : "Dispute resolution credit",
-    created_at: daysAgo(i * 0.8),
+    // Recent rows stay inside the current-era window; i=5 is a pre-cutoff row the Payment records tab hides.
+    created_at: i === 5 ? "2026-10-01T10:00:00.000Z" : daysAgo(Math.min(i * 0.8, 1.5)),
+    // Xendit marker on every withdrawal except i=6, which has none and is hidden as a legacy payout.
+    review_note: kind === "withdrawal" && i !== 6 ? `XENDIT-mock-${i}` : null,
     profile: person(`u${i}`, [...clients, "Mark Santos", "Maria Garcia"][i % 6]),
   };
 });
 // Mark Santos's balance: what the refused Xendit payout above would send next.
-wallet.push({ id: "wt-balance-u2", direction: "credit", status: "completed", kind: "payout", amount: "2400", title: "Payout for Deep clean 2BR condo", created_at: daysAgo(2), profile: person("u2", "Mark Santos") });
+wallet.push({ id: "wt-balance-u2", direction: "credit", status: "completed", kind: "payout", amount: "2400", title: "Payout for Deep clean 2BR condo", created_at: daysAgo(2), review_note: null, profile: person("u2", "Mark Santos") });
 const activity = Array.from({ length: 34 }, (_, i) => ({
   id: i,
   old_status: jobStatuses[(i + 2) % 6],

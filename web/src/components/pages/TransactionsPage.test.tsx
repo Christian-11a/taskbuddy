@@ -7,7 +7,7 @@ import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import { ApiError } from "@/lib/api/client";
 import type { UserRow } from "@/lib/adapters";
-import type { AdminBookingDetail } from "@/lib/domain";
+import type { AdminBookingDetail, WalletTransaction } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -24,7 +24,6 @@ const mockedUseApp = vi.mocked(useApp);
 const mockedGetBookingDetail = vi.mocked(services.getBookingDetail);
 const mockedSearchWalletTransactions = vi.mocked(services.searchWalletTransactions);
 const mockedSearchTransactions = vi.mocked(services.searchTransactions);
-const mockedRetryEscrowTransfer = vi.mocked(services.retryEscrowTransfer);
 
 function makeUser(overrides: Partial<UserRow> = {}): UserRow {
   return {
@@ -97,36 +96,20 @@ describe("TransactionsPage — Payment records is read-only", () => {
   });
 });
 
-describe("TransactionsPage — card-funded payouts (Escrow tab)", () => {
+describe("TransactionsPage — Escrow tab payment details", () => {
   beforeEach(() => {
     mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
     mockedSearchTransactions.mockResolvedValue({
       items: [
         {
           id: "esc-1", jobId: "job-1", customerName: "Jamie Kim", providerName: "Pat Morgan",
-          service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-09-16",
-          fundingMethod: "card", transferStatus: "failed", stripeTransferId: null,
+          service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-10-16",
+          fundingMethod: "wallet", transferStatus: "failed", stripeTransferId: null,
           transferError: "Account is restricted",
         },
       ],
       total: 1,
     });
-  });
-
-  it("shows why a transfer failed and lets an admin retry it", async () => {
-    mockedRetryEscrowTransfer.mockResolvedValue("transferred");
-    const user = userEvent.setup();
-    renderWithToast(<TransactionsPage />);
-
-    expect(await screen.findByText("Transfer failed")).toHaveAttribute("title", "Account is restricted");
-    await user.click(screen.getByRole("button", { name: /show details for esc-1/i }));
-    expect(screen.getByText("Card (Stripe)")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Retry payout" }));
-
-    expect(mockedRetryEscrowTransfer).toHaveBeenCalledWith("esc-1");
-    expect(await screen.findByText("Payout sent to the provider.")).toBeInTheDocument();
-    // Reloaded so the row shows the new state.
-    expect(mockedSearchTransactions.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows a completed job's payment as released in the escrow drawer", async () => {
@@ -233,7 +216,7 @@ describe("TransactionsPage — server-paged Wallet tab", () => {
       items: [
         {
           id: "wallet-1", profileName: "Morgan Lee", direction: "credit", kind: "topup",
-          status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-09-18T10:00:00.000Z",
+          status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-10-18T10:00:00.000Z",
         },
       ],
       total: 25,
@@ -297,7 +280,7 @@ describe("TransactionsPage — server-paged Wallet tab", () => {
     await waitFor(() => expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "current", page: 1, pageSize: 12 }));
     await act(async () => { resolveNew({ items: [], total: 0 }); });
     expect(await screen.findByText("No payment records found.")).toBeInTheDocument();
-    await act(async () => { resolveOld({ items: [{ id: "old", profileName: "Old result", direction: "credit", kind: "topup", status: "completed", amount: 1, title: "Old funding", createdAt: "2026-09-30" }], total: 1 }); });
+    await act(async () => { resolveOld({ items: [{ id: "old", profileName: "Old result", direction: "credit", kind: "topup", status: "completed", amount: 1, title: "Old funding", createdAt: "2026-10-17T00:00:00.000Z" }], total: 1 }); });
     expect(screen.queryByText("Old result")).not.toBeInTheDocument();
     expect(screen.getByText("No payment records found.")).toBeInTheDocument();
   });
@@ -308,11 +291,11 @@ describe("TransactionsPage — load failures", () => {
   const escrowRow = {
     id: "esc-1", jobId: "job-1", customerName: "Jamie Kim", providerName: "Pat Morgan",
     service: "Plumbing", amount: 1500, status: "COMPLETED", date: "2026-09-16",
-    fundingMethod: "card", transferStatus: "none", stripeTransferId: null, transferError: null,
+    fundingMethod: "wallet", transferStatus: "none", stripeTransferId: null, transferError: null,
   } as const;
   const walletRow = {
     id: "wallet-1", profileName: "Morgan Lee", direction: "credit", kind: "topup",
-    status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-09-18T10:00:00.000Z",
+    status: "completed", amount: 125, title: "Wallet funding", createdAt: "2026-10-18T10:00:00.000Z",
   } as const;
 
   beforeEach(() => {
@@ -414,7 +397,7 @@ describe("TransactionsPage - online payments and payment records", () => {
   it("shows the Payment records tab with plain kind labels and a status", async () => {
     mockedSearchWalletTransactions.mockResolvedValue({
       items: [
-        { id: "w1", profileName: "Pat Morgan", direction: "debit", kind: "withdrawal", status: "failed", amount: 500, title: "Payout sent", createdAt: "2026-10-02T10:00:00.000Z" },
+        { id: "w1", profileName: "Pat Morgan", direction: "debit", kind: "withdrawal", status: "failed", amount: 500, title: "Payout sent", createdAt: "2026-10-18T10:00:00.000Z", reviewNote: "Xendit: Account number invalid" },
       ],
       total: 1,
     });
@@ -429,7 +412,7 @@ describe("TransactionsPage - online payments and payment records", () => {
   it("labels a 'Refund sent' withdrawal as a refund to client", async () => {
     mockedSearchWalletTransactions.mockResolvedValue({
       items: [
-        { id: "w2", profileName: "Client Lee", direction: "debit", kind: "withdrawal", status: "completed", amount: 300, title: "Refund sent", createdAt: "2026-10-02T10:00:00.000Z" },
+        { id: "w2", profileName: "Client Lee", direction: "debit", kind: "withdrawal", status: "completed", amount: 300, title: "Refund sent", createdAt: "2026-10-18T10:00:00.000Z", reviewNote: "XENDIT-payout-1" },
       ],
       total: 1,
     });
@@ -440,3 +423,49 @@ describe("TransactionsPage - online payments and payment records", () => {
     expect(screen.queryByText("Payout to provider")).not.toBeInTheDocument();
   });
 });
+
+describe("TransactionsPage — legacy test records are hidden", () => {
+  beforeEach(() => {
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("hides card-funded escrow rows and leaves them out of the page volume", async () => {
+    const escrow = (id: string, fundingMethod: "wallet" | "card", amount: number) => ({
+      id, jobId: `job-${id}`, customerName: "Jamie Kim", providerName: "Pat Morgan", service: "Plumbing", amount,
+      status: "COMPLETED" as const, date: "2026-10-18", fundingMethod, transferStatus: "none" as const, stripeTransferId: null, transferError: null,
+    });
+    mockedSearchTransactions.mockResolvedValue({ items: [escrow("keep-1", "wallet", 900), escrow("card-1", "card", 5000)], total: 2 });
+    renderWithToast(<TransactionsPage />);
+    expect(await screen.findByRole("button", { name: /show details for keep-1/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show details for card-1/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText("₱900").length).toBeGreaterThan(0);
+    expect(screen.queryByText("₱5,900")).not.toBeInTheDocument();
+  });
+
+  it("hides wallet-era payment records and keeps current ones", async () => {
+    const row = (id: string, over: Partial<WalletTransaction>): WalletTransaction => ({
+      id, profileName: "Morgan Lee", direction: "credit", kind: "topup", status: "completed", amount: 100,
+      title: "Client payment", createdAt: "2026-10-18T10:00:00.000Z", ...over,
+    });
+    mockedSearchWalletTransactions.mockResolvedValue({
+      items: [
+        row("keep-topup", {}),
+        row("keep-xendit", { direction: "debit", kind: "withdrawal", title: "Payout sent", reviewNote: "XENDIT-42" }),
+        row("old-date", { createdAt: "2026-10-15T23:59:00Z" }),
+        row("retired", { title: "Prototype wallet retired" }),
+        row("recovery", { kind: "recovery_credit", title: "Dispute credit" }),
+        row("no-marker", { direction: "debit", kind: "withdrawal", title: "Payout sent", reviewNote: null }),
+      ],
+      total: 6,
+    });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Payment records" }));
+    expect(await screen.findByText("Payout to provider")).toBeInTheDocument();
+    expect(screen.getAllByText("Morgan Lee")).toHaveLength(2);
+    expect(screen.queryByText("Dispute credit")).not.toBeInTheDocument();
+    expect(screen.queryByText("Prototype wallet retired")).not.toBeInTheDocument();
+    expect(screen.getByText("rows on this page")).toBeInTheDocument();
+  });
+});
+

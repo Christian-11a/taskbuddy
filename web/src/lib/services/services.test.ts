@@ -508,80 +508,6 @@ describe("getVerifications", () => {
   });
 });
 
-describe("getTransactions", () => {
-  it("maps escrow states onto the page's display statuses", async () => {
-    const row = (id: string, status: string) => ({
-      id,
-      job_id: `job-${id}`,
-      amount: "1200.50",
-      status,
-      held_at: "2026-08-01",
-      jobs: { title: "Deep clean", service_categories: { name: "Cleaning" } },
-      client: { id: "c1", full_name: "Alice" },
-      provider: { id: "p1", full_name: "Bob" },
-    });
-    global.fetch = vi.fn(() =>
-      Promise.resolve(
-        jsonResponse({
-          transactions: [
-            row("t1", "held"),
-            row("t2", "released"),
-            row("t3", "disputed"),
-            row("t4", "refunded"),
-            row("t5", "cancelled"),
-          ],
-          total: 5,
-        }),
-      ),
-    ) as unknown as typeof fetch;
-
-    const transactions = await services.getTransactions();
-
-    expect(transactions.map((t) => t.status)).toEqual([
-      "IN_ESCROW",
-      "COMPLETED",
-      "DISPUTED",
-      "REFUNDED",
-      // No dedicated UI state for a cancelled hold.
-      "REFUNDED",
-    ]);
-    expect(transactions[0]).toMatchObject({
-      customerName: "Alice",
-      providerName: "Bob",
-      service: "Cleaning",
-      amount: 1200.5,
-    });
-  });
-
-  it("shares one in-flight request between overlapping callers", async () => {
-    // AppContext's initial load fires getTransactions() and getDisputes() in
-    // the same Promise.all, and getDisputes() needs this list too — without
-    // dedup that was two identical round trips per login.
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
-    );
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    const [a, b] = await Promise.all([services.getTransactions(), services.getTransactions()]);
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(a).toEqual(b);
-  });
-
-  it("fetches again once the in-flight request has settled", async () => {
-    // In-flight only, no TTL — a resolved dispute must not render from cache.
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
-    );
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    await services.getTransactions();
-    await services.getTransactions();
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-});
-
 describe("getWalletTransactions", () => {
   it("maps wallet ledger rows, keeping direction/kind/amount as numbers", async () => {
     global.fetch = vi.fn(() =>
@@ -616,6 +542,7 @@ describe("getWalletTransactions", () => {
         amount: 1000,
         title: "TaskBuddy wallet top-up",
         createdAt: "2026-08-09T16:47:00Z",
+        reviewNote: null,
       },
     ]);
   });
@@ -1348,7 +1275,6 @@ describe("queue counts", () => {
       row("e", "p4", "failed", "xendit: lower", "2026-10-02T00:00:00Z"),
     ];
     const completed = [row("z", "p2", "completed", null, "2026-10-04T00:00:00Z")];
-    const cardTxn = { id: "e1", job_id: "j1", amount: "50", status: "released", held_at: "2026-10-01T00:00:00Z", jobs: null, client: null, provider: null, transfer_status: "failed" };
     const wt = (id: string, profile_id: string, direction: string, status: string, amount: string) => ({
       id, profile: { id: profile_id, full_name: profile_id }, direction, status, kind: "payout", amount, title: "t", created_at: "2026-10-01T00:00:00Z",
     });
@@ -1359,17 +1285,15 @@ describe("queue counts", () => {
       if (url.includes("/admin/wallet-transactions")) return Promise.resolve(jsonResponse({ transactions: [wt("d1", "p1", "debit", "pending", "100")], total: 1 }));
       if (url.includes("status=completed")) return Promise.resolve(jsonResponse({ withdrawals: completed, total: 1 }));
       if (url.includes("status=failed")) return Promise.resolve(jsonResponse({ withdrawals: failed, total: 5 }));
-      return Promise.resolve(jsonResponse({ transactions: [cardTxn], total: 1 }));
+      return Promise.resolve(jsonResponse({ withdrawals: [], total: 0 }));
     });
     global.fetch = fetchMock as unknown as typeof fetch;
     const split = await services.getPayoutFailures();
     expect(split.unresolved.map((w) => w.id)).toEqual(["b", "a"]);
     expect(split.resolved.map((r) => r.withdrawal.id)).toEqual(["c"]);
     expect(split.owed).toEqual([{ profileId: "p1", profileName: "p1", owed: 300 }]);
-    // Xendit: p1 only (p2 was paid later, p4 has no balance left); plus the one failed card transfer.
-    const cards = await services.getFailedCardPayouts();
-    expect(cards).toHaveLength(1);
-    await expect(services.getFailedPayoutCount()).resolves.toBe(2);
+    // Xendit: p1 only (p2 was paid later, p4 has no balance left, p3 and "xendit: lower" have no Xendit prefix).
+    await expect(services.getFailedPayoutCount()).resolves.toBe(1);
   });
 
   it("counts pending service requests with a one-row request and the exact total", async () => {

@@ -239,6 +239,8 @@ export interface WalletTransaction {
   amount: number;
   title: string;
   createdAt: string; // ISO date
+  /** The API's review_note: carries the Xendit marker on a withdrawal. Optional, so fixtures need not set it. */
+  reviewNote?: string | null;
 }
 
 export interface AdminWithdrawal {

@@ -438,8 +438,8 @@ describe("owedProviders and payoutHeadline", () => {
     expect(owed).toEqual([{ profileId: "p1", profileName: "A", owed: 320.5 }]);
   });
 
-  it("counts owed providers plus each card failure, and totals balances plus card amounts", () => {
-    expect(payoutHeadline([{ owed: 100 }, { owed: 50.5 }], [{ amount: 25 }, { amount: 10 }])).toEqual({ count: 4, total: 185.5 });
-    expect(payoutHeadline([], [])).toEqual({ count: 0, total: 0 });
+  it("counts owed providers and totals their balances", () => {
+    expect(payoutHeadline([{ owed: 100 }, { owed: 50.5 }])).toEqual({ count: 2, total: 150.5 });
+    expect(payoutHeadline([])).toEqual({ count: 0, total: 0 });
   });
 });
