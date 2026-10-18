@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { GET_APP_HREF } from "@/lib/getApp";
 
 /** React version of the homepage header, linking back to the homepage sections. */
 export function SiteHeader({ current }: { current?: "guide" }) {
@@ -52,12 +53,12 @@ export function SiteHeader({ current }: { current?: "guide" }) {
         <Link href="/guide" aria-current={current === "guide" ? "page" : undefined}>
           Guide
         </Link>
-        <Link className="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="/#join">
-          Join TaskBuddy
+        <Link className="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href={GET_APP_HREF}>
+          Get the app
         </Link>
       </nav>
       <div className="site-nav__actions">
-        <Link className="site-nav__cta site-nav__cta--quiet" href="/#download">
+        <Link className="site-nav__cta site-nav__cta--primary" href={GET_APP_HREF}>
           <svg
             width="15"
             height="15"
@@ -71,10 +72,7 @@ export function SiteHeader({ current }: { current?: "guide" }) {
           >
             <path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
           </svg>
-          Get App
-        </Link>
-        <Link className="site-nav__cta site-nav__cta--primary" href="/#join">
-          Join TaskBuddy
+          Get the app
         </Link>
       </div>
     </header>

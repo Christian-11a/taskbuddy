@@ -5,6 +5,29 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 import { HOME_MARKUP } from "./HomePage.markup";
 
 const authScript = readFileSync(path.resolve("public/promo/auth.js"), "utf8");
+// Web auth is switched off in the shipped script. The modal code is kept for
+// when it returns, so the legal-panel tests run against an enabled copy.
+const enabledAuthScript = authScript.replace("var AUTH_ENABLED = false;", "var AUTH_ENABLED = true;");
+
+describe("web auth is hidden", () => {
+  it("ships with AUTH_ENABLED off and no entry-point labels in the homepage markup", () => {
+    expect(authScript).toContain("var AUTH_ENABLED = false;");
+    expect(HOME_MARKUP).not.toContain("Join TaskBuddy");
+    expect(HOME_MARKUP).not.toContain("href=\"#join\"");
+    expect(HOME_MARKUP).toContain('href="#download"');
+  });
+
+  it.each(["#join", "#signin", "#login", "#signup", "#forgot"])("ignores %s in the URL", (hash) => {
+    window.history.replaceState(null, "", "/" + hash);
+    document.body.innerHTML = HOME_MARKUP;
+    runInNewContext(authScript, { window, document, history: window.history, URLSearchParams, fetch: window.fetch });
+    expect(document.querySelector<HTMLElement>("[data-auth-overlay]")!.hidden).toBe(true);
+    expect(document.body.classList.contains("has-modal-open")).toBe(false);
+    document.body.innerHTML = "";
+    window.history.replaceState(null, "", "/");
+  });
+});
+
 const originalFetch = window.fetch;
 
 describe("signup document dialog", () => {
@@ -21,7 +44,7 @@ describe("signup document dialog", () => {
     documentListeners.mockClear();
     window.history.replaceState(null, "", "/#signup");
     document.body.innerHTML = HOME_MARKUP;
-    runInNewContext(authScript, {
+    runInNewContext(enabledAuthScript, {
       window,
       document,
       history: window.history,

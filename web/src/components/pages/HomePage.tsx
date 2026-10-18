@@ -9,7 +9,7 @@ import { HOME_MARKUP } from "./HomePage.markup";
 // Terms/Privacy text in the sign-up modal comes from the shared legal module.
 const HOME_MARKUP_WITH_MOBILE_JOIN_CTA = injectLegalBodies(HOME_MARKUP).replace(
   '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="/guide">Guide</a></nav>',
-  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="/guide">Guide</a><a class="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="#join">Join TaskBuddy</a></nav>',
+  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="/guide">Guide</a><a class="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="#download">Get the app</a></nav>',
 );
 
 const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP_WITH_MOBILE_JOIN_CTA.replace(

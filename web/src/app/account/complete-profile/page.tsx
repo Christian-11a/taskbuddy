@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { GET_APP_HREF } from "@/lib/getApp";
 import "../../../styles/promo.css";
 import { API_URL, getAccessToken } from "../../api/auth/_session";
 import { CompleteProfileForm } from "./CompleteProfileForm";
@@ -9,14 +10,14 @@ export const metadata = {
 
 export default async function CompleteGoogleProfilePage() {
   const accessToken = await getAccessToken();
-  if (!accessToken) redirect("/#login");
+  if (!accessToken) redirect(GET_APP_HREF);
 
   const res = await fetch(`${API_URL}/auth/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   }).catch(() => null);
 
-  if (!res?.ok) redirect("/#login");
+  if (!res?.ok) redirect(GET_APP_HREF);
   const data = await res.json().catch(() => null);
 
   // Nothing left to complete — send them to the real handoff page instead of

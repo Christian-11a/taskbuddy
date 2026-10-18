@@ -25,7 +25,7 @@ describe("GuidePage", () => {
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(nav).getByRole("link", { name: "Guide" })).toHaveAttribute("aria-current", "page");
     expect(within(nav).getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/#faq");
-    expect(screen.getByRole("link", { name: /Get App/ })).toHaveAttribute("href", "/#download");
+    expect(screen.getAllByRole("link", { name: "Get the app" })[0]).toHaveAttribute("href", "/#download");
     expect(screen.getByRole("link", { name: "TaskBuddy home" })).toHaveAttribute("href", "/");
   });
 

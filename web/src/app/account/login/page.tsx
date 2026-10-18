@@ -1,11 +1,7 @@
 import { redirect } from "next/navigation";
+import { GET_APP_HREF } from "@/lib/getApp";
 
-/**
- * A stable, shareable URL for the Sign In panel. Redirects to the homepage
- * with the hash that already drives the auth modal (see HomePage's ported
- * auth.js) — reuses the exact validated mechanism instead of a second
- * implementation of "modal over the homepage."
- */
+/** Web sign-in is hidden (mobile-only marketplace); send visitors to Get the app. */
 export default function AccountLoginPage() {
-  redirect("/#login");
+  redirect(GET_APP_HREF);
 }

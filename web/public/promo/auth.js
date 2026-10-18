@@ -1,6 +1,10 @@
 (function () {
   "use strict";
 
+  // Web sign-in/sign-up is hidden: the marketplace is mobile-only. Flip to true
+  // to bring the modal back (hash links like #join, #login, #signup open it).
+  var AUTH_ENABLED = false;
+
   var overlay = document.querySelector("[data-auth-overlay]");
   if (!overlay) return;
   var modal = overlay.querySelector(".auth-modal");
@@ -124,6 +128,7 @@
   }
 
   function openModalShell() {
+    if (!AUTH_ENABLED) return;
     if (overlay.hidden && document.activeElement && document.activeElement !== document.body && !modal.contains(document.activeElement)) {
       modalOpener = document.activeElement;
     }
@@ -216,6 +221,7 @@
   }
 
   function syncFromHash() {
+    if (!AUTH_ENABLED) return;
     var panelName = HASH_TO_PANEL[window.location.hash];
     if (panelName) {
       if (activePanelName !== panelName) resetAuthPanelState(panelName);
