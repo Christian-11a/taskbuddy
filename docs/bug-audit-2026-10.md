@@ -31,11 +31,11 @@ Baseline at audit time (`main` @ 977cbcb):
   inserting the cancellation dispute. Postgres aborts the cancel with
   *"tuple to be updated was already modified by an operation triggered by the
   current command"*. 0063 is applied in production, so this is live.
-- Fix: migration **0065** makes the sync a deferred constraint trigger (runs at
+- Fix: migration **0069** (first written as 0065, renumbered after upstream took that number) makes the sync a deferred constraint trigger (runs at
   commit), and also recomputes the old job if `job_id` changes. Branch
   `fix/dispute-state-deferred-trigger`; `test:sql` 139/139 plus a new
   `dispute_state` regression test.
-- Deploy: apply 0065 to Supabase (no API change needed).
+- Deploy: applied to production by hand on 2026-10-18 and verified (a rolled-back cancellation succeeded); the file is idempotent.
 - Process gap: `npm run test:sql` was not run before 0063 shipped. See gates.
 
 ### C2. Google OAuth handoff fixation → account takeover — **verified**
@@ -104,7 +104,7 @@ Baseline at audit time (`main` @ 977cbcb):
 | M10 | Web bulk approve/reject rejects after writes succeed | `services/index.ts:1143-1157` | Wrap refetch like `bulkSetUserStatus` |
 | M11 | Mobile chat stream never reconnects; token captured once | `mobile/src/lib/api.ts` ~1647 | Error handler + backoff reconnect with fresh token and `since` |
 | M12 | Mobile notification stream `JSON.parse` unguarded | `api.ts` ~1422 | try/catch |
-| M13 | 0063 trigger ignored `job_id` changes | 0063 | Fixed in 0065 |
+| M13 | 0063 trigger ignored `job_id` changes | 0063 | Fixed in 0069 |
 
 ## P3 — low
 
@@ -116,7 +116,7 @@ Baseline at audit time (`main` @ 977cbcb):
 
 ## Execution order
 
-1. **Today:** apply 0065 (C1). Run the admin-account query (C3) and confirm
+1. **Today:** 0069 (C1) is applied. Run the admin-account query (C3) and confirm
    whether Supabase direct sign-up is enabled.
 2. **Security sprint (C2, C3, H7, H8, M5, M6):** one PR per item; migrations
    for C3/H7/H8; mobile release for C2's verifier.

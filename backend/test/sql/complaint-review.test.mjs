@@ -257,7 +257,7 @@ it('admin alerts are deduplicated and dismissed alerts stay out of snapshots', a
   assert.equal(snapshot.unreadCount, unread);
 });
 
-it('keeps jobs.dispute_state in step with complaints and cancellations (0063, 0065)', async () => {
+it('keeps jobs.dispute_state in step with complaints and cancellations (0063, 0069)', async () => {
   const state = async (id) => (await query('select dispute_state from jobs where id = $1', [id]))[0].dispute_state;
 
   const cancelled = await job();

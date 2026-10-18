@@ -1,5 +1,9 @@
--- Fixes 0063. Its sync trigger updated jobs immediately after a dispute row
--- changed. review_work_cancellation (0037/0041) is a BEFORE UPDATE trigger on
+-- Fixes 0063. Written as 0065 and renumbered because upstream took 0065.
+-- Already applied to production by hand on 2026-10-18; re-running it is
+-- harmless.
+--
+-- 0063's sync trigger updated jobs immediately after a dispute row changed.
+-- review_work_cancellation (0037/0041) is a BEFORE UPDATE trigger on
 -- jobs that inserts the cancellation dispute, so the sync trigger updated the
 -- same jobs row while the outer UPDATE was still running, and Postgres
 -- aborted the cancellation ("tuple to be updated was already modified by an
