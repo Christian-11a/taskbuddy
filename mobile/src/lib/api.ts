@@ -1633,11 +1633,11 @@ export const api = {
     return authRequest<Dispute | null>(`/jobs/${jobId}/disputes`);
   },
 
-  addDisputeEntry(id: string, input: { kind: 'statement' | 'appeal'; body: string; message_id?: string; photo_paths?: string[] }) {
+  addDisputeEntry(id: string, input: { kind: 'statement' | 'appeal'; body: string; photo_paths?: string[] }) {
     return authRequest(`/disputes/${id}/entries`, { method: 'POST', body: input });
   },
-  respondToCancellation(id: string, accept: boolean, note: string, message_id?: string) {
-    return authRequest<Dispute>(`/disputes/${id}/cancellation-response`, { method: 'POST', body: { accept, note, message_id } });
+  respondToCancellation(id: string, accept: boolean, note: string) {
+    return authRequest<Dispute>(`/disputes/${id}/cancellation-response`, { method: 'POST', body: { accept, note } });
   },
 
   // ── Hire payments ───────────────────────────────────────────────────────────
