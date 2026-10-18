@@ -48,7 +48,7 @@ const CAPS: Cap[] = [
   { at: 246, out: 414, side: 'left', a: 'Verified', b: 'first.', sub: 'Government ID + face scan' },
   { at: 428, out: 618, side: 'right', a: 'Post a job', b: 'in minutes.', sub: 'Service · place · time · budget' },
   { at: 688, out: 860, side: 'left', a: 'Proposals', b: 'roll in.', sub: 'Verified providers nearby apply' },
-  { at: 928, out: 1018, side: 'right', a: 'Hire with', b: 'one tap.', sub: 'Compare offers, pick the best' },
+  { at: 928, out: 1018, side: 'right', a: 'Hire with', b: 'one tap.', sub: 'Compare proposals, pick the best' },
   { at: 1040, out: 1134, side: 'center', a: 'Booking', b: 'confirmed.' },
   { at: 1146, out: 1256, side: 'center', a: 'Chat in', b: 'real time.' },
   { at: 1266, out: 1336, side: 'center', a: 'Mark it', b: 'done.' },

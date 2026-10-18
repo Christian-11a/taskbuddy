@@ -2,7 +2,7 @@ import React from 'react';
 import {
   ArrowLeft, Bell, BrushCleaning, Calendar, Check, ChevronRight, Clock, Hammer, LockKeyhole, MapPin, Palette, Send, ShieldCheck, Sparkles, Star, Wrench, BadgeCheck, Banknote,
 } from 'lucide-react';
-import { A, Avatar, Btn, Card, Caret, HONav, Pill, Screens, StatusBar, Tap, expoOut, hit, pop, sp, tw, typed } from './kit';
+import { A, Avatar, Btn, Card, Caret, HONav, Pill, Screens, StatusBar, Tap, expoOut, hit, pop, sp, tw, typedRange } from './kit';
 import { HOMEOWNER as H, JOB, PROVIDER as P } from './timeline';
 import { peso } from '../components/ui';
 import { countUp } from '../components/ui';
@@ -122,9 +122,9 @@ const Step2 = (f: number) => (
     <Steps n={1} />
     <div style={{ padding: 20 }}>
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.3, marginBottom: 16 }}>What Needs Doing</div>
-      <Field label="Job Title" active={f < 508}>{typed(f, 488, 506, JOB.title)}<Caret f={f} until={508} /></Field>
+      <Field label="Job Title" active={f < 508}>{typedRange(f, 488, 506, JOB.title)}<Caret f={f} until={508} /></Field>
       <Field label="Description" active={f >= 508} h={96}>
-        <span style={{ fontWeight: 500, color: A.ink700 }}>{typed(f, 510, 526, 'Water is leaking under the sink cabinet.')}</span>
+        <span style={{ fontWeight: 500, color: A.ink700 }}>{typedRange(f, 510, 526, 'Water is leaking under the sink cabinet.')}</span>
       </Field>
       <Btn f={f} press={528} label="Next" style={{ marginTop: 18 }} />
     </div>
@@ -140,7 +140,7 @@ const Step3 = (f: number) => {
       <Steps n={2} />
       <div style={{ padding: 20 }}>
         <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.3, marginBottom: 16 }}>Where does the work need to happen?</div>
-        <Field label="Address"><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MapPin size={16} color={A.cyan700} />{typed(f, 538, 548, JOB.address)}</span></Field>
+        <Field label="Address"><span style={{ display: 'flex', gap: 8, alignItems: 'center' }}><MapPin size={16} color={A.cyan700} />{typedRange(f, 538, 548, JOB.address)}</span></Field>
         <div style={{ height: 190, borderRadius: 16, overflow: 'hidden', position: 'relative', background: '#e3f3f8', border: `1px solid ${A.line}` }}>
           {[40, 120, 210, 290].map((x, i) => <div key={i} style={{ position: 'absolute', left: x, top: 0, bottom: 0, width: i % 2 ? 10 : 16, background: A.white }} />)}
           {[50, 110, 160].map((y, i) => <div key={i} style={{ position: 'absolute', top: y, left: 0, right: 0, height: i % 2 ? 16 : 10, background: A.white }} />)}
@@ -429,7 +429,7 @@ const Review = (f: number) => (
         })}
       </div>
       <div style={{ textAlign: 'left', marginTop: 22 }}>
-        <Field label="Write a review" h={90}><span style={{ fontWeight: 500, color: A.ink700 }}>{typed(f, 1502, 1526, 'Fast, clean and friendly. Highly recommended!')}</span></Field>
+        <Field label="Write a review" h={90}><span style={{ fontWeight: 500, color: A.ink700 }}>{typedRange(f, 1502, 1526, 'Fast, clean and friendly. Highly recommended!')}</span></Field>
       </div>
       <Btn f={f} press={1536} label={f >= 1538 ? <><Check size={18} strokeWidth={3} /> Review submitted</> : 'Submit Review'} bg={f >= 1538 ? A.green500 : A.cyan700} />
     </div>

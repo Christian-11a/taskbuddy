@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowLeft, BadgeCheck, Bell, Calendar, Check, IdCard, Inbox, MapPin, ScanFace, Search, ShieldCheck, Star, TriangleAlert, UserRound, Wallet, Banknote, Send } from 'lucide-react';
-import { A, Avatar, Btn, Card, Caret, Pill, Screens, SPNav, StatusBar, Tap, expoOut, hit, pop, sp, tw, typed } from './kit';
+import { A, Avatar, Btn, Card, Caret, Pill, Screens, SPNav, StatusBar, Tap, expoOut, hit, pop, sp, tw, typedRange } from './kit';
 import { HOMEOWNER as H, JOB, PROVIDER as P } from './timeline';
 import { Chat, JobCardUI } from './HOScreens';
 import { countUp, peso } from '../components/ui';
@@ -241,7 +241,7 @@ const ProposalSheet = (f: number) => {
         <div style={{ borderRadius: 12, border: `1.5px solid ${f < 792 ? A.cyan600 : '#dce3e9'}`, padding: '10px 14px', fontSize: 22, fontWeight: 800, marginBottom: 14 }}>{peso(countUp(f, 778, 790, JOB.offer))}</div>
         <div style={{ fontSize: 13, fontWeight: 700, color: A.ink700, marginBottom: 6 }}>Why are you qualified?</div>
         <div style={{ borderRadius: 12, border: `1.5px solid ${f >= 792 ? A.cyan600 : '#dce3e9'}`, padding: '12px 14px', minHeight: 84, fontSize: 14, fontWeight: 500, color: A.ink700, lineHeight: '19px', marginBottom: 16 }}>
-          {typed(f, 794, 836, 'Hi! I can fix this tomorrow at 9 AM. I will bring the parts.')}<Caret f={f} until={840} />
+          {typedRange(f, 794, 836, 'Hi! I can fix this tomorrow at 9 AM. I will bring the parts.')}<Caret f={f} until={840} />
         </div>
         <Btn f={f} press={850} label={<><Send size={17} /> Submit Proposal</>} />
       </div>
