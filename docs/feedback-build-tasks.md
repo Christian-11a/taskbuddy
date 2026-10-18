@@ -166,6 +166,7 @@ Deploy note: migration first, then API (owner or backend teammate runs it).
 
 ### B2. Disputed in admin bookings filter · Haiku, medium · parallel OK
 Add `disputed` to `admin_list_bookings` (new migration) and its DTO / filter validation. Test.
+Migration number: **0065** (the mobile branch already uses `0064_disable_early_release.sql`; do not reuse 0064).
 
 ---
 
@@ -234,3 +235,130 @@ Admin session: Batch 1 B2, A1, A2, A7 → Batch 2 A5, A3 → Batch 3 A4, A6 → 
 - **D2 Price ranges** (owner + adviser): keep three fixed options, or the stricter range model.
 - **D3 Change-request screen:** schedule changes approved; price changes wait for D2.
 - **D4 Sample portfolio examples** (adviser item): what the samples show and where (Portfolio empty state?).
+
+---
+
+## Part 4: Mobile round 2 (after the Codex review, 2026-10-18)
+
+Same rules as above. Mobile session, branch `feedback/mobile` (goes into PR #94 before the team merges).
+Source: `docs/review-mobile-codex-2026-10-17.md` (every item below was checked against the code).
+
+### Review fixes
+- **F1** (Haiku, medium) `HOJobDetailScreen` / `SPJobDetailScreen` keep state when the job id changes (App.tsx renders them without a key).
+  Add `key={jobId}` so an open completion or cancel confirmation can never act on another job.
+- **F2** (Haiku, medium) `HOCreateJobScreen` ~306: on a `priceKey` change, clear `priceOptions` and `priceTier` and block Next
+  (`stepBusy`) until the new estimate arrives.
+- **F3** (Haiku, low) `src/lib/jobDetailView.ts` ~327: "was returned to your wallet" → "was refunded to your payment method", only for
+  `refunded_to_client`; with no resolution say the refund is still being processed.
+- **F4** (Sonnet, medium) Backend migration **0066** replacing `raise_job_dispute`: no complaints on completed jobs (before
+  confirmation only). Update `backend/test/sql/warranty.test.mjs` (still expects the 72-hour rule). Show the owner the migration first.
+- **F5** (Haiku, low) `HOChatScreen` / `SPChatScreen` ~87: show an error when a text message fails; keep the text.
+- **F6** (Haiku, low) `AuthContext` `resetPassword` / `verifyEmailOtp`: `persistSession(next)` before `api.me`.
+- **F7** (Haiku, medium) `src/lib/api.ts` `rawRequest`: 30 s timeout (AbortController), shown as a connection error.
+- **F8** (Haiku, low) Screen test: provider taps a `verification_update` row (`target.screen 'verification'`) → `onOpenVerification`.
+- Not now, note for the team: token refresh across account switch (`AuthContext` ~220); Xendit payout marked completed on request
+  acceptance instead of the final result (needs Xendit payout callbacks, backend).
+
+### B3. Lock the platform fee at hire and expose it · Sonnet, medium · before M13 and M15
+Today `escrow.service.ts` `payOut` reads the current `commission_rate` at release, and the app cannot read the rate (admin routes only).
+- Migration **0067**: add `commission_rate numeric(5,4)` to `escrow_transactions`, set when the escrow is first held (hire), backfill
+  held rows with the current rate. Release uses the locked rate (`escrow_settle` / `payOut`), falling back to the current rate if null.
+  `commission_amount` is already stored at release.
+- API: job detail for the assigned provider and for open jobs a provider can propose to returns
+  `fee: { rate, amount, provider_receives }` (from the locked rate when held, else the current rate). Price estimate options may carry
+  the same for providers only if cheap; otherwise job detail is enough.
+- History rows (`GET /payouts/history`): include `commission_amount` for payout rows (join the escrow by `job_id`).
+- Tests: rate change after hire does not change the payout; history shows the fee. Show the owner the migration first.
+Deploy: 0066 and 0067 in number order with 0064 and 0065, then the API.
+
+### M13. Provider Earnings · Sonnet, medium · after B3
+`SPPayoutAccountScreen.tsx` (top section) or a new `SPEarningsScreen` reached from Profile ("Earnings").
+- Summary: paid out this month, paid out in total, on its way (held on the provider's jobs in progress, from their job list; same rule
+  as `heldMoney.ts`), platform fees this month.
+- List: each payout with job title (tap opens the job), date, amount received, fee, Sent / Pending / Failed.
+- Line: "Payouts go to your GCash, Maya or bank account automatically when the client confirms the job is done."
+- Never use "balance", "available to withdraw" or "wallet".
+
+### M14. Client Payments · Sonnet, medium · parallel with M13 (different files)
+New Profile row "Payments" → `HOPaymentsScreen`. Summary: paid this month, held on active jobs. List per job: amount, date, state
+(held / released to provider / refunded / refund in progress), tap opens the job. No payment method (not stored).
+
+### M15. Fee breakdown before and during a job · Haiku, high · after B3
+Provider job detail and the proposal sheet: "Job price ₱X · Platform fee (N%) −₱Y · You receive ₱Z". Booked or working job:
+"You'll receive ₱Z when the client confirms the job is done." After release: "Paid out ₱Z (₱X − ₱Y fee)". Help FAQ: one entry on
+the fee. Uses B3's `fee` field; hide the breakdown if the field is missing (old API).
+
+Run order: F1–F8 (parallel where files differ; F4 alone) → B3 → M13 + M14 → M15. Then emulator pass, report, commit list.
+Later (owner will point at screens): UI improvements on parts of the app.
+
+---
+
+## Part 5: Certificates required for verification (decided 2026-10-18, team agreed)
+
+Rule: a provider is verified only when BOTH their identity check passed AND they have an approved, unexpired certificate
+(credential) for their primary service. No certificate → not verified → cannot send proposals (existing gate).
+Today the backend treats certificates as optional (badge only): `verifications.service.ts` sets `is_verified` on identity alone,
+`applications.service.ts` checks only `is_verified` and the payout account, migration 0054 describes a badge.
+
+Defaults chosen by Opus (owner delegated; change any before building):
+- D5a Accepted certificates: any TESDA National Certificate, PRC licence or trade certificate that matches the service; the admin
+  judges. Guidance shown to providers and admins: Plumbing → TESDA Plumbing NC II; Cleaning → Housekeeping NC II;
+  Handyman → Carpentry / Electrical Installation NC II; Manicure, Pedicure → Beauty Care NC II.
+- D5b No alternative documents (required means required).
+- D5c ONE review (owner, 2026-10-18): the provider's flow is one process, so the admin reviews one case per provider in
+  Verifications: ID, selfie and certificate together; approve or reject the whole case, with the reason picked per part (ID /
+  selfie / certificate). If Stripe already approved identity, the case shows that and the admin only checks the certificate.
+  Later certificate items (renewal, a second service) arrive as their own labelled cases in the same queue. The separate
+  Credentials tab is removed (its review parts move into Verifications).
+- D5d Expiry: 30 days before, notify the provider; on expiry with no other valid certificate for that service, verified status is
+  removed (no new proposals). Jobs already hired continue.
+- D5e Existing verified providers without an approved certificate lose verified status until they upload one and it is approved
+  (affects test accounts too).
+
+Where: a NEW branch `feedback/credentials-required` from team `main` AFTER PR #94 (mobile) and the admin PR are merged, because it
+touches files both branches changed (`credentials.service.ts`, verification screens, admin Credentials page). One session does
+backend + mobile, then admin.
+
+### C1. Backend gate · Sonnet, medium
+- Split "identity verified" from "verified": add `identity_verified boolean` to `provider_profiles` (migration **0068**), backfill
+  from today's `is_verified`; keep `is_verified` as the single flag everything else reads.
+- A function `refresh_provider_verified(provider_id)` sets `is_verified = identity_verified AND has an approved, unexpired credential
+  for the provider's primary category`. Call it after: identity approve/reject (Stripe and admin), credential approve/reject,
+  primary-service change, and daily for expiries (existing scheduler tick).
+- Backfill per D5e: run the refresh for every provider (verified ones without a certificate become unverified).
+- Notifications: "Upload your certificate to finish verification" when identity passes without a certificate; expiry warning 30 days
+  before; "Your certificate expired" on loss. Type `verification_update` (routes to Verification in the app).
+- API: verification status for the app returns `{ identity: 'none'|'pending'|'approved'|'rejected', certificate: 'none'|'pending'|
+  'approved'|'rejected'|'expired', verified }`.
+- Tests: every combination; Stripe auto-approve without a certificate stays unverified; expiry removes verified; primary change.
+Show the owner the migration first. Deploy: migration, then API.
+
+### C2. Mobile verification flow · Sonnet, medium · after C1
+- Get verified becomes: choose ID → ID photo → selfie → **certificate for your service** (upload, with the D5a guidance) → review
+  and send. Reuse the existing Certifications upload (`SPCredentialsScreen`) inside the flow; do not duplicate it.
+- Status screen and the Home setup card show both parts: "Identity: approved / Certificate: waiting for review", and what is still
+  missing. Setup steps: address, bio, identity, certificate, payout account.
+- Proposal block message when not verified names the missing part.
+- Help FAQ "How do I get verified?" updated. Tour finish card checklist updated.
+- C2 must also handle (from the second certificate review): `/verifications/me` `status='approved'` only means identity
+  passed; show "You're verified" only when `verified` is true, otherwise "ID approved · certificate needed/under review".
+  Use the new `services: [{ category_id, name, primary, certificate }]` list: a provider with identity and a valid
+  certificate for a SECONDARY service can propose on that service even if the primary certificate is missing (server allows
+  it); do not require the primary badge for proposing or hiring in that case (`providerJobView.ts`, `HOJobApplicationsScreen`).
+  Handle `certificate_required` (link to upload the certificate for that service) and `provider_not_certified` (client: this
+  provider can't be hired for this service yet).
+
+
+### C3. Admin · Sonnet, medium · after C1
+- Verifications becomes one case per provider: ID photo, selfie and certificate (file, type, issuer, number, issue and expiry
+  dates) on one screen. Approve = identity (unless Stripe already approved it) + certificate together. Reject = pick the parts
+  that failed (ID / selfie / certificate) + note; the provider is told what to redo.
+- Case types in the same queue: "New provider", "Certificate renewal: <service>", "New service certificate: <service>".
+- Move the review parts of the Credentials page (built in A8) into Verifications; remove the Credentials tab and its sidebar link.
+- Backend support (part of C1): one decision endpoint per case that applies both parts in one transaction, or two calls the page
+  makes in order with the second refusing if the first failed; the case list joins the pending certificate to the verification.
+- Users / provider details: "Verified" reads both parts.
+
+### C4. Promo site note
+Verification wording on the site (FAQ, feature card, provider guide lesson "Get verified") must say: ID, selfie AND a certificate
+for your service (TESDA, PRC or trade), then admin review. Goes into T8.
