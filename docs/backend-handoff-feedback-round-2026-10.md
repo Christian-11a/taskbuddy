@@ -1,7 +1,8 @@
 # Backend handoff: feedback round (October 2026)
 
 For the backend owner. Read this instead of chasing links.
-Last updated: 2026-10-18, after PRs #94, #95 and #96 were merged into `main`.
+Last updated: 2026-10-18, after PRs #94, #95 and #96 were merged into `main`, with the backend owner's
+progress on the tasks below (see *Backend status 2026-10-18*).
 This file is updated through small docs PRs whenever something is merged, deployed or started.
 
 ## 1. Merged and waiting to be deployed
@@ -32,7 +33,31 @@ Test data to clean up (or let the planned data wipe remove it): one test complai
 
 Please tell the owner when each step is done, so this file can say so.
 
+### Backend status 2026-10-18
+- **Render already runs `c6af502`** (the merged API) while `0065`–`0067` were not yet applied, the reverse of the
+  order above. The API tolerates it (it reads `commission_rate` as optional), but until they are applied the
+  Disputed filter errors, fees are not locked at hire, and the complaint cut-off is not enforced in the database.
+  **Applied 2026-10-18 and verified** (Disputed filter, no post-completion complaints, `commission_rate` column and
+  lock trigger; no held escrow left without a rate). Deploy steps 1 and 2 are done.
+- `0064` is applied.
+- **Hotfix `0069_defer_job_dispute_sync.sql` is applied to production** (by hand; the file is idempotent). `0063`'s
+  trigger made every client cancellation of a hired job fail; `0069` defers it to commit. Verified with a
+  rolled-back cancellation. This is also the fix for the 8 failing cancellation SQL tests below.
+- Once the payout-callback PR is deployed: set the Xendit dashboard's **Payouts callback URL** to
+  `https://taskbuddy-kpek.onrender.com/payments/xendit/payout-webhook` (same verification token as invoices).
+
 ## 2. Tasks for you (nobody else is working on these)
+
+Status 2026-10-18 (backend owner):
+- Task 1 (payout final status): **PR open**, branch `feat/xendit-payout-callback`. Payouts are claimed before
+  sending, stay pending until Xendit's callback or a reconciliation lookup gives the final result, fail only on
+  a definite refusal, and are resent under the same idempotent reference after a timeout. It also closes a
+  double-payout risk. No migration. It changes `escrow.service.ts` `sendQueuedPayouts` only (plus new functions);
+  `payments.scheduler.ts` is untouched. The web admin's payment-records marker now matches the in-flight note.
+- Task 2 (cleanup): **PRs open.** SQL tests: `fix/dispute-state-deferred-trigger` (`0069`). Lockfile and the 3 tsc
+  errors: `chore/backend-ci-cleanup`.
+- Task 3: see the notes under each follow-up.
+
 
 1. **Xendit payout final status (most important).** `escrow.service.ts` `sendQueuedPayouts` marks a payout completed as soon
    as Xendit accepts the request. Handle Xendit's payout callback so the status becomes completed or failed from the real
@@ -43,9 +68,17 @@ Please tell the owner when each step is done, so this file can say so.
    - 3 tsc errors in `jobs.service.spec.ts:239`, `profiles.service.spec.ts:247` and `:272`.
 3. **Follow-ups:**
    - Admin users list: return `identity_verified` and certificate status (after `0068`), so the admin Users page can show
-     exactly what a provider is missing.
+     exactly what a provider is missing. *Waiting for the certificate PR (`0068`); not started, to avoid its files.*
    - Plan removing the deprecated `message_id` (complaints now attach the whole chat) once old app builds are gone.
-   - Token refresh during an account switch can mix sessions (mobile `AuthContext`, rare): note only.
+     *Plan:* the current app never sends it (only the `addDisputeEntry`/`respondToCancellation` signatures in
+     `mobile/src/lib/api.ts` still accept it). (1) Next mobile build: drop the parameter from those two signatures.
+     (2) Once no tester runs a build older than that: the API ignores `message_id` (still accepted by the DTO so old
+     builds do not get 400s) and stops passing `p_message_id`. (3) A release later: remove it from the DTOs and the
+     two SQL function signatures in a migration. Keep the `dispute_entries.message_id` column and its read embed:
+     past cases show the picked message as evidence.
+   - Token refresh during an account switch can mix sessions (mobile `AuthContext`, rare): note only. *Recorded; no
+     backend change needed. A client-side guard would drop a refresh result whose user id differs from the current
+     session's.*
 
 Payouts stay ONE account per provider (GCash, Maya or bank). No multiple payout accounts.
 
@@ -69,8 +102,8 @@ Payouts stay ONE account per provider (GCash, Maya or bank). No multiple payout 
 - Start your branch from the team's latest `main`.
 - Payout code is shared: `escrow.service.ts` and `payments.scheduler.ts` are touched by the certificate expiry check and by
   your payout-callback task. Keep your change in its own functions.
-- Migration numbers: `0064`–`0067` are in `main`; `0068` is reserved for the certificate PR. Use `0069` or higher for new
-  ones and tell us which.
+- Migration numbers: `0064`–`0067` are in `main`; `0068` is reserved for the certificate PR. **`0069` is taken by the
+  dispute-sync hotfix.** Use `0070` or higher for new ones and tell us which.
 
 ## 4. Reviews already done
 Independent reviews (Codex, GPT-6.1 Sol) were run on each branch; the findings were fixed or are listed above.
