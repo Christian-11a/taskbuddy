@@ -167,17 +167,30 @@ The web console defaults to `http://localhost:3001`; set
 ## Status and open work (October 2026)
 
 - **Deployed:** the API on Render runs upstream `main` (check `/health` for
-  the commit). Supabase has migrations through **0064** plus the **0069**
-  cancellation hotfix. **0065–0067 still need applying** (steps in
-  [`docs/backend-handoff-feedback-round-2026-10.md`](./docs/backend-handoff-feedback-round-2026-10.md));
-  until then the admin Disputed filter errors and fees are not locked at hire.
-  Some migrations were applied outside the history, so verify by the objects
-  each file creates. `0068` is reserved for the certificate PR.
-- **Admin website** (synced 2026-10-17): Disputed status and filter, Failed
-  payouts page, credentials review, commission headline; warranty and Issue
-  Credit removed. It goes live when the owner syncs Vercel.
-- **Mobile** needs a new EAS preview build; older builds expect the removed
-  wallet and warranty.
+  the commit). Supabase has migrations through **0074**. Some were applied
+  outside the history, so verify by the objects each file creates. New
+  migrations start at **0075**.
+- **Security and money fixes (October 18):** Google sign-in is bound to both
+  ends of the flow (0071; needs the new app build), sign-up can no longer
+  create admins (0070), profiles and open jobs are no longer readable straight
+  from PostgREST and uploads are limited (0072), payouts are safe against
+  double payment, failed hires can be re-hired, fresh payments are not swept
+  before their hold, and paid invoices are confirmed with Xendit (0073).
+- **Certificates are now required** to propose, be invited or be hired: an
+  approved identity check plus an approved, unexpired TESDA, PRC or trade
+  certificate for that service. Applying 0068 left no provider verified until
+  certificates are uploaded and approved.
+- **Open backend work** and what was done is tracked in
+  [`docs/backend-handoff-plan-2026-10-18.md`](./docs/backend-handoff-plan-2026-10-18.md).
+  Still open: real refunds and live Xendit keys, a sandbox payout and device
+  check, real concurrency tests, and the pre-release data wipe (script ready,
+  not run).
+- **Admin website:** Disputed status and filter, Failed payouts page, one
+  verification case per provider (ID, selfie and certificate), commission
+  headline; warranty, Issue Credit and the separate Credentials tab removed. It
+  goes live when the owner syncs Vercel.
+- **Mobile** needs a new EAS preview build with the certificate step; older
+  builds expect the removed wallet and warranty.
 - **Device checks** of the newest mobile flows (pay at hire, completion
   release, payout account gate, notification routing, proof photos) are open.
 - **ML service** health has been returning HTTP 429; recommendations may be

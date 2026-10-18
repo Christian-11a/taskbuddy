@@ -2,9 +2,14 @@
 
 ## Current state (October 2026)
 
-The API for these features is deployed; migrations 0065–0067 (fee lock,
-complaints before completion) still need applying, and testers need a new EAS
-preview build. Device checks of the newest flows remain open.
+Migrations through 0074 are applied and the API on Render runs `main`.
+**Testers need a new EAS preview build:** it has the certificate step and the
+new Google sign-in handshake (backend 0071). Older builds can still use email
+sign-in, but Google sign-in tells them to update. Device checks of the newest
+flows remain open.
+- **Google sign-in** keeps a verifier on the device and claims the session
+  with the id, the one-time secret from the redirect and that verifier
+  (`src/lib/googleHandoff.ts`).
 
 - **No wallet.** Hires are paid at a Xendit test-mode checkout (GCash, Maya,
   card, online banking). Payouts go to the provider's linked GCash/Maya/bank
@@ -32,8 +37,21 @@ preview build. Device checks of the newest flows remain open.
   15 km).
 - **Disputes.** The whole job chat is attached to a case; there is no message
   picker. Jobs with an open dispute read `display_status: 'disputed'`.
-- **Certifications, portfolio and My Services** (skill requests) for
-  providers, with a Certified badge on proposals and profiles.
+- **Certificates required (0068).** Get verified is one flow: ID → ID photo →
+  selfie → certificate for the provider's service → review and send. "You're
+  verified" shows only when `GET /verifications/me` returns `verified`;
+  otherwise "ID approved · certificate needed / under review / expired". Each
+  extra service needs its own certificate. `certificate_required` (403 on a
+  proposal) opens the upload for that service; clients see "This provider
+  can't be hired for this service yet" for `provider_not_certified`. Expiry
+  reminder, expired state and renewal upload.
+- **Provider setup checklist:** address, bio, identity, certificate, payout
+  account (setup card and tour).
+- **Provider UI round (#99):** forms that scroll to the first problem,
+  Certifications with field errors and Resubmit, Portfolio examples, Earnings
+  with Sent / Pending / Failed payouts, schedule change requests on the
+  existing API, and onboarding and tour for both roles.
+- **Portfolio and My Services** (skill requests) for providers.
 - **Terms v2** cover pricing and payment release; accounts on older terms must
   accept again (`TermsUpdatePrompt`).
 - **Guided tour** for both roles (`src/components/tour/`, `src/lib/tourFlow.ts`).

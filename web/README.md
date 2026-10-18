@@ -281,7 +281,7 @@ the backend and convert its JSON tokens into httpOnly cookies):
 |---|---|
 | Login | `POST /auth/admin/login` |
 | Dashboard | `GET /admin/analytics/summary` (includes held escrow and job totals; browser fallback retained), `GET /admin/activity`, `GET /admin/skill-requests?status=pending&limit=1&offset=0` (exact queue total). Every page's sidebar badges and bell also use the withdrawals count, `GET /admin/withdrawals?status=pending`, loaded on the same refresh. The Service Requests badge uses the same exact total. Separate escrow/booking reads are used only if summary fields are absent. |
-| Verifications | `GET /admin/verifications` (`method` gives the "ID + selfie review" or "Stripe Identity" badge; Stripe Identity rows have no documents), `POST .../approve` · `/reject` (accepts a reason) |
+| Verifications | `GET /admin/verification-cases`, `POST /admin/verification-cases/decision` (0068): one case per provider with ID photo, selfie and certificate together; approve, or reject with the failed parts ticked and a note. Case types: New provider, Certificate renewal, New service certificate. A read-only, searchable History tab. Stripe-approved identity shows as such, leaving only the certificate to check |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
 | Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts), `GET /admin/bookings/:id` (drawer release status from `completed_at`) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
 | Disputes | `GET /admin/disputes` (also `cancellation_state`, `cancellation_deadline` and `entries` for the case timeline), `POST .../resolve` (accepts a note), `GET /admin/bookings/:id` (job `completed_at` for the payment release status), `GET /admin/jobs/:jobId/conversation` (on demand) |
@@ -290,7 +290,6 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
 | Failed payouts (`/admin/withdrawals`) | `GET /admin/withdrawals?status=failed` and `?status=completed`: Xendit payouts that were refused, grouped by provider; replaces the old manual settlement queue |
-| Credentials | `GET /admin/credentials`, `POST .../:id/approve` · `/reject` |
 | Platform | `GET`/`PATCH /admin/commission` (rate plus earned totals), category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (served by the deployed API since 2026-10-16) |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is deployed; the Platform page has an Identity tab for it, while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 

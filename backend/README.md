@@ -15,13 +15,12 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check (2026-10-18):** migrations through **0064** and the hotfix **0069** are applied to
-> the linked Supabase project; **0065–0067 are merged but not yet applied** (see
-> [`docs/backend-handoff-feedback-round-2026-10.md`](../docs/backend-handoff-feedback-round-2026-10.md)). Some (0053–0061, 0063) were applied outside the
-> migration history, so check the objects themselves rather than
-> `supabase migration list`. Render serves upstream `main`; `/health` reports
-> the deployed commit in its `commit` field. The ML service check has been
-> returning HTTP 429.
+> **Release check (2026-10-18):** migrations through **0074** are applied to
+> the linked Supabase project, each verified by the objects it creates (some
+> were applied outside the migration history, so check objects rather than
+> `supabase migration list`). Render deploys the fork's `main`; `/health`
+> reports the deployed commit in its `commit` field. Status of the open work:
+> [`docs/backend-handoff-plan-2026-10-18.md`](../docs/backend-handoff-plan-2026-10-18.md).
 
 ## Architecture
 
@@ -145,7 +144,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0065_admin_bookings_disputed_filter.sql` | `admin_list_bookings` accepts the `disputed` status filter. |
    | `0066_complaints_before_completion.sql` | Complaints can only be raised before the client confirms the job is done (payment is released at that point). |
    | `0067_lock_commission_rate.sql` | `escrow_transactions.commission_rate` is stored at hire and used at release; the database computes the fee from it. Held escrows are backfilled with the current rate. |
-   | `0068` | Reserved for the certificate-required verification PR. |
+   | `0068_credentials_required.sql` | Certificates required for verification: `provider_profiles.identity_verified` holds the identity half and `is_verified` is recomputed from it plus an approved, unexpired certificate for the main service; `provider_approved_categories` requires a certificate per service (Manila date); one-transaction decisions (`decide_identity_verification`, `decide_credential`, `admin_decide_verification_case`); expiry reminders on the payments tick (`credential_expiry_tick`). **Running it unverifies providers without a certificate.** Apply, then deploy the API right after. |
    | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
    | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
    | `0071_oauth_handoff_binding.sql` | `oauth_handoffs.challenge` and `secret_hash`: a Google sign-in claim needs the app's verifier and the redirect's secret (audit C2). |
@@ -379,7 +378,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/applications` 🔒 (provider) | `{ cover_message? (≤300) }` — one per job. `403 verification_required` if unverified, `403 payout_account_required` if no payout account is linked; capacity limits answer `409` (0048) |
+| `POST /jobs/:jobId/applications` 🔒 (provider) | `{ cover_message? (≤300) }` — one per job. `403 verification_required` without an approved identity, `403 certificate_required` without an approved, unexpired certificate for the job's service (0068), `403 payout_account_required` without a payout account; capacity limits answer `409` (0048) |
 | `GET /jobs/:jobId/applications` 🔒 (client) | applicants for own job |
 | `GET /applications/mine` 🔒 (provider) | my applications with job info |
 | `POST /applications/:id/accept` 🔒 (client) | hire this provider — assigns the job, auto-rejects everyone else. Only for jobs without a price: a priced job answers `400 payment_required` and is hired by paying through `POST /payments/hire-checkout-session`, whose webhook accepts the application |
@@ -444,7 +443,7 @@ have to buffer every image.
 | `DELETE /providers/me/credentials/:id` 🔒 (provider) | withdraw a credential that is not approved |
 | `GET /providers/:id/credentials` 🔒 | approved, unexpired credentials only, without the document — the "Certified" badge per service |
 | `POST /verifications/identity-session` 🔒 (provider) | starts a **Stripe Identity** session instead → `{ verification, session_id, ephemeral_key_secret, url, publishable_key }`. Documents go to Stripe and never reach this server; the result arrives by webhook, so poll `GET /verifications/me` |
-| `GET /verifications/me` 🔒 (provider) | latest submission + status |
+| `GET /verifications/me` 🔒 (provider) | latest submission + status, plus `identity`, `certificate`, `verified` and `services: [{ category_id, name, primary, certificate }]` (0068) |
 
 Two routes, one queue: a `manual` row carries document paths and waits for an
 admin, a `stripe_identity` row carries none and is resolved by webhook. Only one
@@ -504,6 +503,7 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 | `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as `POST /applications/:id/accept`; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
 | `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?hire=…` (or the price-change result). No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/price-change-checkout-session` 🔒 (client) | pay the difference for an approved price increase (migration 0057) |
+| `POST /payments/xendit/payout-webhook` | Xendit payout callback, same token check as invoices: sets a provider payout `completed` or `failed` from Xendit's final result. Set it as the Payouts callback URL in the Xendit dashboard |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
 **A hire is made by the payment webhook, never by the browser returning from
@@ -567,7 +567,9 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/jobs/:jobId/conversation` | read-only view of a job's chat, oldest first, for dispute review (migration 0014) |
 | `GET /admin/verifications?status=&limit=&offset=` | review queue; rows carry provider name, email, and short-lived signed document URLs |
 | `GET /admin/skill-requests?search=&status=&limit=&offset=` | provider service-change queue; migration 0038 filters provider/category search before pagination and returns the matching total |
-| `POST /admin/verifications/:id/approve` | approve → sets `provider_profiles.is_verified` |
+| `GET /admin/verification-cases` | one case per provider: ID photo, selfie and certificate together, with case type (new provider, certificate renewal, new service certificate) and history (0068) |
+| `POST /admin/verification-cases/decision` | approve the case, or reject with the failed parts and a note; decision, audit and notification in one transaction; only pending submissions can be decided (0068) |
+| `POST /admin/verifications/:id/approve` | approve → sets the identity half (`identity_verified`); `is_verified` then follows the certificate rule (0068) |
 | `POST /admin/verifications/:id/reject` | `{ reason? }` |
 | `GET /admin/credentials?status=&limit=&offset=` | credential review queue, `pending` by default, oldest first, with signed document URLs |
 | `POST /admin/credentials/:id/approve` | approve a pending credential; audited, provider notified; a second decision is a 409 |
@@ -734,6 +736,12 @@ curl -X POST $API/jobs -H "Authorization: Bearer $TOKEN" -H "Content-Type: appli
 Migration 0056 retired the in-app wallet so the app never holds its own
 currency. This is a prototype: no real money moves.
 
+- **Payout results (PR #103):** a queued payout is claimed before it is sent,
+  stays `pending` once Xendit accepts it, and becomes `completed` or `failed`
+  from the payout callback or a reconciliation lookup on the payments tick.
+  Only a definite refusal fails it; a timeout, 5xx or rate limit resends it
+  under the same idempotent reference. Known gaps before real money (duplicate
+  error handling, lookup envelope) are Phase 1 of the handoff plan.
 - **In:** the client pays each hire on a Xendit test-mode invoice page (GCash,
   Maya, GrabPay, card or online banking). The webhook records the payment, holds it in
   escrow and accepts the proposal. `POST /applications/:id/accept` refuses a
@@ -817,6 +825,7 @@ backend/
 ## Scripts
 
 ```bash
+npm ci              # clean install from package-lock.json (in sync since #104)
 npm run start:dev   # dev server with watch
 npm run start:prod  # run the compiled build (node dist/main)
 npm run build       # compile
