@@ -40,8 +40,10 @@ see the [backend README](./backend/README.md#base-url).
    a linked payout account before they can apply.
 6. The provider ticks off the job's checklist with proof photos. When the
    client confirms completion, the payment is **released at once**, minus the
-   platform commission. A complaint opened before that freezes the money until
-   an admin releases or refunds it, and the job shows as `disputed`.
+   platform commission, which is locked at the rate in force when the job was
+   hired. Complaints can be raised only before completion; an open one freezes
+   the money until an admin releases or refunds it, and the job shows as
+   `disputed`.
 7. The client leaves a rating, which feeds back into the provider's score for
    future recommendations.
 
@@ -122,7 +124,8 @@ goes straight back out:
   payments tick and retried automatically if it fails. Providers never request
   a withdrawal. Refunds to clients are simulated.
 - **Commission.** A configurable fraction of each released payment is
-  withheld. Admins see the total earned, this month's figure and a pending
+  withheld, at the rate locked when the job was hired (0067). Providers see the
+  fee breakdown up front. Admins see the total earned, this month's figure and a pending
   estimate (`GET /admin/commission`, dashboard totals).
 - **Price changes** after hire: a decrease is refunded, and an increase waits
   for the client to pay the difference (0057).
@@ -164,12 +167,17 @@ The web console defaults to `http://localhost:3001`; set
 ## Status and open work (October 2026)
 
 - **Deployed:** the API on Render runs upstream `main` (check `/health` for
-  the commit). Supabase has migrations through **0064**. Some were applied
-  outside the migration history, so verify by the objects each file creates.
-- **Web admin lags the backend.** It still shows the wallet tab, manual
-  withdrawal queue, recovery credit and a 72-hour warranty line, and doesn't
-  show the commission totals or `disputed` status yet. See
-  [`web/README.md`](./web/README.md).
+  the commit). Supabase has migrations through **0064** plus the **0069**
+  cancellation hotfix. **0065–0067 still need applying** (steps in
+  [`docs/backend-handoff-feedback-round-2026-10.md`](./docs/backend-handoff-feedback-round-2026-10.md));
+  until then the admin Disputed filter errors and fees are not locked at hire.
+  Some migrations were applied outside the history, so verify by the objects
+  each file creates. `0068` is reserved for the certificate PR.
+- **Admin website** (synced 2026-10-17): Disputed status and filter, Failed
+  payouts page, credentials review, commission headline; warranty and Issue
+  Credit removed. It goes live when the owner syncs Vercel.
+- **Mobile** needs a new EAS preview build; older builds expect the removed
+  wallet and warranty.
 - **Device checks** of the newest mobile flows (pay at hire, completion
   release, payout account gate, notification routing, proof photos) are open.
 - **ML service** health has been returning HTTP 429; recommendations may be

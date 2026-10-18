@@ -15,8 +15,9 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check (2026-10-18):** migrations through **0064** are applied to
-> the linked Supabase project. Some (0053–0061, 0063) were applied outside the
+> **Release check (2026-10-18):** migrations through **0064** and the hotfix **0069** are applied to
+> the linked Supabase project; **0065–0067 are merged but not yet applied** (see
+> [`docs/backend-handoff-feedback-round-2026-10.md`](../docs/backend-handoff-feedback-round-2026-10.md)). Some (0053–0061, 0063) were applied outside the
 > migration history, so check the objects themselves rather than
 > `supabase migration list`. Render serves upstream `main`; `/health` reports
 > the deployed commit in its `commit` field. The ML service check has been
@@ -69,7 +70,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0064), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0069; 0068 is reserved for the certificate PR), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -141,6 +142,11 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0062_service_radius_bounds.sql` | Clamps `provider_profiles.service_radius_km` into 1–50 km and adds a CHECK for it (the API validates the same bounds). |
    | `0063_job_dispute_state.sql` | `jobs.dispute_state` (`open` / `resolved`), kept in sync with `disputes` by a trigger. The API derives `display_status` (`disputed` while a dispute is open) from it. |
    | `0064_disable_early_release.sql` | Disables the early-release RPCs from 0046 and 0050 (they raise `TB409`); rows are kept. **Apply before deploying the API.** |
+   | `0065_admin_bookings_disputed_filter.sql` | `admin_list_bookings` accepts the `disputed` status filter. |
+   | `0066_complaints_before_completion.sql` | Complaints can only be raised before the client confirms the job is done (payment is released at that point). |
+   | `0067_lock_commission_rate.sql` | `escrow_transactions.commission_rate` is stored at hire and used at release; the database computes the fee from it. Held escrows are backfilled with the current rate. |
+   | `0068` | Reserved for the certificate-required verification PR. |
+   | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
 
    On the linked project, 0001–0052 are recorded in the migration history.
    Later migrations were applied but not all are recorded there (0060 and

@@ -36,8 +36,9 @@ npm run dev          # http://localhost:3000 — public homepage
                       # http://localhost:3000/admin/login — admin sign in
 ```
 
-By default this hits the deployed backend, so you can sign in immediately with
-no local backend running.
+Without configuration the console calls `http://localhost:3001`
+(`DEFAULT_API_URL` in `src/lib/api/apiBase.ts`). To use the deployed backend,
+set `NEXT_PUBLIC_API_URL=https://taskbuddy-kpek.onrender.com` in `.env.local`.
 
 To point at a local backend instead, create `.env.local`:
 
@@ -180,13 +181,13 @@ admin pages → context/AppContext → lib/services → lib/api/client → backe
   their complete lists for local filtering. If
   `/admin/analytics/summary` fails, the same summary is rebuilt in the browser
   from working lists (`lib/services/browserAnalytics.ts`).
-- **An expired token is refreshed once** via `POST /auth/refresh` and the
+- **An expired token is refreshed once** via `POST /auth/admin/refresh` and the
   request retried, instead of bouncing the admin to the login screen.
 
 ```
 src/
 ├── app/
-│   ├── layout.tsx            # <html>, Inter via next/font — shared by both surfaces
+│   ├── layout.tsx            # <html>, Bricolage Grotesque via next/font — shared by both surfaces
 │   ├── page.tsx              # "/" — public homepage (HomePage.tsx)
 │   ├── robots.ts             # disallow ["/admin", "/account", "/dev"]; "/" is indexable
 │   ├── dev/admin-preview/    # Dev-only: /dev/admin-preview/<page|login>[?theme=dark]
@@ -288,12 +289,13 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Activity Log | `GET /admin/activity` |
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
-| Withdrawals | `GET /admin/withdrawals`, `POST .../:id/settle` · `POST .../:id/reject` |
-| Platform | `GET`/`PATCH /admin/commission`, category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (served by the deployed API since 2026-10-16) |
+| Failed payouts (`/admin/withdrawals`) | `GET /admin/withdrawals?status=failed` and `?status=completed`: Xendit payouts that were refused, grouped by provider; replaces the old manual settlement queue |
+| Credentials | `GET /admin/credentials`, `POST .../:id/approve` · `/reject` |
+| Platform | `GET`/`PATCH /admin/commission` (rate plus earned totals), category CRUD, admin accounts, notification broadcast, `GET`/`PATCH /admin/platform-identity` and `GET`/`PATCH /admin/job-capacity` (served by the deployed API since 2026-10-16) |
 | Settings | `PATCH /profiles/me`, `POST /auth/change-password`, `GET`/`PATCH /settings` (account dark mode), `GET`/`PATCH /admin/maintenance`. The platform-identity API is deployed; the Platform page has an Identity tab for it, while Settings and the footer do not consume it yet. Admin verification email delivery is pending a verified domain. The Data & Privacy export-anonymization switch is local to the browser. |
 
 The Platform page consumes the commission, category, admin-account, and
-notification endpoints. The Withdrawals page consumes the settlement queue.
+notification endpoints. The Failed payouts page reads refused Xendit payouts.
 
 Bulk actions call the single-item endpoint once per id in parallel. A per-id
 failure doesn't abort the rest — the counts come back so the UI can say
@@ -447,14 +449,14 @@ choice a reviewer should not have to rediscover:
 
 | Surface | Endpoints | The decision baked in |
 |---|---|---|
-| **Withdrawal queue** | `GET /admin/withdrawals`, `POST .../settle` (accepts a payout reference), `POST .../reject` (accepts a reason) | Withdrawal requests land `pending` and settle only when an admin records that money actually moved. There is no payout rail, so this queue *is* the disbursement mechanism, not a review step in front of one. Settling re-checks the balance and can only fire once, whoever clicks |
+| **Withdrawal queue** | `GET /admin/withdrawals`, `POST .../settle` (accepts a payout reference), `POST .../reject` (accepts a reason) | Withdrawal requests land `pending` and settle only when an admin records that money actually moved. *Historical:* payouts are now sent automatically through Xendit, and the console only reads failed ones. Settling re-checks the balance and can only fire once, whoever clicks |
 | **Categories** | `GET`/`POST /admin/categories`, `PATCH /admin/categories/:id` | **No delete.** Jobs, provider profiles and the ML feature set all reference a category by id; `is_active: false` takes it off the menu without rewriting the jobs that used it. A duplicate name is a 409 |
 | **Admin accounts** | `GET`/`POST /admin/admins`, `POST /admin/admins/:id/revoke` | **No password crosses the wire.** The new admin sets their own from a reset email. Revocation refuses self-demotion and refuses to remove the last admin — a console nobody can get into is not recoverable from inside the console |
-| **Commission** | `GET`/`PATCH /admin/commission` | A **fraction**, not a percent: 0.15 is 15%, capped at 0.5. Applies at escrow release and freezes onto the escrow row, so settled jobs keep their figures. Defaults to 0 — nothing is withheld until someone deliberately sets it |
+| **Commission** | `GET`/`PATCH /admin/commission` | A **fraction**, not a percent: 0.15 is 15%, capped at 0.5. The rate is locked onto the escrow when a job is hired (backend 0067), so a later change never alters that job's payout. Defaults to 0 — nothing is withheld until someone deliberately sets it |
 | **Broadcast** | `POST /admin/notifications/broadcast` | One notification row per recipient (read state and push are both per-row), excluding admins, suspended and deleted accounts. Returns `{ sent, failed }` — a partly-delivered broadcast reports the shortfall rather than throwing |
-| **Recovery credit** | `POST /admin/wallet-transactions/recovery-credit` | Fungible once issued — spendable on a hire or withdrawable like any other peso, tagged `kind: 'recovery_credit'` for display only. `GET /admin/wallet-transactions?kind=recovery_credit` filters to them. Reasoning in `backend/BACKEND_SCHEMA.md` §28.1 |
+| **Recovery credit** (removed from the console 2026-10-17) | `POST /admin/wallet-transactions/recovery-credit` | Fungible once issued — spendable on a hire or withdrawable like any other peso, tagged `kind: 'recovery_credit'` for display only. `GET /admin/wallet-transactions?kind=recovery_credit` filters to them. Reasoning in `backend/BACKEND_SCHEMA.md` §28.1 |
 
-An "Issue Credit" button on the Transactions page's Wallet tab
+*Historical (removed 2026-10-17):* an "Issue Credit" button on the Transactions page's Wallet tab
 (`TransactionsPage.tsx`'s `WalletTab`) calls the recovery-credit endpoint
 above: a recipient search (there's no dedicated "search users" endpoint, so
 this filters the users already loaded app-wide), amount, title, and an

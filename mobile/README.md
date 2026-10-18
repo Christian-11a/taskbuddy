@@ -2,8 +2,9 @@
 
 ## Current state (October 2026)
 
-The backend these features need is deployed (migrations through 0064). Device
-checks of the newest flows remain open.
+The API for these features is deployed; migrations 0065–0067 (fee lock,
+complaints before completion) still need applying, and testers need a new EAS
+preview build. Device checks of the newest flows remain open.
 
 - **No wallet.** Hires are paid at a Xendit test-mode checkout (GCash, Maya,
   card, online banking). Payouts go to the provider's linked GCash/Maya/bank
@@ -11,6 +12,9 @@ checks of the newest flows remain open.
   payment method. The Wallet tab is now **Messages**.
 - **Payment releases at completion.** Confirming completion pays the provider
   at once and is final; there is no warranty hold and no early release.
+  Complaints can be raised only before completion.
+- **Fees up front.** The platform fee is locked at hire; providers see the fee
+  breakdown, an **Earnings** screen, and clients a **Payments** history.
 - **Payout account before proposing.** A provider must link a payout account
   before sending proposals (`ProposalModal` handles `payout_account_required`;
   `src/lib/providerSetup.ts` lists it as a setup step with address, bio and
