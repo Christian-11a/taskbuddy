@@ -1,6 +1,6 @@
 import React from 'react';
 import { TextInput } from 'react-native';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import SPCredentialsScreen, { credentialProblem, isValidExpiry } from '../SPCredentialsScreen';
 import { api } from '../../../../src/lib/api';
@@ -8,8 +8,9 @@ import { api } from '../../../../src/lib/api';
 jest.mock('../../../../src/lib/api', () => ({
   api: { myCredentials: jest.fn(), createCredential: jest.fn(), removeCredential: jest.fn(), uploadImage: jest.fn() },
 }));
+let mockProfile: unknown = { category_id: 1, service_categories: { name: 'Plumbing' }, approved_secondary_services: [] };
 jest.mock('../../../../src/context/AuthContext', () => ({
-  useAuth: () => ({ providerProfile: { category_id: 1, service_categories: { name: 'Plumbing' }, approved_secondary_services: [] } }),
+  useAuth: () => ({ providerProfile: mockProfile }),
 }));
 jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
@@ -108,5 +109,71 @@ describe('certification form UX', () => {
     fireEvent.press(await screen.findByLabelText('Resubmit Old NC'));
     expect(screen.getByLabelText('Certificate name').props.value).toBe('Old NC');
     expect(screen.getByLabelText('Certificate number (optional)').props.value).toBe('N-77');
+  });
+});
+
+describe('expiry notices', () => {
+  const dayFromNow = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const approved = (expires_on: string | null, status = 'approved') => ({
+    id: 'c1', title: 'Plumbing NC II', issuer: 'TESDA', status, expires_on, category_id: 1, credential_type: 'tesda_nc',
+    service_categories: { id: 1, name: 'Plumbing' },
+  });
+
+  it('warns 10 days before and Upload renewal keeps the form on that service', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([approved(dayFromNow(10))]);
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    expect(await screen.findByText('Your Plumbing certificate expires in 10 days. Upload the renewed one.')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Upload renewal' }));
+    expect(screen.getByLabelText('Add certificate photo')).toBeTruthy();
+  });
+
+  it('says expired and what it blocks once past the date', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([approved(dayFromNow(-2))]);
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    expect(
+      await screen.findByText('Your Plumbing certificate expired. Upload a new one to send proposals for Plumbing.'),
+    ).toBeTruthy();
+  });
+
+  it('shows nothing when the certificate has more than 30 days left', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([approved(dayFromNow(90))]);
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    await screen.findByText('Certified');
+    expect(screen.queryByTestId('expiry-notices')).toBeNull();
+  });
+});
+
+describe('two services', () => {
+  it('offers a chip per service, starts on the first without a valid certificate and shows its guidance', async () => {
+    mockProfile = {
+      category_id: 1, service_categories: { name: 'Plumbing' },
+      approved_secondary_services: [{ category_id: 2, service_categories: { name: 'Cleaning' } }],
+    };
+    (api.myCredentials as jest.Mock).mockResolvedValue([
+      { id: 'c1', title: 'Plumbing NC II', issuer: 'TESDA', status: 'approved', expires_on: null, category_id: 1, credential_type: 'tesda_nc', service_categories: { id: 1, name: 'Plumbing' } },
+    ]);
+    (api.uploadImage as jest.Mock).mockResolvedValue('p/c.jpg');
+    (api.createCredential as jest.Mock).mockResolvedValue({ id: 'c2' });
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+
+    await screen.findByText('Certified');
+    expect(screen.getByLabelText('Plumbing')).toBeTruthy();
+    await waitFor(() => expect(screen.getByLabelText('Cleaning').props.accessibilityState.selected).toBe(true));
+    expect(screen.getByText(/TESDA Housekeeping NC II/)).toBeTruthy();
+    expect(screen.queryByText('Service: Plumbing')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Plumbing'));
+    expect(screen.getByText(/TESDA Plumbing NC II\./)).toBeTruthy();
+
+    await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
+    fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    await act(async () => fireEvent.press(screen.getByText('Submit for review')));
+    expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ category_id: 1 }));
+    mockProfile = { category_id: 1, service_categories: { name: 'Plumbing' }, approved_secondary_services: [] };
   });
 });
