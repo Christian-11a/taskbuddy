@@ -23,7 +23,7 @@ export class ApplicationsService {
   async apply(user: Profile, jobId: string, dto: ApplyDto) {
     const { data: job } = await this.supabase.admin
       .from('jobs')
-      .select('id, title, status, client_id')
+      .select('id, title, status, client_id, category_id')
       .eq('id', jobId)
       .maybeSingle();
     if (!job) throw new NotFoundException('Job not found');
@@ -35,7 +35,7 @@ export class ApplicationsService {
 
     const { data: providerProfile } = await this.supabase.admin
       .from('provider_profiles')
-      .select('profile_id, is_verified')
+      .select('profile_id')
       .eq('profile_id', user.id)
       .maybeSingle();
     if (!providerProfile) {
@@ -46,10 +46,17 @@ export class ApplicationsService {
     // Verification is a gate, not a badge (BACKEND_SCHEMA.md §17): these are
     // strangers being let into people's homes. The `code` is what the app
     // branches on to offer a way to verify, rather than parsing the message.
-    if (!providerProfile.is_verified) {
+    const gate = await this.serviceGate(user.id, job.category_id);
+    if (gate === 'identity') {
       throw new ForbiddenException({
         message: 'Verify your identity before applying to jobs',
         code: 'verification_required',
+      });
+    }
+    if (gate === 'certificate') {
+      throw new ForbiddenException({
+        message: await this.certificateMessage(job.category_id),
+        code: 'certificate_required',
       });
     }
     // Payouts go straight to the linked account when a job is paid, so a
@@ -193,7 +200,7 @@ export class ApplicationsService {
     const { data } = await this.supabase.admin
       .from('job_applications')
       .select(
-        '*, jobs(id, title, status, urgency, address, budget, service_categories(name))',
+        '*, jobs(id, title, status, urgency, address, budget, category_id, service_categories(name))',
       )
       .eq('provider_id', user.id)
       .order('applied_at', { ascending: false });
@@ -297,7 +304,7 @@ export class ApplicationsService {
     id: string;
     status: string;
     provider_id: string;
-    jobs: { status: string };
+    jobs: { status: string; category_id?: number };
   }) {
     if (application.status !== 'pending') {
       throw new BadRequestException(
@@ -307,17 +314,32 @@ export class ApplicationsService {
     if (!['open', 'recommending'].includes(application.jobs.status)) {
       throw new BadRequestException('Job already has an assigned provider');
     }
-    const { data, error } = await this.supabase.admin
-      .from('provider_profiles')
-      .select('is_verified')
-      .eq('profile_id', application.provider_id)
-      .maybeSingle();
-    if (error) throw new BadRequestException(error.message);
-    if (!data?.is_verified) {
+    let categoryId = application.jobs.category_id;
+    if (categoryId == null) {
+      const { data: appJob, error } = await this.supabase.admin
+        .from('job_applications')
+        .select('jobs(category_id)')
+        .eq('id', application.id)
+        .maybeSingle();
+      if (error) throw new BadRequestException(error.message);
+      categoryId = (
+        appJob as unknown as { jobs: { category_id: number } | null } | null
+      )?.jobs?.category_id;
+    }
+    const gate = categoryId
+      ? await this.serviceGate(application.provider_id, categoryId)
+      : 'identity';
+    if (gate === 'identity') {
       throw new ConflictException({
         message:
           'This provider has not verified their identity and cannot be hired yet',
         code: 'provider_not_verified',
+      });
+    }
+    if (gate === 'certificate') {
+      throw new ConflictException({
+        message: `This provider has no valid certificate for ${await this.categoryName(categoryId!)} and cannot be hired for this job`,
+        code: 'provider_not_certified',
       });
     }
   }
@@ -410,7 +432,7 @@ export class ApplicationsService {
   async findWithJob(applicationId: string) {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
-      .select('*, jobs(id, title, status, client_id, budget)')
+      .select('*, jobs(id, title, status, client_id, budget, category_id)')
       .eq('id', applicationId)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
@@ -459,5 +481,46 @@ export class ApplicationsService {
       this.logger.error(
         `Notification not written: ${notificationError.message}`,
       );
+  }
+
+  /**
+   * Whether the provider may work this job's service right now. Checked live
+   * (provider_approved_categories, 0068): identity plus a valid certificate
+   * for THIS service, primary or approved secondary.
+   */
+  async serviceGate(
+    providerId: string,
+    categoryId: number,
+  ): Promise<'ok' | 'identity' | 'certificate'> {
+    const { data: cats, error } = await this.supabase.admin.rpc(
+      'provider_approved_categories',
+      { p_provider_id: providerId },
+    );
+    if (error) throw new BadRequestException(error.message);
+    if (
+      ((cats ?? []) as { category_id: number }[]).some(
+        (c) => c.category_id === categoryId,
+      )
+    )
+      return 'ok';
+    const { data: pp } = await this.supabase.admin
+      .from('provider_profiles')
+      .select('identity_verified')
+      .eq('profile_id', providerId)
+      .maybeSingle();
+    return pp?.identity_verified ? 'certificate' : 'identity';
+  }
+
+  private async categoryName(categoryId: number): Promise<string> {
+    const { data } = await this.supabase.admin
+      .from('service_categories')
+      .select('name')
+      .eq('id', categoryId)
+      .maybeSingle();
+    return (data as { name?: string } | null)?.name ?? 'this service';
+  }
+
+  private async certificateMessage(categoryId: number): Promise<string> {
+    return `You need an approved, unexpired certificate for ${await this.categoryName(categoryId)} before you can apply to this job`;
   }
 }

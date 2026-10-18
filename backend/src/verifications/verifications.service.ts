@@ -64,6 +64,26 @@ function isStripeError(e: unknown): boolean {
 const PROFILE_MISSING_FOR_APPROVAL =
   'This provider has not set up their service profile yet, so there is nothing to mark verified. Ask them to complete Edit Profile, then approve.';
 
+type CertificateState =
+  'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+
+type IdentityDecision = {
+  provider_id: string;
+  status: 'approved' | 'rejected';
+  identity_verified: boolean;
+  verified: boolean;
+  primary_certificate_valid: boolean;
+  has_pending_certificate: boolean;
+};
+
+/** Maps the TB4xx codes raised by the decide_* SQL functions to HTTP errors. */
+const rpcError = (error: { code?: string; message: string }) =>
+  error.code === 'TB404'
+    ? new NotFoundException(error.message)
+    : error.code === 'TB409'
+      ? new ConflictException(error.message)
+      : new BadRequestException(error.message);
+
 const nameParts = (name: string) =>
   name
     .normalize('NFD')
@@ -299,23 +319,24 @@ export class VerificationsService {
       );
       return;
     }
-    await this.review(verification.id, {
-      status: approved ? 'approved' : 'rejected',
-      reviewed_at: new Date().toISOString(),
-      // No admin made this call, and reviewed_by references profiles.
-      reviewed_by: null,
-      rejection_reason: approved ? null : (reason ?? null),
-    });
-
-    if (approved) await this.markVerified(verification.provider_id);
-
-    await this.notify(
-      verification.provider_id,
-      approved ? 'Verification approved' : 'Verification failed',
-      approved
-        ? 'Your ID has been verified. Your profile now shows a verified badge.'
-        : (reason ?? 'We could not verify your ID. You can try again.'),
-    );
+    try {
+      await this.decideIdentity(
+        verification.id,
+        approved,
+        null, // no admin made this call; reviewed_by references profiles
+        approved ? null : (reason ?? null),
+      );
+    } catch (e) {
+      if (e instanceof ConflictException) {
+        // An admin decided this submission first; theirs stands. Returning
+        // normally stops Stripe retrying.
+        this.logger.warn(
+          `Stripe session ${sessionId}: submission already decided (${e.message}); outcome ignored`,
+        );
+        return;
+      }
+      throw e;
+    }
   }
 
   /**
@@ -366,10 +387,297 @@ export class VerificationsService {
       .limit(1)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    return data;
+    const state = await this.verificationState(
+      user.id,
+      (data as VerificationRow | null)?.status,
+    );
+    // Existing row fields stay as they were; identity/certificate/verified are added.
+    return { ...((data as VerificationRow | null) ?? {}), ...state };
+  }
+
+  /**
+   * The two halves of verification (0068). `identity` follows the
+   * identity_verified flag, else the latest submission; `certificate` is for
+   * the primary service: approved (unexpired) > pending > expired > rejected.
+   * `services` lists the primary and every approved secondary service with the
+   * same certificate state for each; a service without a valid certificate
+   * cannot be worked.
+   */
+  async verificationState(
+    providerId: string,
+    latestStatus?: string,
+  ): Promise<{
+    identity: 'none' | 'pending' | 'approved' | 'rejected';
+    certificate: CertificateState;
+    verified: boolean;
+    services: {
+      category_id: number;
+      name: string | null;
+      primary: boolean;
+      certificate: CertificateState;
+    }[];
+  }> {
+    const { data: profile } = await this.supabase.admin
+      .from('provider_profiles')
+      .select(
+        'category_id, is_verified, identity_verified, service_categories(name)',
+      )
+      .eq('profile_id', providerId)
+      .maybeSingle();
+    const pp = profile as {
+      category_id: number;
+      is_verified: boolean | null;
+      identity_verified: boolean | null;
+      service_categories: { name: string } | null;
+    } | null;
+    let identity: 'none' | 'pending' | 'approved' | 'rejected' = 'none';
+    if (pp?.identity_verified) identity = 'approved';
+    else if (latestStatus === 'pending' || latestStatus === 'rejected')
+      identity = latestStatus;
+
+    const services: {
+      category_id: number;
+      name: string | null;
+      primary: boolean;
+      certificate: CertificateState;
+    }[] = [];
+    if (pp) {
+      const [{ data: creds }, { data: secondary }] = await Promise.all([
+        this.supabase.admin
+          .from('provider_credentials')
+          .select('category_id, status, expires_on')
+          .eq('provider_id', providerId),
+        this.supabase.admin
+          .from('provider_secondary_categories')
+          .select('category_id, service_categories(name)')
+          .eq('provider_id', providerId),
+      ]);
+      const today = new Date(Date.now() + 8 * 3600_000)
+        .toISOString()
+        .slice(0, 10);
+      const rows = (creds ?? []) as {
+        category_id: number;
+        status: string;
+        expires_on: string | null;
+      }[];
+      const stateFor = (categoryId: number): CertificateState => {
+        const mine = rows.filter((r) => r.category_id === categoryId);
+        if (
+          mine.some(
+            (r) =>
+              r.status === 'approved' &&
+              (!r.expires_on || r.expires_on >= today),
+          )
+        )
+          return 'approved';
+        if (mine.some((r) => r.status === 'pending')) return 'pending';
+        if (mine.some((r) => r.status === 'approved')) return 'expired';
+        if (mine.some((r) => r.status === 'rejected')) return 'rejected';
+        return 'none';
+      };
+      services.push({
+        category_id: pp.category_id,
+        name: pp.service_categories?.name ?? null,
+        primary: true,
+        certificate: stateFor(pp.category_id),
+      });
+      for (const sc of (secondary ?? []) as unknown as {
+        category_id: number;
+        service_categories: { name: string } | null;
+      }[]) {
+        if (sc.category_id === pp.category_id) continue;
+        services.push({
+          category_id: sc.category_id,
+          name: sc.service_categories?.name ?? null,
+          primary: false,
+          certificate: stateFor(sc.category_id),
+        });
+      }
+    }
+    return {
+      identity,
+      certificate: services[0]?.certificate ?? 'none',
+      verified: pp?.is_verified === true,
+      services,
+    };
   }
 
   // ── Admin side ────────────────────────────────────────────────────────────
+
+  /**
+   * The admin queue as one case per provider (D5c): the pending ID + selfie
+   * submission and the provider's pending certificate together. A pending
+   * certificate with no pending submission (Stripe already approved identity,
+   * a renewal, a second service) is a certificate-only case.
+   *
+   * case_type: "New provider" (identity under review, or the provider's first
+   * ever certificate), "Certificate renewal: <service>" (an approved
+   * certificate for that service already existed), "New service certificate:
+   * <service>" (identity done, certificates exist only for other services).
+   */
+  async listCases(query: { limit?: number; offset?: number }) {
+    const limit = query.limit ?? 20;
+    const offset = query.offset ?? 0;
+    const { data: vData, error: vError } = await this.supabase.admin
+      .from('provider_verifications')
+      .select('*, profiles!provider_verifications_provider_id_fkey(full_name)')
+      .eq('status', 'pending')
+      .order('submitted_at', { ascending: true });
+    if (vError) throw new BadRequestException(vError.message);
+    const { data: cData, error: cError } = await this.supabase.admin
+      .from('provider_credentials')
+      .select(
+        'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, created_at, service_categories(id, name), provider_profiles!provider_credentials_provider_id_fkey(category_id, identity_verified, profiles(full_name))',
+      )
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true });
+    if (cError) throw new BadRequestException(cError.message);
+
+    type CredRow = {
+      id: string;
+      provider_id: string;
+      category_id: number;
+      document_path: string;
+      created_at: string;
+      service_categories: { id: number; name: string } | null;
+      provider_profiles: {
+        category_id: number;
+        identity_verified: boolean | null;
+        profiles: { full_name: string } | null;
+      } | null;
+      [key: string]: unknown;
+    };
+    const verifications = (vData ?? []) as VerificationRow[];
+    const credentials = (cData ?? []) as unknown as CredRow[];
+
+    const providerIds = [
+      ...new Set([
+        ...verifications.map((v) => v.provider_id),
+        ...credentials.map((c) => c.provider_id),
+      ]),
+    ];
+    const { data: approvedData } = providerIds.length
+      ? await this.supabase.admin
+          .from('provider_credentials')
+          .select('provider_id, category_id')
+          .eq('status', 'approved')
+          .in('provider_id', providerIds)
+      : { data: [] };
+    const approved = (approvedData ?? []) as {
+      provider_id: string;
+      category_id: number;
+    }[];
+    const emails = await this.emailsFor(providerIds);
+
+    const usedCredentials = new Set<string>();
+    const cases: {
+      sortKey: string;
+      verification: VerificationRow | null;
+      credential: CredRow | null;
+    }[] = [];
+    for (const v of verifications) {
+      const own = credentials.filter((c) => c.provider_id === v.provider_id);
+      const credential =
+        own.find((c) => c.category_id === c.provider_profiles?.category_id) ??
+        own[0] ??
+        null;
+      if (credential) usedCredentials.add(credential.id);
+      cases.push({
+        sortKey: v.submitted_at,
+        verification: v,
+        credential,
+      });
+    }
+    for (const c of credentials) {
+      if (!usedCredentials.has(c.id))
+        cases.push({
+          sortKey: c.created_at,
+          verification: null,
+          credential: c,
+        });
+    }
+    cases.sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+
+    const page = cases.slice(offset, offset + limit);
+    const shaped = await Promise.all(
+      page.map(async ({ verification, credential }) => {
+        const providerId = (verification?.provider_id ??
+          credential?.provider_id) as string;
+        const service = credential?.service_categories?.name ?? null;
+        const history = approved.filter((a) => a.provider_id === providerId);
+        let caseType = 'New provider';
+        if (!verification && credential) {
+          if (history.some((a) => a.category_id === credential.category_id))
+            caseType = `Certificate renewal: ${service ?? 'service'}`;
+          else if (history.length > 0)
+            caseType = `New service certificate: ${service ?? 'service'}`;
+        }
+        const shapedVerification = verification
+          ? await this.shape(verification, emails, true)
+          : null;
+        let shapedCredential: Record<string, unknown> | null = null;
+        if (credential) {
+          const { document_path, provider_profiles, ...rest } = credential;
+          void provider_profiles;
+          shapedCredential = {
+            ...rest,
+            document_url: await this.uploads.signedDownloadUrl(
+              'provider-credentials',
+              document_path,
+              3600,
+            ),
+          };
+        }
+        return {
+          case_id: verification?.id ?? credential?.id,
+          case_type: caseType,
+          provider_id: providerId,
+          full_name:
+            verification?.profiles?.full_name ??
+            credential?.provider_profiles?.profiles?.full_name ??
+            null,
+          email: emails.get(providerId) ?? null,
+          identity: verification
+            ? 'pending'
+            : credential?.provider_profiles?.identity_verified
+              ? 'approved'
+              : 'none',
+          verification: shapedVerification,
+          credential: shapedCredential,
+        };
+      }),
+    );
+    return { cases: shaped, total: cases.length };
+  }
+
+  /**
+   * One decision for a whole case, applied in a single SQL transaction
+   * (admin_decide_verification_case, 0068).
+   */
+  async decideCase(
+    admin: Profile,
+    dto: {
+      verification_id?: string;
+      credential_id?: string;
+      decision: 'approve' | 'reject';
+      failed_parts?: string[];
+      note?: string;
+    },
+  ) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_decide_verification_case',
+      {
+        p_admin: admin.id,
+        p_verification_id: dto.verification_id ?? null,
+        p_credential_id: dto.credential_id ?? null,
+        p_decision: dto.decision,
+        p_failed: dto.failed_parts ?? [],
+        p_note: dto.note ?? null,
+      },
+    );
+    if (error) throw rpcError(error);
+    return data;
+  }
 
   /**
    * The admin queue. Rows are denormalised (provider name + email + document
@@ -417,61 +725,27 @@ export class VerificationsService {
   }
 
   async approve(admin: Profile, id: string) {
-    const row = await this.findPending(id);
-    // Checked before the review is written: once it says 'approved',
-    // findPending refuses every retry.
-    if (!(await this.hasProviderProfile(row.provider_id))) {
-      throw new ConflictException(PROFILE_MISSING_FOR_APPROVAL);
-    }
-
-    const updated = await this.review(id, {
-      status: 'approved',
-      reviewed_by: admin.id,
-      reviewed_at: new Date().toISOString(),
-      rejection_reason: null,
-    });
-
-    await this.markVerified(row.provider_id);
-
-    await this.adminActions.record(
-      admin,
-      'verification.approve',
-      'provider_verifications',
-      id,
-    );
-    await this.notify(
-      row.provider_id,
-      'Verification approved',
-      'Your ID has been verified. Your profile now shows a verified badge.',
-    );
-    return updated;
+    // One SQL transaction: pending-only status change, identity_verified, the
+    // is_verified refresh, the admin audit row and the provider's notice.
+    // A decided row is never overwritten (409).
+    await this.decideIdentity(id, true, admin.id, null);
+    return this.rawRow(id);
   }
 
   async reject(admin: Profile, id: string, dto: RejectVerificationDto) {
-    const row = await this.findPending(id);
+    // The "Verification needs changes" notice is always sent by the function.
+    await this.decideIdentity(id, false, admin.id, dto.reason ?? null);
+    return this.rawRow(id);
+  }
 
-    const updated = await this.review(id, {
-      status: 'rejected',
-      reviewed_by: admin.id,
-      reviewed_at: new Date().toISOString(),
-      rejection_reason: dto.reason ?? null,
-    });
-
-    await this.adminActions.record(
-      admin,
-      'verification.reject',
-      'provider_verifications',
-      id,
-      { reason: dto.reason ?? null },
-    );
-    await this.notify(
-      row.provider_id,
-      'Verification rejected',
-      dto.reason
-        ? `Your verification was rejected: ${dto.reason}`
-        : 'Your verification was rejected. You can submit new documents.',
-    );
-    return updated;
+  private async rawRow(id: string) {
+    const { data, error } = await this.supabase.admin
+      .from('provider_verifications')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) throw new BadRequestException(error.message);
+    return data;
   }
 
   /** Count of submissions awaiting review — drives the admin dashboard badge. */
@@ -505,47 +779,34 @@ export class VerificationsService {
     }
   }
 
-  /** Sets the flag and proves it landed — a 0-row update is a failure here. */
-  private async markVerified(providerId: string) {
-    const { data, error } = await this.supabase.admin
-      .from('provider_profiles')
-      .update({ is_verified: true })
-      .eq('profile_id', providerId)
-      .select('profile_id');
-    if (error) throw new BadRequestException(error.message);
-    if (!data || data.length === 0) {
-      throw new ConflictException(PROFILE_MISSING_FOR_APPROVAL);
-    }
+  /**
+   * Identity decision through decide_identity_verification (0068): status
+   * change (only while pending), identity_verified and the is_verified
+   * refresh in one transaction.
+   */
+  private async decideIdentity(
+    verificationId: string,
+    approve: boolean,
+    reviewedBy: string | null,
+    reason: string | null,
+  ): Promise<IdentityDecision> {
+    const { data, error } = await this.supabase.admin.rpc(
+      'decide_identity_verification',
+      {
+        p_verification_id: verificationId,
+        p_approve: approve,
+        p_reviewed_by: reviewedBy,
+        p_reason: reason,
+      },
+    );
+    if (error) throw rpcError(error);
+    return data as IdentityDecision;
   }
 
-  private async findPending(id: string): Promise<VerificationRow> {
-    const { data, error } = await this.supabase.admin
-      .from('provider_verifications')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw new BadRequestException(error.message);
-    if (!data) throw new NotFoundException('Verification not found');
-    const row = data as VerificationRow;
-    if (row.status !== 'pending') {
-      throw new BadRequestException(
-        `This verification was already ${row.status}`,
-      );
-    }
-    return row;
-  }
-
-  private async review(id: string, patch: Record<string, unknown>) {
-    const { data, error } = await this.supabase.admin
-      .from('provider_verifications')
-      .update(patch)
-      .eq('id', id)
-      .select('*')
-      .single();
-    if (error) throw new BadRequestException(error.message);
-    return data;
-  }
-
+  /**
+   * After identity passes: verified, or told what is still missing. Skips the
+   * upload nudge when a certificate is already waiting for an admin.
+   */
   /**
    * profiles has no email column — it lives on auth.users, exposed through the
    * service-role-only admin_user_overview view (migration 0005).

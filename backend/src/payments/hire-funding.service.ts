@@ -67,6 +67,7 @@ interface HireApplication {
     status: string;
     client_id: string;
     budget: number | string | null;
+    category_id: number;
   } | null;
 }
 
@@ -420,8 +421,10 @@ export class HireFundingService {
     ) {
       return refuse('the amount paid does not match the job budget');
     }
-    if (!(await this.providerIsVerified(provider_id))) {
-      return refuse('the provider is no longer verified');
+    if (!(await this.providerIsVerified(provider_id, job.category_id))) {
+      return refuse(
+        'the provider is no longer verified or certified for this service',
+      );
     }
 
     // ── 4. Hold ────────────────────────────────────────────────────────────
@@ -438,7 +441,22 @@ export class HireFundingService {
     } catch (err) {
       const now = await this.applications.statusOf(application_id);
       if (now === 'accepted') return;
-      if (now === 'pending' || now === 'unknown') throw err;
+      if (now === 'pending') {
+        // The hold is already placed. If the provider lost their qualification
+        // between the check and the hold, the assignment trigger refused the
+        // hire and a retry would be refused too, so give the money back now:
+        // release the hold (a DB settle, idempotent: a no-op unless still
+        // 'held') and refund the payment. Any other failure may be transient
+        // and Stripe's retry finishes the hire on the existing hold.
+        if (!(await this.providerIsVerified(provider_id, job.category_id))) {
+          await this.escrow.releaseHoldForFailedHire(job_id);
+          return refuse(
+            'the provider is no longer verified or certified for this service',
+          );
+        }
+        throw err;
+      }
+      if (now === 'unknown') throw err;
       const held = await this.escrow.findByJob(job_id);
       if (held?.status === 'held' && held.provider_id === provider_id) {
         await this.escrow.releaseHoldForFailedHire(job_id);
@@ -534,7 +552,7 @@ export class HireFundingService {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
       .select(
-        'id, job_id, provider_id, status, jobs(id, title, status, client_id, budget)',
+        'id, job_id, provider_id, status, jobs(id, title, status, client_id, budget, category_id)',
       )
       .eq('id', applicationId)
       .maybeSingle();
@@ -542,14 +560,14 @@ export class HireFundingService {
     return (data as HireApplication | null) ?? null;
   }
 
-  private async providerIsVerified(providerId: string): Promise<boolean> {
-    const { data, error } = await this.supabase.admin
-      .from('provider_profiles')
-      .select('is_verified')
-      .eq('profile_id', providerId)
-      .maybeSingle();
-    if (error) throw new Error(`Could not read provider: ${error.message}`);
-    return data?.is_verified === true;
+  /** Identity plus a valid certificate for this job's service, checked live. */
+  private async providerIsVerified(
+    providerId: string,
+    categoryId: number,
+  ): Promise<boolean> {
+    return (
+      (await this.applications.serviceGate(providerId, categoryId)) === 'ok'
+    );
   }
 
   /**

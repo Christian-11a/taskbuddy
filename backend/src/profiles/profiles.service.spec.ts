@@ -55,7 +55,7 @@ function createSupabaseMock(results: QueryResult[]) {
   };
   return {
     supabase: {
-      admin: { from, auth: { admin: authAdmin } },
+      admin: { from, rpc: jest.fn().mockResolvedValue({ data: true, error: null }), auth: { admin: authAdmin } },
     } as unknown as SupabaseService,
     calls,
     authAdmin,
@@ -482,7 +482,7 @@ describe('ProfilesService', () => {
       return { service, calls: mock.calls, upsertPayload };
     };
 
-    it('sets is_verified on a new row when the latest verification was approved', async () => {
+    it('sets identity_verified on a new row when the latest verification was approved', async () => {
       const { service, upsertPayload } = newService([
         { data: { id: 1 }, error: null }, // service_categories
         { data: null, error: null }, // no existing provider_profiles row
@@ -492,7 +492,7 @@ describe('ProfilesService', () => {
 
       await service.upsertProviderProfile(provider, dto);
 
-      expect(upsertPayload()).toMatchObject({ is_verified: true });
+      expect(upsertPayload()).toMatchObject({ identity_verified: true });
     });
 
     it('does not set is_verified when the latest verification is still pending', async () => {
@@ -505,7 +505,7 @@ describe('ProfilesService', () => {
 
       await service.upsertProviderProfile(provider, dto);
 
-      expect(upsertPayload()).not.toHaveProperty('is_verified');
+      expect(upsertPayload()).not.toHaveProperty('identity_verified');
     });
 
     it('does not set is_verified when there is no verification at all', async () => {
@@ -518,7 +518,7 @@ describe('ProfilesService', () => {
 
       await service.upsertProviderProfile(provider, dto);
 
-      expect(upsertPayload()).not.toHaveProperty('is_verified');
+      expect(upsertPayload()).not.toHaveProperty('identity_verified');
     });
 
     it('never touches is_verified, or looks up verifications, for an existing row', async () => {
@@ -530,7 +530,7 @@ describe('ProfilesService', () => {
 
       await service.upsertProviderProfile(provider, dto);
 
-      expect(upsertPayload()).not.toHaveProperty('is_verified');
+      expect(upsertPayload()).not.toHaveProperty('identity_verified');
       expect(
         calls.some(
           (c) => c.method === 'from' && c.args[0] === 'provider_verifications',

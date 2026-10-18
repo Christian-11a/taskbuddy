@@ -63,6 +63,7 @@ const job = {
   status: 'open',
   client_id: 'c1',
   budget: 1500,
+  category_id: 1,
 };
 const application = (overrides: Record<string, unknown> = {}) => ({
   id: 'app1',
@@ -100,6 +101,7 @@ function build(
     statusOf?: jest.Mock;
     findByJob?: jest.Mock;
     assertHireable?: jest.Mock;
+    serviceGate?: jest.Mock;
     xendit?: { configured: boolean; createCheckout?: jest.Mock };
   } = {},
 ) {
@@ -124,6 +126,7 @@ function build(
   const applicationsMock = {
     assertHireable:
       overrides.assertHireable ?? jest.fn(() => Promise.resolve()),
+    serviceGate: overrides.serviceGate ?? jest.fn(() => Promise.resolve('ok')),
     acceptFunded:
       overrides.acceptFunded ?? jest.fn(() => Promise.resolve({ id: 'app1' })),
     statusOf: overrides.statusOf ?? jest.fn(() => Promise.resolve('pending')),
@@ -377,10 +380,10 @@ describe('HireFundingService.completeFromIntent', () => {
   });
 
   it('refuses a provider who is no longer verified', async () => {
-    const { service, escrow } = build({
-      job_applications: [ok(application())],
-      provider_profiles: [ok({ is_verified: false })],
-    });
+    const { service, escrow } = build(
+      { job_applications: [ok(application())] },
+      { serviceGate: jest.fn(() => Promise.resolve('certificate')) },
+    );
 
     await service.completeFromIntent(intent());
 
@@ -500,6 +503,29 @@ describe('HireFundingService.completeFromIntent', () => {
     await service.completeFromIntent(intent());
 
     expect(escrow.releaseHoldForFailedHire).toHaveBeenCalledWith('j1');
+  });
+
+  it('releases the hold and refunds when qualification is lost between the check and the hold', async () => {
+    const { service, escrow } = build(
+      { job_applications: [ok(application())] },
+      {
+        // Passes the pre-hold check, fails after the hold was placed.
+        serviceGate: jest
+          .fn()
+          .mockResolvedValueOnce('ok')
+          .mockResolvedValue('certificate'),
+        acceptFunded: jest.fn(() =>
+          Promise.reject(new BadRequestException('needs a certificate')),
+        ),
+        statusOf: jest.fn(() => Promise.resolve('pending')),
+      },
+    );
+
+    await expect(service.completeFromIntent(intent())).resolves.toBeUndefined();
+
+    expect(escrow.hold).toHaveBeenCalled();
+    expect(escrow.releaseHoldForFailedHire).toHaveBeenCalledWith('j1');
+    expect(escrow.passThrough).toHaveBeenCalled();
   });
 
   it('falls back to a wallet-funded hold when the intent carries no charge', async () => {

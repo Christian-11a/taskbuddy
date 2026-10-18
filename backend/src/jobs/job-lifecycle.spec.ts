@@ -359,6 +359,16 @@ class FakeDb {
       return row;
     };
 
+    if (fn === 'provider_approved_categories') {
+      // Transcribed from 0068: primary category when identity + certificate hold.
+      const pp = this.rows('provider_profiles').find(
+        (r) => r.profile_id === args.p_provider_id,
+      );
+      return {
+        data: pp?.is_verified ? [{ category_id: pp.category_id ?? 1 }] : [],
+        error: null,
+      };
+    }
     if (fn === 'raise_job_dispute') {
       const escrow = this.rows('escrow_transactions').find(
         (e) => e.job_id === args.p_job_id,

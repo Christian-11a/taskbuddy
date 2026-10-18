@@ -149,6 +149,42 @@ describe('RecommendationsService', () => {
       });
     });
 
+    it('skips a provider whose qualification lapsed while the model was scoring', async () => {
+      const pool = [featureRow('p1'), featureRow('p2')];
+      const { supabase, calls, rpc } = createSupabaseMock({
+        recommendation_runs: [{ data: { id: 'run1' }, error: null }],
+        recommendation_candidates: [{ data: null, error: null }],
+        notifications: [{ data: null, error: null }],
+      });
+      // First read (before scoring): both eligible. Re-check (after): p2 lost
+      // their certificate.
+      rpc
+        .mockResolvedValueOnce({ data: pool, error: null })
+        .mockResolvedValueOnce({ data: [featureRow('p1')], error: null });
+      global.fetch = mockModelService({
+        model_version: 'rf-a-v1',
+        scores: [0.1, 0.9],
+      });
+      const service = new RecommendationsService(supabase, config);
+
+      const result = await service.scoreJob('j1', 'Fix sink', 'timeout');
+
+      expect(result).toEqual({ run_id: 'run1', pool_size: 2, notified: 1 });
+      const invites = writesTo(calls, 'notifications', 'insert')[0] as Record<
+        string,
+        unknown
+      >[];
+      expect(invites.map((n) => n.recipient_id)).toEqual(['p1']);
+      const candidates = writesTo(
+        calls,
+        'recommendation_candidates',
+        'insert',
+      )[0] as Record<string, unknown>[];
+      expect(
+        candidates.find((c) => c.provider_id === 'p2')?.notified_at,
+      ).toBeNull();
+    });
+
     it('freezes the feature vector onto each candidate row', async () => {
       // These snapshots are the retraining dataset (schema §13). A candidate
       // that stored only a score would be unusable once the provider's rating

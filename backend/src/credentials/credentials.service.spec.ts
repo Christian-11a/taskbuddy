@@ -46,7 +46,12 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       Promise.resolve(result).then(resolve);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const rpc = jest.fn().mockResolvedValue({ data: true, error: null });
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+    rpc,
+  };
 }
 
 const uploads = {
@@ -76,10 +81,11 @@ const manilaDay = (offsetDays = 0) =>
     .slice(0, 10);
 
 const build = (results: Record<string, QueryResult[]>) => {
-  const { supabase, calls } = createSupabaseMock(results);
+  const { supabase, calls, rpc } = createSupabaseMock(results);
   return {
     service: new CredentialsService(supabase, uploads, adminActions),
     calls,
+    rpc,
   };
 };
 
@@ -133,101 +139,87 @@ describe('CredentialsService', () => {
     expect(shown.map((c) => c.id)).toEqual(['ok']);
   });
 
-  it('approves a pending credential, audits it and tells the provider', async () => {
-    const { service, calls } = build({
+  const decided = (overrides: Record<string, unknown> = {}) => ({
+    provider_id: 'p1',
+    title: 'Plumbing NC II',
+    category_id: 1,
+    is_primary: true,
+    identity_verified: true,
+    verified: true,
+    primary_certificate_valid: true,
+    has_pending_primary_certificate: false,
+    ...overrides,
+  });
+  const titles = (
+    calls: { table: string; method: string; args: unknown[] }[],
+  ) =>
+    calls
+      .filter((c) => c.table === 'notifications' && c.method === 'insert')
+      .map((c) => (c.args[0] as { title: string }).title);
+
+  it('approves through decide_credential (save + refresh in one transaction), audits and tells the provider', async () => {
+    const { service, calls, rpc } = build({
       provider_credentials: [
         { data: row({ status: 'approved' }), error: null },
       ],
       notifications: [{ data: null, error: null }],
     });
+    rpc.mockResolvedValue({ data: decided(), error: null });
     const result = await service.approve(admin, 'c1');
     expect(result.status).toBe('approved');
-    expect(calls).toContainEqual(
-      expect.objectContaining({ method: 'eq', args: ['status', 'pending'] }),
-    );
-    expect(record).toHaveBeenCalledWith(
-      admin,
-      'credential.approve',
-      'provider_credentials',
-      'c1',
-    );
+    expect(rpc).toHaveBeenCalledWith('decide_credential', {
+      p_credential_id: 'c1',
+      p_approve: true,
+      p_reviewed_by: 'a1',
+      p_reason: null,
+    });
   });
 
-  it('refuses to approve a credential whose expiry date has passed', async () => {
+  it('surfaces an expired approval as a bad request and writes nothing else', async () => {
     record.mockClear();
-    const { service, calls } = build({
-      provider_credentials: [
-        // The gated UPDATE matches nothing ...
-        { data: null, error: null },
-        // ... and the follow-up read finds the pending row, already expired.
-        { data: row({ expires_on: '2000-01-01' }), error: null },
-      ],
+    const { service, rpc } = build({});
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'TB400',
+        message:
+          'This certificate expired on 2000-01-01. Ask the provider to upload a current one.',
+      },
     });
     await expect(service.approve(admin, 'c1')).rejects.toThrow(
       new BadRequestException(
-        'This credential expired on 2000-01-01. Ask the provider to upload a current one.',
+        'This certificate expired on 2000-01-01. Ask the provider to upload a current one.',
       ),
-    );
-    expect(calls).toContainEqual(
-      expect.objectContaining({
-        method: 'or',
-        args: [`expires_on.is.null,expires_on.gte.${manilaDay()}`],
-      }),
     );
     expect(record).not.toHaveBeenCalled();
   });
 
-  it('approves a credential that expires today', async () => {
-    const today = manilaDay();
-    const { service, calls } = build({
+  it('a rejection always says "needs changes", even when the provider stays verified', async () => {
+    const { service, calls, rpc } = build({
       provider_credentials: [
-        {
-          data: row({ status: 'approved', expires_on: today }),
-          error: null,
-        },
+        { data: row({ status: 'rejected' }), error: null },
       ],
       notifications: [{ data: null, error: null }],
     });
-    const result = await service.approve(admin, 'c1');
-    expect(result.status).toBe('approved');
-    expect(calls).toContainEqual(
-      expect.objectContaining({
-        method: 'or',
-        args: [`expires_on.is.null,expires_on.gte.${today}`],
-      }),
-    );
-  });
-
-  it('approves a credential with no expiry date', async () => {
-    const { service } = build({
-      provider_credentials: [
-        { data: row({ status: 'approved' }), error: null },
-      ],
-      notifications: [{ data: null, error: null }],
-    });
-    const result = await service.approve(admin, 'c1');
-    expect(result.status).toBe('approved');
-  });
-
-  it('still allows rejecting a credential that has expired', async () => {
-    const { service } = build({
-      provider_credentials: [
-        {
-          data: row({ status: 'rejected', expires_on: '2000-01-01' }),
-          error: null,
-        },
-      ],
-      notifications: [{ data: null, error: null }],
-    });
-    const result = await service.reject(admin, 'c1', {
-      reason: 'Blurry scan',
-    });
+    rpc.mockResolvedValue({ data: decided(), error: null });
+    const result = await service.reject(admin, 'c1', { reason: 'Blurry scan' });
     expect(result.status).toBe('rejected');
+    expect(rpc).toHaveBeenCalledWith('decide_credential', {
+      p_credential_id: 'c1',
+      p_approve: false,
+      p_reviewed_by: 'a1',
+      p_reason: 'Blurry scan',
+    });
   });
 
-  it('refuses a second decision on the same credential', async () => {
-    const { service } = build({
-      provider_credentials: [{ data: null, error: null }],
+  it('refuses a second decision on the same credential with a conflict', async () => {
+    const { service, rpc } = build({});
+    rpc.mockResolvedValue({
+      data: null,
+      error: {
+        code: 'TB409',
+        message: 'This certificate was already approved',
+      },
     });
     await expect(
       service.reject(admin, 'c1', { reason: 'Unreadable photo' }),

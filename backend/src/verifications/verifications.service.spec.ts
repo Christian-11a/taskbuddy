@@ -18,7 +18,10 @@ type QueryResult = {
 };
 
 /** Same chainable stand-in as admin.service.spec.ts — results consumed per `.from()`. */
-function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
+function createSupabaseMock(
+  resultsByTable: Record<string, QueryResult[]>,
+  rpcResults: Record<string, unknown> = {},
+) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
@@ -51,7 +54,17 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const rpc = jest.fn((name: string, args: unknown) => {
+    calls.push({ table: `rpc:${name}`, method: 'rpc', args: [args] });
+    const out = rpcResults[name] as { __error?: unknown } | undefined;
+    if (out && typeof out === 'object' && '__error' in out)
+      return Promise.resolve({ data: null, error: out.__error });
+    return Promise.resolve({ data: out ?? false, error: null });
+  });
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+  };
 }
 
 function createUploadsMock(): UploadsService {
@@ -249,82 +262,91 @@ describe('VerificationsService', () => {
     });
   });
 
+  const decision = (overrides: Record<string, unknown> = {}) => ({
+    provider_id: 'p1',
+    status: 'approved',
+    identity_verified: true,
+    verified: true,
+    primary_certificate_valid: true,
+    has_pending_certificate: false,
+    ...overrides,
+  });
+  const makeService = (
+    tables: Record<string, QueryResult[]>,
+    rpcResults: Record<string, unknown>,
+  ) => {
+    const { supabase, calls } = createSupabaseMock(tables, rpcResults);
+    const { mock: adminActions, record } = createAdminActionsMock();
+    const service = new VerificationsService(
+      supabase,
+      createUploadsMock(),
+      createStripeMock(),
+      adminActions,
+    );
+    return { service, calls, record };
+  };
+  const noteTitles = (
+    calls: { table: string; method: string; args: unknown[] }[],
+  ) =>
+    calls
+      .filter((c) => c.table === 'notifications' && c.method === 'insert')
+      .map((c) => (c.args[0] as { title: string }).title);
+  const decideCall = (
+    calls: { table: string; method: string; args: unknown[] }[],
+  ) => calls.find((c) => c.table === 'rpc:decide_identity_verification');
+
   describe('approve', () => {
-    it('marks the provider verified and notifies them', async () => {
-      const pending = {
-        id: 'v1',
-        provider_id: 'p1',
-        status: 'pending',
-        id_document_path: 'p1/id.jpg',
-        selfie_path: 'p1/selfie.jpg',
-      };
-      const { supabase, calls } = createSupabaseMock({
-        provider_verifications: [
-          { data: pending, error: null },
-          { data: { ...pending, status: 'approved' }, error: null },
-        ],
-        provider_profiles: [
-          HAS_PROFILE,
-          { data: [{ profile_id: 'p1' }], error: null },
-        ],
-        notifications: [{ data: null, error: null }],
-      });
-      const { mock: adminActions, record } = createAdminActionsMock();
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        adminActions,
+    it('decides in one SQL call, audits and notifies', async () => {
+      const { service, calls, record } = makeService(
+        {
+          provider_verifications: [
+            { data: { id: 'v1', status: 'approved' }, error: null },
+          ],
+          notifications: [{ data: null, error: null }],
+        },
+        { decide_identity_verification: decision() },
       );
 
       const result = await service.approve(admin, 'v1');
 
       expect(result).toMatchObject({ status: 'approved' });
-      const verifiedUpdate = calls.find(
-        (c) => c.table === 'provider_profiles' && c.method === 'update',
-      );
-      expect(verifiedUpdate?.args[0]).toEqual({ is_verified: true });
-      expect(
-        calls.some((c) => c.table === 'notifications' && c.method === 'insert'),
-      ).toBe(true);
-      expect(record).toHaveBeenCalledWith(
-        admin,
-        'verification.approve',
-        'provider_verifications',
-        'v1',
-      );
+      expect(decideCall(calls)?.args[0]).toEqual({
+        p_verification_id: 'v1',
+        p_approve: true,
+        p_reviewed_by: 'a1',
+        p_reason: null,
+      });
+      // No separate profile or status writes: the SQL function owns them.
+      expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
 
-    it('refuses a verification that was already reviewed', async () => {
-      const { supabase } = createSupabaseMock({
-        provider_verifications: [
-          {
-            data: { id: 'v1', provider_id: 'p1', status: 'approved' },
-            error: null,
+    it('409s on a verification that was already decided, without notifying', async () => {
+      const { service, calls, record } = makeService(
+        {},
+        {
+          decide_identity_verification: {
+            __error: {
+              code: 'TB409',
+              message: 'This verification was already approved',
+            },
           },
-        ],
-      });
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        createAdminActionsMock().mock,
+        },
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
-        BadRequestException,
+        ConflictException,
       );
+      expect(record).not.toHaveBeenCalled();
     });
 
     it('404s when the verification does not exist', async () => {
-      const { supabase } = createSupabaseMock({
-        provider_verifications: [{ data: null, error: null }],
-      });
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        createAdminActionsMock().mock,
+      const { service } = makeService(
+        {},
+        {
+          decide_identity_verification: {
+            __error: { code: 'TB404', message: 'Verification not found' },
+          },
+        },
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
@@ -332,50 +354,30 @@ describe('VerificationsService', () => {
       );
     });
 
-    it('refuses with 409, and leaves the review pending, when the provider has no provider_profiles row', async () => {
-      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
-      const { supabase, calls } = createSupabaseMock({
-        provider_verifications: [{ data: pending, error: null }],
-        provider_profiles: [NO_PROFILE],
-      });
-      const { mock: adminActions, record } = createAdminActionsMock();
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        adminActions,
+    it('409s, leaving the review pending, when the provider has no provider_profiles row', async () => {
+      const { service, calls, record } = makeService(
+        {},
+        {
+          decide_identity_verification: {
+            __error: {
+              code: 'TB409',
+              message: 'This provider has not set up their service profile yet',
+            },
+          },
+        },
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow(
         ConflictException,
       );
-      // The review is never marked approved, so the admin can approve it later.
-      expect(
-        calls.some(
-          (c) => c.table === 'provider_verifications' && c.method === 'update',
-        ),
-      ).toBe(false);
       expect(calls.some((c) => c.table === 'notifications')).toBe(false);
       expect(record).not.toHaveBeenCalled();
     });
 
-    it('surfaces a failed is_verified write instead of reporting success', async () => {
-      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
-      const { supabase } = createSupabaseMock({
-        provider_verifications: [
-          { data: pending, error: null },
-          { data: { ...pending, status: 'approved' }, error: null },
-        ],
-        provider_profiles: [
-          HAS_PROFILE,
-          { data: null, error: { message: 'boom' } },
-        ],
-      });
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        createAdminActionsMock().mock,
+    it('surfaces a failed decision instead of reporting success', async () => {
+      const { service } = makeService(
+        {},
+        { decide_identity_verification: { __error: { message: 'boom' } } },
       );
 
       await expect(service.approve(admin, 'v1')).rejects.toThrow('boom');
@@ -410,19 +412,18 @@ describe('VerificationsService', () => {
       expect(calls.some((c) => c.table === 'notifications')).toBe(false);
     });
 
-    it('approves and sets is_verified when the row exists', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        provider_verifications: [
-          { data: pendingIdentity, error: null },
-          { data: { ...pendingIdentity, status: 'approved' }, error: null },
-        ],
-        provider_profiles: [
-          HAS_PROFILE,
-          { data: [{ profile_id: 'p1' }], error: null },
-        ],
-        profiles: [{ data: { full_name: 'Maria Clara Santos' }, error: null }],
-        notifications: [{ data: null, error: null }],
-      });
+    it('approves through the SQL decision when the row exists', async () => {
+      const { supabase, calls } = createSupabaseMock(
+        {
+          provider_verifications: [{ data: pendingIdentity, error: null }],
+          provider_profiles: [HAS_PROFILE],
+          profiles: [
+            { data: { full_name: 'Maria Clara Santos' }, error: null },
+          ],
+          notifications: [{ data: null, error: null }],
+        },
+        { decide_identity_verification: decision() },
+      );
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -432,10 +433,41 @@ describe('VerificationsService', () => {
 
       await service.applyIdentityResult('vs_1', 'verified');
 
-      const verifiedUpdate = calls.find(
-        (c) => c.table === 'provider_profiles' && c.method === 'update',
+      expect(decideCall(calls)?.args[0]).toEqual({
+        p_verification_id: 'v1',
+        p_approve: true,
+        p_reviewed_by: null,
+        p_reason: null,
+      });
+      expect(calls.some((c) => c.method === 'update')).toBe(false);
+    });
+
+    it('ignores the outcome, without a retry, when an admin decided the submission first', async () => {
+      const { supabase, calls } = createSupabaseMock(
+        {
+          provider_verifications: [{ data: pendingIdentity, error: null }],
+          notifications: [{ data: null, error: null }],
+        },
+        {
+          decide_identity_verification: {
+            __error: {
+              code: 'TB409',
+              message: 'This verification was already rejected',
+            },
+          },
+        },
       );
-      expect(verifiedUpdate?.args[0]).toEqual({ is_verified: true });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+      jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
+
+      await expect(
+        service.applyIdentityResult('vs_1', 'rejected', 'Expired ID'),
+      ).resolves.toBeUndefined();
     });
 
     it('leaves a verified document pending when it names someone else', async () => {
@@ -456,14 +488,20 @@ describe('VerificationsService', () => {
       expect(calls.some((c) => c.method === 'update')).toBe(false);
     });
 
-    it('still records a rejection without needing the row', async () => {
-      const { supabase, calls } = createSupabaseMock({
-        provider_verifications: [
-          { data: pendingIdentity, error: null },
-          { data: { ...pendingIdentity, status: 'rejected' }, error: null },
-        ],
-        notifications: [{ data: null, error: null }],
-      });
+    it('records a rejection through the SQL decision and tells the provider', async () => {
+      const { supabase, calls } = createSupabaseMock(
+        {
+          provider_verifications: [{ data: pendingIdentity, error: null }],
+          notifications: [{ data: null, error: null }],
+        },
+        {
+          decide_identity_verification: decision({
+            status: 'rejected',
+            identity_verified: false,
+            verified: false,
+          }),
+        },
+      );
       const service = new VerificationsService(
         supabase,
         createUploadsMock(),
@@ -473,46 +511,120 @@ describe('VerificationsService', () => {
 
       await service.applyIdentityResult('vs_1', 'rejected', 'Expired ID');
 
-      expect(calls.some((c) => c.table === 'provider_profiles')).toBe(false);
+      expect(decideCall(calls)?.args[0]).toEqual({
+        p_verification_id: 'v1',
+        p_approve: false,
+        p_reviewed_by: null,
+        p_reason: 'Expired ID',
+      });
     });
   });
 
   describe('reject', () => {
-    it('stores the reason and leaves is_verified untouched', async () => {
-      const pending = { id: 'v1', provider_id: 'p1', status: 'pending' };
-      const { supabase, calls } = createSupabaseMock({
-        provider_verifications: [
-          { data: pending, error: null },
-          { data: { ...pending, status: 'rejected' }, error: null },
-        ],
-        notifications: [{ data: null, error: null }],
-      });
-      const { mock: adminActions, record } = createAdminActionsMock();
-      const service = new VerificationsService(
-        supabase,
-        createUploadsMock(),
-        createStripeMock(),
-        adminActions,
+    it('stores the reason via the SQL decision and always sends "needs changes"', async () => {
+      const { service, calls, record } = makeService(
+        {
+          provider_verifications: [
+            { data: { id: 'v1', status: 'rejected' }, error: null },
+          ],
+          notifications: [{ data: null, error: null }],
+        },
+        {
+          // Still verified through a certificate: the message is sent anyway.
+          decide_identity_verification: decision({
+            status: 'rejected',
+            verified: true,
+          }),
+        },
       );
 
       await service.reject(admin, 'v1', { reason: 'Blurry photo' });
 
-      const update = calls.find(
-        (c) => c.table === 'provider_verifications' && c.method === 'update',
-      );
-      expect(update?.args[0]).toMatchObject({
-        status: 'rejected',
-        rejection_reason: 'Blurry photo',
-        reviewed_by: 'a1',
+      expect(decideCall(calls)?.args[0]).toEqual({
+        p_verification_id: 'v1',
+        p_approve: false,
+        p_reviewed_by: 'a1',
+        p_reason: 'Blurry photo',
       });
-      expect(calls.some((c) => c.table === 'provider_profiles')).toBe(false);
-      expect(record).toHaveBeenCalledWith(
-        admin,
-        'verification.reject',
-        'provider_verifications',
-        'v1',
-        { reason: 'Blurry photo' },
+    });
+  });
+
+  describe('verificationState services', () => {
+    it('lists the primary and secondary services with their own certificate state', async () => {
+      const future = '2999-01-01';
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [
+          {
+            data: {
+              category_id: 1,
+              is_verified: true,
+              identity_verified: true,
+              service_categories: { name: 'Plumbing' },
+            },
+            error: null,
+          },
+        ],
+        provider_credentials: [
+          {
+            data: [
+              { category_id: 1, status: 'approved', expires_on: future },
+              { category_id: 3, status: 'approved', expires_on: '2001-01-01' },
+              { category_id: 4, status: 'pending', expires_on: null },
+            ],
+            error: null,
+          },
+        ],
+        provider_secondary_categories: [
+          {
+            data: [
+              { category_id: 2, service_categories: { name: 'Electrical' } },
+              { category_id: 3, service_categories: { name: 'Cleaning' } },
+              { category_id: 4, service_categories: { name: 'Painting' } },
+            ],
+            error: null,
+          },
+        ],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
       );
+
+      const state = await service.verificationState('p1');
+
+      expect(state).toMatchObject({
+        identity: 'approved',
+        certificate: 'approved',
+        verified: true,
+      });
+      expect(state.services).toEqual([
+        {
+          category_id: 1,
+          name: 'Plumbing',
+          primary: true,
+          certificate: 'approved',
+        },
+        {
+          category_id: 2,
+          name: 'Electrical',
+          primary: false,
+          certificate: 'none',
+        },
+        {
+          category_id: 3,
+          name: 'Cleaning',
+          primary: false,
+          certificate: 'expired',
+        },
+        {
+          category_id: 4,
+          name: 'Painting',
+          primary: false,
+          certificate: 'pending',
+        },
+      ]);
     });
   });
 

@@ -161,102 +161,56 @@ export class CredentialsService {
   }
 
   async approve(admin: Profile, id: string) {
-    const row = await this.review(
-      id,
-      {
-        status: 'approved',
-        rejection_reason: null,
-      },
-      admin,
-      true,
-    );
-    await this.adminActions.record(
-      admin,
-      'credential.approve',
-      'provider_credentials',
-      id,
-    );
-    await this.notify(
-      row.provider_id,
-      'Credential approved',
-      `Your ${String(row.title)} is verified. It now shows as a Certified badge on that service.`,
-    );
-    return this.shape(row, true);
+    // Status change, refresh, audit row and notice in one SQL transaction.
+    await this.decide(id, true, admin.id, null);
+    return this.shape(await this.fetchRow(id), true);
   }
 
   async reject(admin: Profile, id: string, dto: RejectCredentialDto) {
-    const row = await this.review(
-      id,
-      {
-        status: 'rejected',
-        rejection_reason: dto.reason.trim(),
-      },
-      admin,
-    );
-    await this.adminActions.record(
-      admin,
-      'credential.reject',
-      'provider_credentials',
-      id,
-      { reason: dto.reason.trim() },
-    );
-    await this.notify(
-      row.provider_id,
-      'Credential not accepted',
-      dto.reason.trim(),
-    );
-    return this.shape(row, true);
+    await this.decide(id, false, admin.id, dto.reason.trim());
+    return this.shape(await this.fetchRow(id), true);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /**
-   * Writes a decision on a pending row only, so a double click is a 409.
-   * With `refuseExpired`, the expiry check is part of the same UPDATE's WHERE
-   * clause, so it cannot race with a date change or a concurrent review. When
-   * the UPDATE matches nothing, one follow-up read tells "expired" apart from
-   * "not found / already reviewed".
-   */
-  private async review(
+  /** decide_credential (0068): save + refresh in one transaction. */
+  private async decide(
     id: string,
-    patch: Record<string, unknown>,
-    admin: Profile,
-    refuseExpired = false,
-  ): Promise<CredentialRow> {
-    let request = this.supabase.admin
-      .from('provider_credentials')
-      .update({
-        ...patch,
-        reviewed_by: admin.id,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .eq('status', 'pending');
-    if (refuseExpired)
-      request = request.or(`expires_on.is.null,expires_on.gte.${today()}`);
-    const { data, error } = await request.select(SELECT).maybeSingle();
-    if (error) throw new BadRequestException(error.message);
-    if (!data) {
-      if (refuseExpired) await this.assertPendingNotExpired(id);
-      throw new ConflictException('Credential not found or already reviewed');
+    approve: boolean,
+    reviewedBy: string,
+    reason: string | null,
+  ) {
+    const { data, error } = await this.supabase.admin.rpc('decide_credential', {
+      p_credential_id: id,
+      p_approve: approve,
+      p_reviewed_by: reviewedBy,
+      p_reason: reason,
+    });
+    if (error) {
+      if (error.code === 'TB404') throw new NotFoundException(error.message);
+      if (error.code === 'TB409') throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
     }
-    return data;
+    return data as {
+      provider_id: string;
+      title: string;
+      category_id: number;
+      is_primary: boolean;
+      identity_verified: boolean;
+      verified: boolean;
+      primary_certificate_valid: boolean;
+      has_pending_primary_certificate: boolean;
+    };
   }
 
-  /** Follow-up read after a refused approval: throws if the row is pending and expired. */
-  private async assertPendingNotExpired(id: string) {
+  private async fetchRow(id: string): Promise<CredentialRow> {
     const { data, error } = await this.supabase.admin
       .from('provider_credentials')
-      .select('id, status, expires_on')
+      .select(SELECT)
       .eq('id', id)
-      .eq('status', 'pending')
-      .maybeSingle();
+      .single();
     if (error) throw new BadRequestException(error.message);
-    const expiresOn = (data as { expires_on: string | null } | null)?.expires_on;
-    if (expiresOn && expiresOn < today())
-      throw new BadRequestException(
-        `This credential expired on ${expiresOn}. Ask the provider to upload a current one.`,
-      );
+    return data as unknown as CredentialRow;
   }
 
   private async shape(row: CredentialRow, withDocument: boolean) {
