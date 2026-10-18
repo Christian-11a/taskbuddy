@@ -340,7 +340,7 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
 
-    fireEvent.press(await screen.findByLabelText('Verify to apply'));
+    fireEvent.press(await screen.findByLabelText('Get verified'));
     expect(onNavigate).toHaveBeenCalledWith('Verification');
   });
 
@@ -640,13 +640,16 @@ describe('SPJobDetailScreen — payout account before proposing', () => {
     (api.myApplications as jest.Mock).mockResolvedValue([]);
   });
 
-  it('replaces Send proposal with a note and a button to the Payout account screen when none is linked', async () => {
+  it('says ONE STEP LEFT and offers a button to the Payout account screen in place of Send proposal when none is linked', async () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue(null);
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
 
     await waitFor(() => expect(screen.getByLabelText('Link payout account')).toBeTruthy());
-    expect(screen.getByText('Link a GCash, Maya or bank account to send proposals')).toBeTruthy();
+    expect(screen.getByText('ONE STEP LEFT')).toBeTruthy();
+    expect(screen.getByText('Link a payout account to send proposals')).toBeTruthy();
+    expect(screen.getByText('You are verified. Add a GCash, Maya or bank account so you can get paid, then send your proposal.')).toBeTruthy();
+    expect(screen.queryByTestId('payout-note')).toBeNull();
     expect(screen.queryByLabelText('Send proposal')).toBeNull();
 
     fireEvent.press(screen.getByLabelText('Link payout account'));
@@ -1048,8 +1051,9 @@ describe('SPJobDetailScreen — proposing per service', () => {
     (api.myVerification as jest.Mock).mockResolvedValue(me({ status: 'none', identity: 'none' }));
     const onNavigate = jest.fn();
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
-    expect(await screen.findByText('Verify your ID to send proposals.')).toBeTruthy();
-    fireEvent.press(screen.getByLabelText('Verify to apply'));
+    expect(await screen.findByText('Finish verification to apply')).toBeTruthy();
+    expect(screen.getByText('Verify your ID and upload your certificate to send proposals.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Get verified'));
     expect(onNavigate).toHaveBeenCalledWith('Verification');
   });
 

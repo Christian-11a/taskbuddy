@@ -237,6 +237,23 @@ describe('the five-step flow', () => {
     await waitFor(() => expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy());
     expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ category_id: 3 }));
     expect(screen.getByText('Certificate for Plumbing: sent for review')).toBeTruthy();
+    // The review shows the certificate that was sent, with its picked photo and a way to replace it.
+    expect(screen.getByText('Certificate · Plumbing')).toBeTruthy();
+    expect(screen.getByLabelText('Certificate · Plumbing photo')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Replace certificate' })).toBeTruthy();
+  });
+
+  it('Replace certificate goes back to the certificate step with the upload form', async () => {
+    await toCertificateStep(me({ identity: 'none', status: undefined, certificate: 'none', services: [PLUMBING('none')] }));
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
+    await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
+    fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
+    await waitFor(() => expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy());
+
+    fireEvent.press(screen.getByRole('button', { name: 'Replace certificate' }));
+    expect(screen.getByText('STEP 4 OF 5 · CERTIFICATE')).toBeTruthy();
+    expect(screen.getByLabelText('Add certificate photo')).toBeTruthy();
   });
 
   it('lets an already-pending certificate be skipped', async () => {
@@ -246,5 +263,18 @@ describe('the five-step flow', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy();
     expect(api.createCredential).not.toHaveBeenCalled();
+    // No photo from this session: the card names the certificate and its status, with nothing to replace.
+    expect(screen.getByText('Certificate · Plumbing')).toBeTruthy();
+    expect(screen.getByText('Sent for review')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Replace certificate' })).toBeNull();
+  });
+
+  it('an approved certificate shows on the review as Approved, without a photo or a Replace action', async () => {
+    await toCertificateStep(me({ identity: 'none', status: undefined, certificate: 'approved', services: [PLUMBING('approved')] }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy();
+    expect(screen.getByText('Certificate · Plumbing')).toBeTruthy();
+    expect(screen.getByText('Approved')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Replace certificate' })).toBeNull();
   });
 });

@@ -107,11 +107,13 @@ export interface CertificateUploadFormProps {
   guidance?: string;
   onSubmitted?: (created: Credential | undefined) => void;
   onBusyChange?: (busy: boolean) => void;
+  /** Called with the local URI of each photo the provider picks. A successful submit clears the form, not this. */
+  onPhotoPicked?: (uri: string) => void;
 }
 
 const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, CertificateUploadFormProps>(
   function CertificateUploadForm(
-    { scroll, categoryId = null, serviceName = null, lockService = false, guidance, onSubmitted, onBusyChange },
+    { scroll, categoryId = null, serviceName = null, lockService = false, guidance, onSubmitted, onBusyChange, onPhotoPicked },
     ref,
   ) {
     const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -170,6 +172,7 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
           return;
         }
         setUri(asset.uri);
+        onPhotoPicked?.(asset.uri);
         clearError('photo');
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Could not open your photos.');

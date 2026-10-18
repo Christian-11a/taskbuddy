@@ -33,6 +33,8 @@ export type Action =
   | { kind: 'sendProposal' } | { kind: 'withdrawProposal' }
   // Get verified: no `categoryId` = the ID check; with one = that service's certificate step.
   | { kind: 'getVerified'; categoryId?: number }
+  // The last gate before a proposal: a payout account (→ onNavigate('Payout Account')).
+  | { kind: 'linkPayout' }
   | { kind: 'findJobs' } | { kind: 'startJob' } | { kind: 'declineBooking' } | { kind: 'viewWallet' };
 
 export type JobView = {
@@ -69,6 +71,8 @@ export type ProviderJobViewInput = {
   proposeBlock?: ProposeBlock;
   /** The job's service, named in the certificate message. */
   serviceName?: string | null;
+  /** True when no payout account is linked (or a proposal was refused for one). Asked for only once the ID and certificate pass. */
+  needsPayout?: boolean;
   now: Date;
 };
 
@@ -101,13 +105,13 @@ const VIEW_CASE: Action = { kind: 'viewCase' };
 const REPORT: Action = { kind: 'reportProblem' };
 
 export function providerJobView({
-  job, me, myApplication, dispute, tasks, isVerified, proposeBlock, serviceName,
+  job, me, myApplication, dispute, tasks, isVerified, proposeBlock, serviceName, needsPayout,
 }: ProviderJobViewInput): JobView {
   const mine = !!me && job.assigned_provider_id === me.id;
   const block: ProposeBlock = proposeBlock !== undefined ? proposeBlock : isVerified ? null : 'identity';
   const view = mine
     ? hiredView(job, dispute, tasks)
-    : unhiredView(job, myApplication, block, serviceName);
+    : unhiredView(job, myApplication, block, serviceName, needsPayout === true);
   return mine ? withDisputeBanner(view, job) : view;
 }
 
@@ -117,6 +121,7 @@ function unhiredView(
   application: ProviderApplication | null | undefined,
   block: ProposeBlock,
   serviceName: string | null | undefined,
+  needsPayout: boolean,
 ): JobView {
   const open = OPEN_STATUSES.includes(job.status);
   if (application) {
@@ -136,7 +141,12 @@ function unhiredView(
         return closedTaken();
     }
   }
-  if (open) return block === null ? newJob(job) : block === 'certificate' ? certificateFirst(job, serviceName) : verifyFirst();
+  // The gates, in the order the provider has to clear them: ID, then this service's certificate, then a payout account.
+  if (open) {
+    if (block === 'identity') return verifyFirst();
+    if (block === 'certificate') return certificateFirst(job, serviceName);
+    return needsPayout ? payoutFirst() : newJob(job);
+  }
   if (job.status === 'expired') return expiredNotHired();
   if (job.status === 'cancelled') return cancelledNotHired();
   return closedTaken();
@@ -198,7 +208,12 @@ function newJob(job: Job): JobView {
 
 function verifyFirst(): JobView {
   return jobView(
-    card('attention', 'VERIFY FIRST', 'Get verified to apply', 'Verify your ID to send proposals.'),
+    card(
+      'attention',
+      'VERIFY FIRST',
+      'Finish verification to apply',
+      'Verify your ID and upload your certificate to send proposals.',
+    ),
     null,
     { kind: 'getVerified' },
   );
@@ -211,10 +226,26 @@ function certificateFirst(job: Job, serviceName: string | null | undefined): Job
       'attention',
       'CERTIFICATE NEEDED',
       'Certificate needed for this service',
-      `Upload your ${name ? `${name} ` : ''}certificate to send proposals for this job.`,
+      name
+        ? `Upload your ${name} certificate to send proposals for this job.`
+        : 'Upload the certificate for this service to send proposals for this job.',
     ),
     null,
     { kind: 'getVerified', categoryId: job.category_id },
+  );
+}
+
+/** Verified for this service, but no payout account: proposals are refused without one. */
+function payoutFirst(): JobView {
+  return jobView(
+    card(
+      'attention',
+      'ONE STEP LEFT',
+      'Link a payout account to send proposals',
+      'You are verified. Add a GCash, Maya or bank account so you can get paid, then send your proposal.',
+    ),
+    null,
+    { kind: 'linkPayout' },
   );
 }
 
