@@ -54,7 +54,7 @@ const HO_FAQS = [
 ];
 
 const SP_FAQS = [
-  { q: 'How do I get verified?', a: 'Go to Profile → Get Verified and submit a government ID photo plus a selfie. An admin reviews it, usually within a few days.' },
+  { q: 'How do I get verified?', a: 'Verification has two parts. First, your ID and a selfie. Second, a certificate for your service: a TESDA National Certificate, a PRC licence or a trade certificate. For example, Plumbing: TESDA Plumbing NC II. Cleaning: Housekeeping NC II. Handyman: Carpentry or Electrical Installation and Maintenance NC II. Manicure / Pedicure: Beauty Care NC II. An admin reviews both, and you are verified when both are approved. If your certificate has an expiry date you must renew it, and we remind you 30 days before. You can send proposals for any service where your ID and that service’s certificate are approved.' },
   { q: 'How do I submit a proposal?', a: 'Browse open jobs on the Feed tab and tap into one to submit a proposal. You need to be verified before proposals can be submitted.' },
   { q: 'How do I get paid?', a: 'Payouts are sent to the GCash, Maya or bank account you link under Profile → Payout account, as soon as the client confirms the job is done.' },
   { q: 'How much is the platform fee?', a: 'TaskBuddy keeps a platform fee from each job’s price. The job shows the exact fee and what you receive before you send a proposal, and the rate is locked when you are hired. The rest goes to your GCash, Maya or bank account when the client confirms the job is done.' },

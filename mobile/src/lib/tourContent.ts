@@ -75,6 +75,20 @@ export function certificateStateFrom(credentials: { status: string }[] | null | 
   return 'none';
 }
 
+/**
+ * The certificate state from `GET /verifications/me` when it has one (the
+ * primary service's certificate); otherwise the credentials-list answer.
+ * Rejected and expired count as "none".
+ */
+export function certificateStateFromMe(
+  me: { certificate?: string } | null | undefined,
+  credentials: { status: string }[] | null | undefined,
+): CertificateState {
+  if (me?.certificate === 'approved' || me?.certificate === 'pending') return me.certificate;
+  if (me?.certificate !== undefined) return 'none';
+  return certificateStateFrom(credentials);
+}
+
 /** The buttons on the last onboarding slide. The app decides where the primary one goes. */
 export function introButtons(role: WelcomeRole): { primary: string; secondary: string } {
   return {
@@ -154,7 +168,7 @@ export function finishCard({
   const steps: { label: string; done: boolean; unknown?: boolean; action: FinishAction; note?: string }[] = [
     { label: 'Add your address', done: hasAddress, action: 'setupProfile' },
     { label: 'Add a short bio', done: hasBio, action: 'setupProfile' },
-    { label: 'Get verified', done: verified, action: 'getVerified' },
+    { label: 'Verify your ID', done: verified, action: 'getVerified' },
     { label: 'Upload your certificate', done: certDone, action: 'uploadCertificate', note: certificate === 'pending' ? 'Waiting for review' : undefined },
     { label: 'Link a payout account', done: hasPayoutAccount === true, unknown: hasPayoutAccount === null, action: 'linkPayout' },
   ];

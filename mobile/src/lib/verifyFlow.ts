@@ -59,17 +59,21 @@ export function pickVerifyView(input: {
 export type IdPhase = 'choose' | 'tips' | 'check';
 
 export const WIZARD_LABELS = ['Your ID', 'ID photo', 'Selfie', 'Review'] as const;
+export const WIZARD_LABELS_WITH_CERTIFICATE = ['Your ID', 'ID photo', 'Selfie', 'Certificate', 'Review'] as const;
 
 /**
- * The four numbered steps the Figma flow shows. The state machine has three
- * steps; step 1 covers "Your ID" and "ID photo", so the ID phase picks which.
+ * The numbered steps the Figma flow shows. The state machine has three steps
+ * (four with the certificate); step 1 covers "Your ID" and "ID photo", so the
+ * ID phase picks which. With the certificate step the progress is five long.
  */
 export function wizardProgress(
   step: number,
   idPhase: IdPhase,
+  withCertificate = false,
 ): { step: number; total: number; label: string } {
-  const current = step <= 1 ? (idPhase === 'choose' ? 1 : 2) : step === 2 ? 3 : 4;
-  return { step: current, total: WIZARD_LABELS.length, label: WIZARD_LABELS[current - 1] };
+  const labels = withCertificate ? WIZARD_LABELS_WITH_CERTIFICATE : WIZARD_LABELS;
+  const current = step <= 1 ? (idPhase === 'choose' ? 1 : 2) : step === 2 ? 3 : step === 3 && withCertificate ? 4 : labels.length;
+  return { step: current, total: labels.length, label: labels[current - 1] };
 }
 
 /**

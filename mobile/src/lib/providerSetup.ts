@@ -1,10 +1,10 @@
-import type { Profile, ProviderProfile } from './api';
+import type { CertificateState, Profile, ProviderProfile } from './api';
 import { addressSaved } from './verifyFlow';
 
 /** Where the provider's identity check stands, as the Feed reads `api.myVerification`. */
 export type VerifyState = 'none' | 'pending' | 'rejected';
 
-export type SetupStepId = 'address' | 'bio' | 'verify' | 'payout';
+export type SetupStepId = 'address' | 'bio' | 'verify' | 'certificate' | 'payout';
 /** `done` when finished; `next` for the first unfinished step; `locked` for the rest. */
 export type SetupStepState = 'done' | 'next' | 'locked';
 
@@ -29,7 +29,7 @@ const VERIFY_SUBTITLE: Record<VerifyState, string> = {
 };
 
 const VERIFY_ACTION: Record<VerifyState, string> = {
-  none: 'Get verified',
+  none: 'Verify your ID',
   pending: 'View status',
   rejected: 'Try again',
 };
@@ -38,8 +38,33 @@ function trimmed(value: string | null | undefined): string {
   return (value ?? '').trim();
 }
 
+const CERT_SUBTITLE: Record<CertificateState | 'unknown', string> = {
+  none: 'TESDA, PRC or trade certificate for your service',
+  pending: 'Under review',
+  approved: 'Approved',
+  rejected: 'Not accepted · upload a new certificate',
+  expired: 'Expired · upload a renewed certificate',
+  unknown: 'TESDA, PRC or trade certificate for your service',
+};
+
+const CERT_ACTION: Record<CertificateState | 'unknown', string> = {
+  none: 'Upload your certificate',
+  pending: 'View status',
+  approved: 'View certificate',
+  rejected: 'Upload again',
+  expired: 'Renew certificate',
+  unknown: 'Upload your certificate',
+};
+
+export interface SetupExtras {
+  /** The primary service's certificate (`me.certificate`, or derived from `myCredentials()`). Missing counts as not done. */
+  certificate?: CertificateState | 'unknown';
+  /** True when the ID check is approved (`me.identity === 'approved'`). Overrides `is_verified` for the ID step. */
+  identityApproved?: boolean;
+}
+
 /**
- * The steps a new provider finishes, in order: address, bio, verification,
+ * The steps a new provider finishes, in order: address, bio, ID, certificate,
  * then a payout account (proposals need one). A step is done when its data is
  * saved. `payoutLinked` is true once `GET /payouts/account` returns an account.
  */
@@ -48,11 +73,13 @@ export function providerSetupSteps(
   providerProfile: ProviderFields,
   verifyState: VerifyState,
   payoutLinked: boolean | null = null,
+  extras: SetupExtras = {},
 ): SetupStep[] {
   const address = trimmed(profile?.address);
   const city = trimmed(profile?.city);
   const bio = trimmed(providerProfile?.bio);
-  const verified = providerProfile?.is_verified === true;
+  const verified = extras.identityApproved ?? providerProfile?.is_verified === true;
+  const certificate = extras.certificate ?? 'none';
   const addressDone = addressSaved(profile);
 
   const steps: Omit<SetupStep, 'state'>[] = [
@@ -72,10 +99,17 @@ export function providerSetupSteps(
     },
     {
       id: 'verify',
-      title: 'Get verified',
+      title: 'Verify your ID',
       done: verified,
-      subtitle: verified ? 'Verified' : VERIFY_SUBTITLE[verifyState],
+      subtitle: verified ? 'ID approved' : VERIFY_SUBTITLE[verifyState],
       actionLabel: VERIFY_ACTION[verifyState],
+    },
+    {
+      id: 'certificate',
+      title: 'Upload your certificate',
+      done: certificate === 'approved',
+      subtitle: CERT_SUBTITLE[certificate],
+      actionLabel: CERT_ACTION[certificate],
     },
     {
       id: 'payout',
