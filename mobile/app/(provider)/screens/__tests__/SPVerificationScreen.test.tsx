@@ -105,6 +105,7 @@ describe('SPVerificationScreen — before you start', () => {
       screen.getByText('Pick your service, add your address and a short bio in Edit Profile.'),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Start' })).toBeDisabled();
+    expect(screen.getByText('Finish your profile to continue')).toBeTruthy();
     expect(screen.getByLabelText('Address added: done')).toBeTruthy();
     expect(screen.getByLabelText('Service picked: not done yet')).toBeTruthy();
     expect(screen.getByLabelText('Bio added: not done yet')).toBeTruthy();
@@ -207,8 +208,10 @@ describe('SPVerificationScreen — choose your ID', () => {
     await startWizard();
 
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
+    expect(screen.getByText('Choose an ID to continue')).toBeTruthy();
     fireEvent.press(screen.getByLabelText('UMID, Photo of the front'));
     expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled();
+    expect(screen.queryByText('Choose an ID to continue')).toBeNull();
   });
 
   it('moves on to the ID photo step, and the header goes back to the ID choice', async () => {
@@ -431,8 +434,10 @@ describe('SPVerificationScreen — review and send', () => {
     await toReview();
 
     expect(screen.getByRole('button', { name: CONTINUE_LABEL })).toBeDisabled();
+    expect(screen.getByText('Tick the box above to continue')).toBeTruthy();
     fireEvent.press(screen.getByRole('checkbox', { name: CONSENT }));
     expect(screen.getByRole('button', { name: CONTINUE_LABEL })).not.toBeDisabled();
+    expect(screen.queryByText('Tick the box above to continue')).toBeNull();
   });
 
   it('starts the same uploads and identity session as before, with the chosen ID type', async () => {

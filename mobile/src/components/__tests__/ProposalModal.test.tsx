@@ -40,7 +40,7 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     expect(screen.getByText('When you can come')).toBeTruthy();
     expect(screen.getByText("What's included (tools, parts)")).toBeTruthy();
     expect(screen.getByText("Similar jobs you've done")).toBeTruthy();
-    expect(screen.getByText("The client compares offers and hires one provider. You'll be notified.")).toBeTruthy();
+    expect(screen.getByText("The client compares proposals and hires one provider. You'll be notified.")).toBeTruthy();
   });
 
   it('leaves out the job line when no job title is known', () => {
@@ -62,13 +62,14 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     expect(screen.queryByText(/at least 20/)).toBeNull();
   });
 
-  it('keeps Send proposal disabled until the message has 20 characters', () => {
+  it('keeps Send proposal tappable but only sends once the message has 20 characters', () => {
     const { onSubmit } = renderModal();
 
     fireEvent.changeText(message(), 'a'.repeat(19));
-    expect(send().props.accessibilityState?.disabled).toBe(true);
+    expect(send().props.accessibilityState?.disabled).toBe(false);
     fireEvent.press(send());
     expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Add a few more words (at least 20 characters)')).toBeTruthy();
 
     fireEvent.changeText(message(), 'a'.repeat(20));
     expect(send().props.accessibilityState?.disabled).toBe(false);
@@ -116,7 +117,6 @@ describe('ProposalModal — the message is checked once the field is left', () =
     renderOpen();
     fireEvent.changeText(message(), '        ');
 
-    expect(send().props.accessibilityState?.disabled).toBe(true);
     expect(screen.queryByText('Add your message')).toBeNull();
     fireEvent(message(), 'blur');
     expect(screen.getByText('Add your message')).toBeTruthy();
@@ -155,6 +155,7 @@ describe('ProposalModal — the platform fee breakdown (M15)', () => {
     expect(screen.getByText('Platform fee (15%)')).toBeTruthy();
     expect(screen.getByText('−₱75.00')).toBeTruthy();
     expect(screen.getByText('₱425.00')).toBeTruthy();
+    expect(screen.getByText('You receive ₱425.00 when the client confirms the job is done')).toBeTruthy();
   });
 
   it('hides the breakdown when the job has no fee', () => {
@@ -163,5 +164,16 @@ describe('ProposalModal — the platform fee breakdown (M15)', () => {
     expect(screen.queryByTestId('proposal-fee')).toBeNull();
     expect(screen.queryByText(/Platform fee/)).toBeNull();
     expect(screen.queryByText(/You receive/)).toBeNull();
+  });
+});
+
+describe('ProposalModal — payout account missing', () => {
+  it('hides Send and offers only Link payout account', () => {
+    const onLinkPayout = jest.fn();
+    render(<ProposalModal visible payoutRequired onLinkPayout={onLinkPayout} onSubmit={jest.fn()} onCancel={jest.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'Send proposal' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Link payout account' }));
+    expect(onLinkPayout).toHaveBeenCalledTimes(1);
   });
 });

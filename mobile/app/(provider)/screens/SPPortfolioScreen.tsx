@@ -15,7 +15,7 @@ import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import TextField from '../../../src/components/ui/TextField';
 import * as ImagePicker from 'expo-image-picker';
-import { ArrowLeft, Check, ImagePlus } from 'lucide-react-native';
+import { ArrowLeft, Check, CircleAlert, ImagePlus } from 'lucide-react-native';
 import { api, type PortfolioEntry, type ProviderProfile } from '../../../src/lib/api';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -25,6 +25,8 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import PortfolioGallery from '../../../src/components/PortfolioGallery';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { cleanText, textLength, textUnits } from '../../../src/lib/textRules';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
+import { EXAMPLES_BELOW, portfolioExamples } from '../../../src/lib/portfolioExamples';
 
 /** Most photos one portfolio holds: the `limit_provider_portfolio` trigger (migration 0044). */
 export const PORTFOLIO_LIMIT = 20;
@@ -91,6 +93,18 @@ export function publishProblem(input: { caption: string; hasPhoto: boolean; edit
   return null;
 }
 
+export type PortfolioField = 'photo' | 'caption';
+const FIELD_ORDER: readonly PortfolioField[] = ['photo', 'caption'];
+
+/** Per-field messages for a publish, shown under each field. */
+export function publishErrors(input: { caption: string; hasPhoto: boolean; editing: boolean }): Partial<Record<PortfolioField, string>> {
+  const errors: Partial<Record<PortfolioField, string>> = {};
+  if (!input.editing && !input.hasPhoto) errors.photo = 'Choose a photo to publish.';
+  if (textLength(input.caption) === 0) errors.caption = 'Add a caption to publish this photo.';
+  else if (textUnits(input.caption) > CAPTION_MAX) errors.caption = `Shorten the caption to ${CAPTION_MAX} characters or fewer.`;
+  return errors;
+}
+
 export type PublishStage = 'uploading' | 'saving';
 export type SegmentState = 'done' | 'active' | 'todo';
 
@@ -121,6 +135,10 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
   const [stage, setStage] = useState<PublishStage | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<PortfolioField, string>>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [published, setPublished] = useState(false);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
   const reset = () => {
     setUri(null);
     setCaption('');
@@ -145,15 +163,19 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
           return;
         }
         setUri(asset.uri);
+        setFieldErrors((previous) => ({ ...previous, photo: undefined }));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not open your photos.');
     }
   };
   const save = async () => {
-    const problem = publishProblem({ caption, hasPhoto: !!uri, editing: !!editing });
-    if (problem) {
-      setError(problem);
+    setPublished(false);
+    const errors = publishErrors({ caption, hasPhoto: !!uri, editing: !!editing });
+    setSubmitted(true);
+    setFieldErrors(errors);
+    if (errors.photo || errors.caption) {
+      scrollToFirstError(errors);
       return;
     }
     // A new photo needs the loaded list to know which position puts it last.
@@ -179,6 +201,9 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         await api.createPortfolio({ ...details, image_path });
       }
       reset();
+      setSubmitted(false);
+      setFieldErrors({});
+      setPublished(true);
       portfolio.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save this photo.');
@@ -223,10 +248,12 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
         <Text style={styles.headerTitle} accessibilityRole="header">My Portfolio</Text>
       </View>
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
+        {portfolio.loading && !!portfolio.data && <RefreshBar />}
         <Text style={styles.intro}>
           {`Up to ${PORTFOLIO_LIMIT} photos, ${PHOTO_MAX_BYTES / (1024 * 1024)} MB each (JPEG, PNG or WebP). Signed-in clients can see them.`}
         </Text>
@@ -240,6 +267,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
 
         {showForm && (
           <>
+            <View onLayout={fieldLayout('photo')} style={styles.fieldBlock}>
             {!editing && !uri && (
               <Tap
                 disabled={busy}
@@ -272,11 +300,22 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
                 <Text style={styles.link}>Choose portfolio photo</Text>
               </Tap>
             )}
+            {!!fieldErrors.photo && (
+              <View style={styles.errorRow}>
+                <CircleAlert size={14} color={Colors.dangerText} />
+                <Text accessibilityRole="alert" style={styles.errorText}>{fieldErrors.photo}</Text>
+              </View>
+            )}
+            </View>
 
+            <View onLayout={fieldLayout('caption')}>
             <TextField
+              ref={inputRef('caption')}
+              error={fieldErrors.caption}
+              submitted={submitted}
               label="Caption"
               value={caption}
-              onChangeText={setCaption}
+              onChangeText={(text) => { setCaption(text); if (fieldErrors.caption) setFieldErrors((previous) => ({ ...previous, caption: undefined })); }}
               helper="Shown under the photo"
               multiline
               maxLength={CAPTION_MAX}
@@ -284,6 +323,7 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
               editable={!busy}
               keyboardAppearance={appearance}
             />
+            </View>
 
             {/* One service is said in words; several are picked from, and only the provider's own are offered. */}
             {services.length === 1 && <Text style={styles.label}>{`Service: ${services[0].name}`}</Text>}
@@ -330,9 +370,31 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             {error}
           </Text>
         )}
+        {published && (
+          <View style={styles.publishedRow} testID="published-confirmation">
+            <Check size={16} color={Colors.primary} />
+            <Text accessibilityLiveRegion="polite" style={styles.publishedText}>Published</Text>
+          </View>
+        )}
+        {portfolio.data !== null && portfolio.data.length < EXAMPLES_BELOW && (
+          <View style={styles.examples} testID="portfolio-examples">
+            <Text style={styles.label} accessibilityRole="header">Ideas for your first photos</Text>
+            {portfolioExamples(services).map((example) => {
+              const Icon = example.icon;
+              return (
+                <View key={example.key} style={styles.exampleCard} testID="portfolio-example">
+                  <View style={styles.exampleIcon}><Icon size={22} color={Colors.link} /></View>
+                  <View style={styles.exampleText}>
+                    <Text style={styles.exampleBadge}>Example</Text>
+                    <Text style={styles.tipText}>{example.tip}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
         {/* Skeletons stand in only for a portfolio not loaded yet. A refresh keeps the gallery under a bar, and a failed one keeps it under the error. */}
         {portfolio.loading && !portfolio.data && <ContentSkeleton variant="list" />}
-        {portfolio.loading && !!portfolio.data && <RefreshBar />}
         {!!portfolio.error && (
           <LoadErrorCard title="Couldn't load your portfolio" message={portfolio.error} onRetry={portfolio.reload} />
         )}
@@ -342,6 +404,10 @@ export default function SPPortfolioScreen({ onBack }: { onBack: () => void }) {
             busy={busy}
             emptyBody="Add a photo of finished work so clients can see what you do."
             onEdit={(entry) => {
+              setPublished(false);
+              setFieldErrors({});
+              setSubmitted(false);
+              scrollRef.current?.scrollTo({ y: 0, animated: true });
               setEditing(entry);
               setUri(null);
               setCaption(entry.caption);
@@ -451,6 +517,21 @@ function createThemedStyles(theme: ThemePalette) {
     segmentDone: { backgroundColor: Colors.primary },
     segmentActive: { backgroundColor: Colors.link },
 
+    fieldBlock: { gap: 8 },
+    errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    publishedRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    publishedText: { color: Colors.primary, fontSize: 14, fontWeight: '700', lineHeight: 20, fontFamily: 'Inter' },
+    examples: { gap: 10 },
+    exampleCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16,
+      borderWidth: 1, borderStyle: 'dashed', borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+    exampleIcon: {
+      width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.primaryTonal,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    exampleText: { flex: 1, gap: 2 },
+    exampleBadge: { color: V6Colors.ink500, fontSize: 11, fontWeight: '800', letterSpacing: 0.6, textTransform: 'uppercase', fontFamily: 'Inter' },
     errorText: { color: Colors.dangerText, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, styles };

@@ -31,7 +31,6 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   ScrollView,
   StyleSheet,
@@ -54,6 +53,7 @@ import IdExamples from '../../../src/components/verify/IdExamples';
 import PhotoCard from '../../../src/components/verify/PhotoCard';
 import SendingChecklist from '../../../src/components/verify/SendingChecklist';
 import PendingTimeline from '../../../src/components/verify/PendingTimeline';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
@@ -120,6 +120,9 @@ const HOW_TO_FIX = [
   'Make sure your name and photo are sharp',
   'Take the selfie without glasses, a hat or a face mask',
 ];
+
+const PROFILE_REASON = 'Finish your profile to continue';
+const CONSENT_REASON = 'Tick the box above to continue';
 
 /** The notice's title, worded for the profile steps still missing. */
 function profileNoticeTitleFor(missing: readonly MissingProfileStep[]): string {
@@ -197,22 +200,26 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const {
     data: verification,
     loading,
+    refreshing,
     error: verificationError,
     reload,
-  } = useAsyncData(useCallback(() => api.myVerification(), []));
+  } = useAsyncData(useCallback(() => api.myVerification(), []), [], 'verification-me');
 
   // After a submission the old status stays loaded until the reload has run.
   // Keep the loader up until then, so that old status never shows again.
   const sawLoading = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const consentY = useRef(0);
   useEffect(() => {
     if (!awaitingReload) return;
-    if (loading) {
+    // With a cached status the reload runs as a refresh, not a first load: both count.
+    if (loading || refreshing) {
       sawLoading.current = true;
     } else if (sawLoading.current) {
       sawLoading.current = false;
       setAwaitingReload(false);
     }
-  }, [awaitingReload, loading]);
+  }, [awaitingReload, loading, refreshing]);
 
   // Any timer still running when the screen goes away must not call setState.
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -409,6 +416,16 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   /** A passport's photo is of its photo page, not its front. */
   const idSideName = documentType === 'passport' ? 'Photo page' : 'Front';
 
+  /** Why the bottom button is off, said in words above it; null when it is live. */
+  const disabledReason: string | null =
+    view === 'intro'
+      ? (profileIncomplete ? PROFILE_REASON : null)
+      : view === 'wizard' && onChoosingId
+        ? (profileIncomplete ? PROFILE_REASON : !documentType ? 'Choose an ID to continue' : null)
+        : view === 'wizard' && step === 3
+          ? (!consented ? CONSENT_REASON : profileIncomplete ? PROFILE_REASON : null)
+          : null;
+
   const headerTitle = view === 'pending' || view === 'rejected' ? 'Verification' : 'Get verified';
 
   return (
@@ -431,8 +448,8 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
       {/* Progress: only while the wizard is on screen. */}
       {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase)} />}
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {view === 'loading' && <ActivityIndicator color={V6Colors.link} style={styles.loader} />}
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {view === 'loading' && <ContentSkeleton variant="detail" />}
         {/* Not knowing the status is not a new application: say so, and offer no start. */}
         {view === 'error' && (
           <LoadErrorCard title="Couldn't check your verification" message={verificationError} onRetry={reload} />
@@ -627,11 +644,13 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                     />
                   )}
                 </View>
-                <CheckRow
-                  label={CONSENT_TEXT}
-                  checked={consented}
-                  onToggle={() => setConsented((value) => !value)}
-                />
+                <View onLayout={(event) => { consentY.current = event.nativeEvent.layout.y; }}>
+                  <CheckRow
+                    label={CONSENT_TEXT}
+                    checked={consented}
+                    onToggle={() => setConsented((value) => !value)}
+                  />
+                </View>
                 <CalmNote
                   icon={Lock}
                   text="Next, Stripe opens a secure page and asks you to scan your ID and face once more to confirm it's you. Only TaskBuddy admins can see the photos you took here."
@@ -642,8 +661,6 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               </>
             )}
 
-            {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
-
             {isRejected && step === 1 && (
               <Text style={styles.retryHint}>
                 Upload fresh photos — the previous ones were not accepted.
@@ -653,6 +670,25 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
         )}
         <View style={{ height: 24 }} />
       </ScrollView>
+
+      {/* Step errors and the reason a button is off sit just above the bar, where the eye is. */}
+      {view === 'wizard' && !!error && (
+        <Text style={styles.barError} accessibilityLiveRegion="polite" testID="verify-step-error">{error}</Text>
+      )}
+      {!!disabledReason && (
+        disabledReason === CONSENT_REASON ? (
+          <Tap
+            onPress={() => scrollRef.current?.scrollTo({ y: Math.max(0, consentY.current - 12), animated: true })}
+            accessibilityRole="button"
+            accessibilityLabel={disabledReason}
+            hitSlop={{ top: 6, bottom: 6 }}
+          >
+            <Text style={styles.barHint} testID="verify-disabled-reason">{disabledReason}</Text>
+          </Tap>
+        ) : (
+          <Text style={styles.barHint} testID="verify-disabled-reason">{disabledReason}</Text>
+        )
+      )}
 
       {view === 'intro' && (
         <BottomActionBar
@@ -764,6 +800,14 @@ function createThemedStyles(theme: ThemePalette) {
       alignItems: 'center', justifyContent: 'center',
     },
     profileNoticeButtonText: { color: Colors.onPrimary, fontFamily: 'Inter', fontSize: 15, fontWeight: '700' },
+    barError: {
+      color: Colors.dangerText, fontFamily: 'Inter', fontSize: 14, textAlign: 'center',
+      paddingHorizontal: Spacing.screenH, paddingVertical: 8, backgroundColor: V6Colors.surface,
+    },
+    barHint: {
+      color: V6Colors.ink700, fontFamily: 'Inter', fontSize: 13.5, textAlign: 'center',
+      paddingHorizontal: Spacing.screenH, paddingTop: 8, backgroundColor: V6Colors.surface,
+    },
     errorText: { color: Colors.dangerText, fontFamily: 'Inter', fontSize: 15.5, textAlign: 'center' },
     retryHint: { color: V6Colors.ink500, fontFamily: 'Inter', fontSize: 14, textAlign: 'center' },
   });

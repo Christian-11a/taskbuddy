@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScrollView, TextInput } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import SPEditProfileScreen from '../SPEditProfileScreen';
 import { api } from '../../../../src/lib/api';
@@ -167,5 +168,45 @@ describe('service radius typing', () => {
 
     expect(screen.getByText(RADIUS_MESSAGE)).toBeTruthy();
     expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+});
+
+describe('save bar', () => {
+  it('is disabled with a "No changes yet" hint until something changes', () => {
+    renderScreen();
+
+    expect(screen.getByText('No changes yet')).toBeTruthy();
+    expect(screen.getByLabelText('Save changes').props.accessibilityState).toMatchObject({ disabled: true });
+
+    fireEvent.changeText(radiusInput(), '30');
+    expect(screen.queryByText('No changes yet')).toBeNull();
+    expect(screen.getByLabelText('Save changes').props.accessibilityState).toMatchObject({ disabled: false });
+  });
+
+  it('a failed save scrolls to and focuses the first invalid field', () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    renderScreen();
+
+    fireEvent.changeText(screen.getByPlaceholderText('Your full name'), '');
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(scrollTo).toHaveBeenCalled();
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.instances[0]).toMatchObject({ props: { placeholder: 'Your full name' } });
+    expect(api.updateProfile).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    focus.mockRestore();
+  });
+
+  it('still asks before leaving with unsaved changes', () => {
+    const onBack = jest.fn();
+    render(<SPEditProfileScreen onBack={onBack} onSave={jest.fn()} onManageServices={jest.fn()} />);
+
+    fireEvent.changeText(radiusInput(), '30');
+    fireEvent.press(screen.getByLabelText('Back'));
+
+    expect(screen.getByText('Leave without saving?')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
   });
 });

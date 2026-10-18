@@ -1,4 +1,5 @@
 import React from 'react';
+import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
 import SPCredentialsScreen, { credentialProblem, isValidExpiry } from '../SPCredentialsScreen';
@@ -12,6 +13,15 @@ jest.mock('../../../../src/context/AuthContext', () => ({
 }));
 jest.mock('../../../../src/lib/permissions', () => ({ requestAppPermission: jest.fn().mockResolvedValue(true) }));
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
+jest.mock('@react-native-community/datetimepicker', () => {
+  const { Text } = require('react-native');
+  return {
+    __esModule: true,
+    default: ({ onChange, testID }: { onChange: (e: { type: string }, d?: Date) => void; testID?: string }) => (
+      <Text testID={testID} onPress={() => onChange({ type: 'set' }, new Date(2099, 11, 31))}>picker</Text>
+    ),
+  };
+});
 
 describe('credential rules', () => {
   it('accepts a blank or real YYYY-MM-DD expiry only', () => {
@@ -48,4 +58,55 @@ it('lists credentials with their review status and submits a new one', async () 
   expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({
     category_id: 1, credential_type: 'tesda_nc', title: 'Plumbing NC II', issuer: 'TESDA', document_path: 'p1/cert.jpg',
   }));
+});
+
+describe('certification form UX', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.myCredentials as jest.Mock).mockResolvedValue([]);
+    (api.uploadImage as jest.Mock).mockResolvedValue('p1/cert.jpg');
+    (api.createCredential as jest.Mock).mockResolvedValue({ id: 'c9' });
+  });
+
+  it('shows an error under each empty field after Submit', async () => {
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    await screen.findByText('No credentials yet.');
+    await act(async () => fireEvent.press(screen.getByText('Submit for review')));
+    expect(screen.getByText('Add a clear photo of the certificate.')).toBeTruthy();
+    expect(screen.getByText('Enter the certificate name, e.g. Plumbing NC II.')).toBeTruthy();
+    expect(api.createCredential).not.toHaveBeenCalled();
+  });
+
+  it('focuses the first field in error', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    await screen.findByText('No credentials yet.');
+    await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    await act(async () => fireEvent.press(screen.getByText('Submit for review')));
+    expect(focus).toHaveBeenCalled();
+  });
+
+  it('sends the picked expiry as YYYY-MM-DD and confirms with Sent for review', async () => {
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    await screen.findByText('No credentials yet.');
+    await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
+    fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    fireEvent.press(screen.getByLabelText('Expiry date'));
+    fireEvent.press(screen.getByTestId('expiry-picker'));
+    await act(async () => fireEvent.press(screen.getByText('Submit for review')));
+    expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ expires_on: '2099-12-31' }));
+    expect(screen.getByText('Sent for review')).toBeTruthy();
+  });
+
+  it('Resubmit on a rejected row pre-fills the form', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([
+      { id: 'c3', title: 'Old NC', issuer: 'TESDA', status: 'rejected', rejection_reason: 'Blurry', credential_type: 'trade_certificate', category_id: 1, credential_number: 'N-77', expires_on: null, service_categories: { id: 1, name: 'Plumbing' } },
+    ]);
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    fireEvent.press(await screen.findByLabelText('Resubmit Old NC'));
+    expect(screen.getByLabelText('Certificate name').props.value).toBe('Old NC');
+    expect(screen.getByLabelText('Certificate number (optional)').props.value).toBe('N-77');
+  });
 });

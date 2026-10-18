@@ -4,9 +4,9 @@
  * Edit profile for the provider. Fields use the shared TextField. The address
  * keeps its suggestions and GPS (AddressField), scrolled above the keyboard when
  * it takes focus, and "Save changes" is the one pinned action. Leaving with
- * unsaved changes asks first, from the back arrow or Android back. Saving is
- * unchanged: the same confirmation, then the same updateProfile and
- * upsertProviderProfile calls.
+ * unsaved changes asks first, from the back arrow or Android back. Save is
+ * disabled until something changes; a failed save scrolls to the first invalid
+ * field. It calls the same updateProfile and upsertProviderProfile as before.
  *
  * Deviation: the mockup's "Hourly rate" and "Portfolio" fields have no
  * backing columns in the real backend (ProviderProfile has no hourly_rate
@@ -20,7 +20,6 @@ import React, { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -37,6 +36,7 @@ import AddressField from '../../../src/components/AddressField';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
@@ -64,6 +64,8 @@ const RADIUS_MAX_KM = 50;
 const RADIUS_DEFAULT_KM = 15;
 const RADIUS_LONG_PRESS_STEP_KM = 5;
 const RADIUS_MESSAGE = 'Choose 1 to 50 km';
+// Top to bottom, the order the fields appear on screen.
+const FIELD_ORDER = ['name', 'phone', 'address', 'city', 'bio', 'radius', 'service'] as const;
 
 /** The whole km the text stands for, or null when it is empty or not a number. */
 function radiusValue(text: string): number | null {
@@ -113,17 +115,17 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const [radius, setRadius] = useState(loaded.radius);
   // Set when the radius was typed out of range or empty and then clamped on blur.
   const [radiusNotice, setRadiusNotice] = useState(false);
-  const radiusRef = useRef<TextInput>(null);
+  const radiusRef = useRef<TextInput | null>(null);
   const revealRadius = useRevealOnFocus(radiusRef);
   // A long press steps by 5; the release must not also step by 1.
   const radiusHeld = useRef(false);
   const [categoryId, setCategoryId] = useState<number | null>(loaded.service);
   const [submitted, setSubmitted] = useState(false);
   const [addressTouched, setAddressTouched] = useState(false);
-  const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
+  const setRadiusInput = inputRef('radius');
   const addressTop = useRef(0);
   const email = profile?.email ?? '';
 
@@ -206,12 +208,18 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || phoneError || addressError || cityError || radiusError || serviceError || bioError) return;
-    setShowSaveConfirmation(true);
+    const errors = {
+      name: nameError, phone: phoneError, address: addressError, city: cityError,
+      bio: bioError, radius: radiusError, service: serviceError,
+    };
+    if (Object.values(errors).some(Boolean)) {
+      scrollToFirstError(errors);
+      return;
+    }
+    performSave();
   };
 
   const performSave = async () => {
-    setShowSaveConfirmation(false);
     setSaving(true);
     setError(null);
     try {
@@ -266,7 +274,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
+          <View onLayout={fieldLayout('name')}>
           <TextField
+            ref={inputRef('name')}
             label="Full name"
             value={name}
             onChangeText={setName}
@@ -277,6 +287,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             error={nameError}
             submitted={submitted}
           />
+          </View>
 
           <View style={styles.lockedGroup}>
             <Text style={styles.label}>Email</Text>
@@ -285,7 +296,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             </View>
           </View>
 
+          <View onLayout={fieldLayout('phone')}>
           <TextField
+            ref={inputRef('phone')}
             label="Phone (optional)"
             value={phone}
             onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
@@ -296,15 +309,17 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             error={phoneError}
             submitted={submitted}
           />
+          </View>
 
           {/* The address a provider is matched from — same suggestions + GPS
               as the job form, so "nearby" means a place the geocoder knows. */}
           <View
             style={styles.addressGroup}
-            onLayout={(e) => { addressTop.current = e.nativeEvent.layout.y; }}
+            onLayout={(e) => { addressTop.current = e.nativeEvent.layout.y; fieldLayout('address')(e); }}
           >
             <Text style={styles.label}>Address</Text>
             <AddressField
+              ref={inputRef('address')}
               value={location}
               onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
               onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
@@ -320,7 +335,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             )}
           </View>
 
+          <View onLayout={fieldLayout('city')}>
           <TextField
+            ref={inputRef('city')}
             label="City"
             value={city}
             onChangeText={(value) => { setCity(value); setResolvedLocation(null); }}
@@ -331,8 +348,11 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             error={cityError}
             submitted={submitted}
           />
+          </View>
 
+          <View onLayout={fieldLayout('bio')}>
           <TextField
+            ref={inputRef('bio')}
             label="Bio (min 20 characters)"
             value={bio}
             onChangeText={setBio}
@@ -344,8 +364,9 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             error={bioError}
             submitted={submitted}
           />
+          </View>
 
-          <View style={styles.radiusGroup}>
+          <View style={styles.radiusGroup} onLayout={fieldLayout('radius')}>
             <Text style={styles.label}>Service radius (km)</Text>
             <View style={styles.radiusRow}>
               <Tap
@@ -360,7 +381,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
               </Tap>
               <View style={[styles.radiusBox, showRadiusMessage && styles.radiusBoxError]}>
                 <TextInput
-                  ref={radiusRef}
+                  ref={(node) => { radiusRef.current = node; setRadiusInput?.(node); }}
                   value={radius}
                   onChangeText={(value) => { setRadius(value); setRadiusNotice(false); }}
                   onFocus={revealRadius}
@@ -394,7 +415,7 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             ) : null}
           </View>
 
-          <View style={styles.serviceGroup}>
+          <View style={styles.serviceGroup} onLayout={fieldLayout('service')}>
             <Text style={styles.label}>Service offered</Text>
             {/* Once set, a service only changes through an admin-approved
                 request (My Services); the first one is still picked here. */}
@@ -434,20 +455,20 @@ export default function SPEditProfileScreen({ onBack, onSave, onManageServices }
             ) : null}
           </View>
 
-          {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
         </KeyboardAwareScrollView>
 
-        <BottomActionBar primaryLabel="Save changes" busy={saving} onPrimary={requestSave} />
+        {!!error && (
+          <View style={styles.statusStrip}>
+            <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>
+          </View>
+        )}
+        {!error && changed.length === 0 && (
+          <View style={styles.statusStrip}>
+            <Text style={styles.noChangesHint}>No changes yet</Text>
+          </View>
+        )}
+        <BottomActionBar primaryLabel="Save changes" busy={saving} primaryDisabled={changed.length === 0} onPrimary={requestSave} />
       </KeyboardAvoidingView>
-
-      <ConfirmationModal
-        visible={showSaveConfirmation}
-        title="Save profile changes?"
-        message="Your updated professional details and services will be saved to your profile."
-        confirmLabel="Save changes"
-        onCancel={() => setShowSaveConfirmation(false)}
-        onConfirm={performSave}
-      />
 
       <ConfirmationModal
         visible={asking}
@@ -540,6 +561,8 @@ function createThemedStyles(theme: ThemePalette) {
     },
     radiusUnit: { fontFamily: 'Inter', fontSize: 15, fontWeight: '500', lineHeight: 20, color: C.ink500 },
 
+    statusStrip: { paddingHorizontal: Spacing.screenH, paddingTop: 8, backgroundColor: C.surface },
+    noChangesHint: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', textAlign: 'center' },
     errorText: { color: V6Colors.dangerText, fontSize: 15.5, fontFamily: 'Inter', textAlign: 'center' },
   });
   return { appearance: theme.appearance, Colors: theme.Colors, V6Colors, C, styles };
