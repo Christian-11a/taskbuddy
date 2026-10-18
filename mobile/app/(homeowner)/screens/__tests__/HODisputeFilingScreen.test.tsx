@@ -186,6 +186,7 @@ it('uploads the chosen photos privately and sends them with the report', async (
   renderFiling();
   await screen.findByText('Plumbing: Fix leaking faucet · TaskBuddyProvider');
   fireEvent.press(screen.getByRole('radio', { name: 'Work quality issue' }));
+  fireEvent.press(screen.getByRole('button', { name: 'Add photo' }));
   await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' })));
   expect(screen.getByText('1 / 6')).toBeTruthy();
 

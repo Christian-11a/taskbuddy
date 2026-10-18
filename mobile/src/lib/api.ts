@@ -500,6 +500,22 @@ export interface DisputeEntry {
   photo_urls?: string[];
 }
 
+export interface JobChangeRequest {
+  id: string;
+  job_id: string;
+  requested_by: string;
+  type: 'schedule' | 'price';
+  new_scheduled_at: string | null;
+  new_budget: number | string | null;
+  reason: string;
+  status: 'pending' | 'accepted' | 'declined' | 'expired' | 'withdrawn';
+  created_at: string;
+  expires_at: string;
+  decided_at: string | null;
+}
+
+export type JobChangeDecision = 'accepted' | 'declined' | 'withdrawn';
+
 export interface Dispute {
   id: string;
   job_id: string;
@@ -1761,6 +1777,25 @@ export const api = {
     return authRequest<Booking>(`/calendar/bookings/${id}`, {
       method: 'PATCH',
       body: input,
+    });
+  },
+
+  // ── Job change requests (schedule) ────────────────────────────────────────
+  jobChangeRequests(jobId: string) {
+    return authRequest<JobChangeRequest[]>(`/jobs/${jobId}/change-requests`);
+  },
+
+  proposeScheduleChange(jobId: string, input: { newScheduledAt: string; reason: string }) {
+    return authRequest<JobChangeRequest>(`/jobs/${jobId}/change-requests`, {
+      method: 'POST',
+      body: { type: 'schedule', new_scheduled_at: input.newScheduledAt, reason: input.reason },
+    });
+  },
+
+  decideJobChange(requestId: string, decision: JobChangeDecision) {
+    return authRequest<JobChangeRequest>(`/jobs/change-requests/${requestId}/decide`, {
+      method: 'POST',
+      body: { decision },
     });
   },
 };

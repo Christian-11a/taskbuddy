@@ -94,7 +94,7 @@ describe('providerJobView: a job I have not applied to', () => {
     expect(result.card.tone).toBe('action');
     expect(result.card.overline).toBe('NEW JOB');
     expect(result.card.title).toMatch(/^Client wants this done by .*Oct 14$/);
-    expect(result.card.body).toBe('Send a proposal. The client compares offers and hires one provider.');
+    expect(result.card.body).toBe('Send a proposal. The client compares proposals and hires one provider.');
     expect(result.step).toBeNull();
     expect(result.main).toEqual({ kind: 'sendProposal' });
     expect(result.link).toBeNull();
@@ -179,7 +179,7 @@ describe('providerJobView: my proposal on a job that is still open', () => {
       tone: 'attention',
       overline: 'WAITING FOR CLIENT',
       title: 'Your proposal is in',
-      body: "The client is comparing offers. We'll notify you the moment they decide.",
+      body: "The client is comparing proposals. We'll notify you the moment they decide.",
     });
     expect(result.step).toBe('posted');
     expect(result.main).toEqual({ kind: 'findJobs' });
@@ -536,6 +536,22 @@ describe('providerJobView while disputed', () => {
     const v = view({ status: 'confirmed', assigned_provider_id: ME.id, display_status: 'disputed' });
     expect(v.card.tone).toBe('attention');
     expect(v.card.overline).toBe('COMPLAINT OPEN');
+  });
+
+  it('hides Start job as well, so a complaint open on a booked job leaves no start action', () => {
+    const v = view({ status: 'confirmed', assigned_provider_id: ME.id, display_status: 'disputed' });
+    expect(v.main).toBeNull();
+    expect(v.link).toBeNull();
+  });
+
+  it('keeps Start job when the job is booked and no complaint is open', () => {
+    const v = view({ status: 'confirmed', assigned_provider_id: ME.id });
+    expect(v.main).toEqual({ kind: 'startJob' });
+  });
+
+  it('a complaint on a working job leaves Message client in place', () => {
+    const v = view({ status: 'in_progress', assigned_provider_id: ME.id, display_status: 'disputed' });
+    expect(v.main).toEqual({ kind: 'message', name: 'client' });
   });
 
   it('keeps decline and no banner otherwise', () => {

@@ -20,6 +20,8 @@ jest.mock('../../lib/permissions', () => ({ requestAppPermission: jest.fn() }));
 const picked = (uri: string, extra: Record<string, unknown> = {}) => ({ uri, ...extra });
 const result = (...assets: unknown[]) => ({ canceled: false, assets });
 
+const openMenu = () => fireEvent.press(screen.getByRole('button', { name: 'Add photo' }));
+
 const renderPicker = (overrides: Partial<React.ComponentProps<typeof EvidencePhotoPicker>> = {}) => {
   const onChange = jest.fn();
   const props = { photos: [] as string[], onChange, max: 4, label: 'Photos', ...overrides };
@@ -39,17 +41,23 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe('EvidencePhotoPicker', () => {
-  it('shows Take photo and Choose from gallery under the max, and no old Add button', () => {
-    renderPicker();
+  it('shows a + tile, hides the two options until it is tapped, and shows the helper and count', () => {
+    renderPicker({ min: 1 });
 
+    expect(screen.getByRole('button', { name: 'Add photo' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Take photo' })).toBeNull();
+    expect(screen.getByText('Add 1 to 4 photos')).toBeTruthy();
+    expect(screen.getByText('0 / 4')).toBeTruthy();
+
+    openMenu();
     expect(screen.getByRole('button', { name: 'Take photo' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Choose from gallery' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Add photo' })).toBeNull();
-    expect(screen.getByText('0 / 4')).toBeTruthy();
   });
 
   it('Take photo asks for camera permission, launches the camera at quality 0.8 and adds the photo', async () => {
     const { onChange } = renderPicker({ photos: ['file:///a.jpg'] });
+
+    openMenu();
 
     fireEvent.press(screen.getByRole('button', { name: 'Take photo' }));
 
@@ -64,6 +72,8 @@ describe('EvidencePhotoPicker', () => {
 
   it('Choose from gallery keeps the library options, asks for JPEG-compatible assets and adds the picks', async () => {
     const { onChange } = renderPicker({ photos: ['file:///a.jpg'], max: 4 });
+
+    openMenu();
 
     fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' }));
 
@@ -86,7 +96,10 @@ describe('EvidencePhotoPicker', () => {
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: true, assets: null });
     const { onChange } = renderPicker();
 
+    openMenu();
+
     fireEvent.press(screen.getByRole('button', { name: 'Take photo' }));
+    openMenu();
     fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' }));
 
     await waitFor(() => expect(ImagePicker.launchImageLibraryAsync).toHaveBeenCalled());
@@ -97,6 +110,8 @@ describe('EvidencePhotoPicker', () => {
   it('a refused camera permission shows the message with Open settings and opens nothing', async () => {
     (ImagePicker.requestCameraPermissionsAsync as jest.Mock).mockResolvedValue({ granted: false, canAskAgain: false });
     const { onChange } = renderPicker();
+
+    openMenu();
 
     fireEvent.press(screen.getByRole('button', { name: 'Take photo' }));
 
@@ -112,8 +127,12 @@ describe('EvidencePhotoPicker', () => {
     (ImagePicker.requestCameraPermissionsAsync as jest.Mock).mockResolvedValue({ granted: false, canAskAgain: true });
     const { onChange } = renderPicker();
 
+    openMenu();
+
     fireEvent.press(screen.getByRole('button', { name: 'Take photo' }));
     expect(await screen.findByText('Camera access is off.')).toBeTruthy();
+
+    openMenu();
 
     fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' }));
 
@@ -123,14 +142,13 @@ describe('EvidencePhotoPicker', () => {
     expect(screen.queryByText('Camera access is off.')).toBeNull();
   });
 
-  it('hides both buttons once max is reached, and remove still frees a slot', () => {
+  it('has no + tile once max is reached, and remove still frees a slot', () => {
     const { onChange } = renderPicker({ photos: ['file:///a.jpg', 'file:///b.jpg'], max: 2 });
 
-    expect(screen.queryByRole('button', { name: 'Take photo' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Choose from gallery' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add photo' })).toBeNull();
     expect(screen.getByText('2 / 2')).toBeTruthy();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Remove photo 1' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Photo 1, remove' }));
     expect(onChange).toHaveBeenCalledWith(['file:///b.jpg']);
   });
 
@@ -139,6 +157,8 @@ describe('EvidencePhotoPicker', () => {
       result(picked('file:///1.jpg'), picked('file:///2.jpg'), picked('file:///3.jpg'))
     );
     const { onChange } = renderPicker({ photos: ['file:///a.jpg'], max: 2 });
+
+    openMenu();
 
     fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' }));
 
@@ -152,19 +172,21 @@ describe('EvidencePhotoPicker', () => {
     );
     const { onChange } = renderPicker();
 
+    openMenu();
+
     fireEvent.press(screen.getByRole('button', { name: 'Take photo' }));
 
     expect(await screen.findByText('Each photo must be 10 MB or smaller.')).toBeTruthy();
     expect(onChange).toHaveBeenCalledWith(['file:///ok.jpg']);
   });
 
-  it('disables both buttons while the caller is busy', () => {
-    renderPicker({ disabled: true });
+  it('disables the + tile and remove buttons while the caller is busy', () => {
+    renderPicker({ disabled: true, photos: ['file:///a.jpg'] });
 
-    expect(screen.getByRole('button', { name: 'Take photo' }).props.accessibilityState).toEqual(
+    expect(screen.getByRole('button', { name: 'Add photo' }).props.accessibilityState).toEqual(
       expect.objectContaining({ disabled: true })
     );
-    expect(screen.getByRole('button', { name: 'Choose from gallery' }).props.accessibilityState).toEqual(
+    expect(screen.getByRole('button', { name: 'Photo 1, remove' }).props.accessibilityState).toEqual(
       expect.objectContaining({ disabled: true })
     );
   });

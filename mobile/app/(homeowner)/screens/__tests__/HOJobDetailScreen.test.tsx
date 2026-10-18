@@ -18,6 +18,8 @@ jest.mock('../../../../src/lib/api', () => ({
     cancelJob: jest.fn(),
     jobApplications: jest.fn(),
     triggerRecommendations: jest.fn(),
+    jobChangeRequests: jest.fn().mockResolvedValue([]),
+    decideJobChange: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -329,6 +331,62 @@ describe('HOJobDetailScreen — task checklist is read-only with proof', () => {
     const box = row.findAll((node) => StyleSheet.flatten(node.props.style)?.width === 24)[0];
     expect(StyleSheet.flatten(box.props.style)).toMatchObject({ width: 24, height: 24, flexShrink: 0 });
   });
+
+  const plainTasks = [
+    { id: 't1', job_id: 'job-1', label: 'Fix tap', is_done: false, position: 1, completed_at: null },
+    { id: 't2', job_id: 'job-1', label: 'Clean up', is_done: false, position: 2, completed_at: null },
+  ];
+
+  it('an open job lists its tasks as a plain list, with no checkboxes', async () => {
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'open', assigned_provider_id: null, job_tasks: plainTasks });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('What the job includes')).toBeTruthy();
+    expect(screen.getByTestId('task-item-t1')).toBeTruthy();
+    expect(screen.getByText('Clean up')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.queryByText(/tasks done/)).toBeNull();
+  });
+
+  it('a booked job not yet started lists its tasks as a plain list too', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'assigned', job_tasks: plainTasks });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByTestId('task-item-t2')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('a completed job shows the ticked tasks with their proof, read-only', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({
+      ...inProgressJob,
+      status: 'completed',
+      job_tasks: [
+        { ...plainTasks[0], is_done: true, completed_at: '2026-10-16T00:00:00Z', proof_photo_urls: ['https://public/proof.jpg'] },
+        plainTasks[1],
+      ],
+    });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('1/2 done')).toBeTruthy();
+    expect(screen.getByLabelText('Fix tap').props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(screen.getByLabelText('Clean up').props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(screen.getByLabelText('Proof for Fix tap, photo 1 of 1')).toBeTruthy();
+    expect(screen.queryByText('What the job includes')).toBeNull();
+  });
+
+  it('a cancelled job keeps the checkboxes only when a task was ticked before it was cancelled', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'cancelled', job_tasks: plainTasks });
+    const { unmount } = render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('What the job includes')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    unmount();
+
+    (api.getJob as jest.Mock).mockResolvedValue({ ...inProgressJob, status: 'cancelled', job_tasks: [{ ...plainTasks[0], is_done: true }, plainTasks[1]] });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByText('1/2 done')).toBeTruthy();
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  });
 });
 
 describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () => {
@@ -393,7 +451,7 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
     expect(within(card).getByText('Could not reach TaskBuddy.')).toBeTruthy();
     fireEvent.press(within(card).getByRole('button', { name: 'Try again' }));
 
-    expect(await screen.findByText('No offers yet')).toBeTruthy();
+    expect(await screen.findByText('No proposals yet')).toBeTruthy();
     expect(screen.queryByTestId('error-card')).toBeNull();
   });
 
@@ -402,8 +460,8 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
     (api.triggerRecommendations as jest.Mock).mockResolvedValue({ run_id: null, pool_size: 4, notified: 2 });
     renderJob();
 
-    expect(await screen.findByText('No offers yet')).toBeTruthy();
-    expect(within(screen.getByTestId('empty-card')).getByText('No offers yet')).toBeTruthy();
+    expect(await screen.findByText('No proposals yet')).toBeTruthy();
+    expect(within(screen.getByTestId('empty-card')).getByText('No proposals yet')).toBeTruthy();
     fireEvent.press(screen.getByText('Find providers'));
     expect(await screen.findByText('We invited 2 matched providers to apply.')).toBeTruthy();
     expect(api.triggerRecommendations).toHaveBeenCalledWith('job-1');
@@ -416,20 +474,20 @@ describe('HOJobDetailScreen — offers, the main action and the ⋮ menu', () =>
 
     expect(await screen.findByText('Fix the sink')).toBeTruthy();
     expect(screen.getByText('Find providers')).toBeTruthy();
-    expect(screen.queryByText('No offers yet')).toBeNull();
+    expect(screen.queryByText('No proposals yet')).toBeNull();
   });
 
-  it('a failed proposals lookup still offers View offers, which opens Job Applications, and claims no count', async () => {
+  it('a failed proposals lookup still offers View proposals, which opens Job Applications, and claims no count', async () => {
     (api.getJob as jest.Mock).mockResolvedValue(openJob);
     (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
     const onNavigate = jest.fn();
     renderJob(onNavigate);
 
-    fireEvent.press(await screen.findByText('View offers'));
+    fireEvent.press(await screen.findByText('View proposals'));
     expect(onNavigate).toHaveBeenCalledWith('Job Applications', 'job-1');
     expect(screen.getByText('Find providers')).toBeTruthy();
     expect(screen.queryByText(/Review proposals/)).toBeNull();
-    expect(screen.queryByText('No offers yet')).toBeNull();
+    expect(screen.queryByText('No proposals yet')).toBeNull();
   });
 
   it('a booked job: the main button messages the provider', async () => {
@@ -822,7 +880,7 @@ describe('HOJobDetailScreen — the automatic invite line on an open job', () =>
     render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
 
     expect(await screen.findByText(AUTO_INVITE)).toBeTruthy();
-    expect(screen.getByText('Waiting for offers')).toBeTruthy();
+    expect(screen.getByText('Waiting for proposals')).toBeTruthy();
     expect(screen.getByText('Find providers')).toBeTruthy();
   });
 
@@ -853,7 +911,7 @@ describe('HOJobDetailScreen — the automatic invite line on an open job', () =>
     (api.jobApplications as jest.Mock).mockRejectedValue(new Error('offline'));
     render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Open for offers')).toBeTruthy();
+    expect(await screen.findByText('Open for proposals')).toBeTruthy();
     expect(screen.queryByText(AUTO_INVITE)).toBeNull();
     expect(screen.getByText('Find providers')).toBeTruthy();
   });
@@ -937,5 +995,62 @@ describe('HOJobDetailScreen pull-to-refresh', () => {
 
     await waitFor(() => expect(api.getJob).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(pullControl().props.refreshing).toBe(false));
+  });
+});
+
+describe('HOJobDetailScreen — date or time change requests', () => {
+  const booked = { ...inProgressJob, status: 'confirmed' as const };
+  const request = (by: string) => ({
+    id: 'r1', job_id: 'job-1', requested_by: by, type: 'schedule', new_scheduled_at: '2030-10-07T06:00:00.000Z',
+    new_budget: null, reason: 'Late shift', status: 'pending', created_at: new Date().toISOString(),
+    expires_at: '2099-01-01T00:00:00.000Z', decided_at: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getJob as jest.Mock).mockResolvedValue(booked);
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('offers the change in the menu when nothing is pending', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    expect(await screen.findByText('Change date or time')).toBeTruthy();
+  });
+
+  it('shows Accept and Decline for the provider request', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([request('provider-1')]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Accept')).toBeTruthy();
+    expect(screen.getByLabelText('Decline')).toBeTruthy();
+    expect(screen.queryByLabelText('Withdraw')).toBeNull();
+  });
+
+  it('shows Withdraw for the client own request', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([request('client-1')]);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Withdraw')).toBeTruthy();
+    expect(screen.queryByLabelText('Accept')).toBeNull();
+  });
+
+  it('does not offer the change once the job is in progress', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(inProgressJob);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
+  });
+
+  it('does not offer the change for an open job or while a complaint is open', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...booked, status: 'open' as const, assigned_provider_id: null });
+    const first = render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
+    first.unmount();
+    (api.getJob as jest.Mock).mockResolvedValue({ ...booked, display_status: 'disputed' });
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
   });
 });
