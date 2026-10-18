@@ -242,8 +242,14 @@ export class XenditService {
    * lookup row, or null for anything else.
    */
   payoutUpdate(body: unknown): XenditPayoutUpdate | null {
-    const outer = body as { data?: unknown } | null;
-    const b = outer?.data ?? outer;
+    type PayoutBody = {
+      id?: unknown;
+      reference_id?: unknown;
+      status?: unknown;
+      failure_code?: unknown;
+    };
+    const outer = body as (PayoutBody & { data?: PayoutBody }) | null;
+    const b: PayoutBody | null = outer?.data ?? outer;
     if (
       typeof b?.id !== 'string' ||
       typeof b.reference_id !== 'string' ||
