@@ -1,0 +1,98 @@
+{
+  "id": "provider-do-the-job",
+  "track": "providers",
+  "number": 5,
+  "title": "Do the job",
+  "summary": "From booking to finished work.",
+  "next": "Get paid",
+  "steps": [
+    {
+      "headline": "You are hired",
+      "body": "When a client hires you, you get a notification. Open it in My Work.",
+      "narration": "When a client hires you, you get a notification. Find the job in My Work. Good news travels fast.",
+      "tapWord": "hires",
+      "screenshot": "placeholder:My Work",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Message client",
+      "body": "Tap Message client to agree on the details.",
+      "narration": "Tap Message client to agree on the details and say when you will arrive.",
+      "tapWord": "Message",
+      "screenshot": "placeholder:Provider Job details: booked",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Change date or time",
+      "body": "Need another time? Open the menu and tap Change date or time.",
+      "narration": "Need another time? Open the menu and tap Change date or time. The client can accept or decline.",
+      "tapWord": "menu",
+      "screenshot": "placeholder:Change date or time",
+      "tap": {
+        "x": 0.93,
+        "y": 0.08
+      }
+    },
+    {
+      "headline": "Start job",
+      "body": "When you arrive, tap Start job.",
+      "narration": "When you arrive, tap Start job.",
+      "tapWord": "Start",
+      "screenshot": "placeholder:Provider Job details: booked",
+      "tap": {
+        "x": 0.5,
+        "y": 0.92
+      }
+    },
+    {
+      "headline": "Tasks",
+      "body": "Work through the task checklist.",
+      "narration": "Now work through the task checklist. Each task has its own line.",
+      "tapWord": "checklist",
+      "screenshot": "placeholder:Provider Job details: Tasks",
+      "tap": {
+        "x": 0.5,
+        "y": 0.55
+      }
+    },
+    {
+      "headline": "Show the finished task",
+      "body": "Add one to four proof photos, then tap Mark as done.",
+      "narration": "For each task, add one to four proof photos. Then tap Mark as done.",
+      "tapWord": "proof",
+      "screenshot": "placeholder:Show the finished task",
+      "tap": {
+        "x": 0.5,
+        "y": 0.85
+      }
+    },
+    {
+      "headline": "Wait for confirmation",
+      "body": "When every task is done, the client confirms the job.",
+      "narration": "When every task is done, the client checks the work and confirms the job is done. Then you can relax.",
+      "tapWord": "confirms",
+      "screenshot": "placeholder:Provider Job details: all tasks done",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Get paid",
+      "body": "Once confirmed, your pay is sent to your payout account.",
+      "narration": "Once confirmed, your pay is sent to your payout account.",
+      "tapWord": "pay",
+      "screenshot": "placeholder:Earnings",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "id": "your-home-screen",
+  "track": "clients",
+  "number": 2,
+  "title": "Your Home screen",
+  "summary": "Find your way around TaskBuddy.",
+  "next": "Post a job",
+  "steps": [
+    {
+      "headline": "Your Home screen",
+      "body": "Home is where every job starts and where you see what is happening.",
+      "narration": "This is your Home screen. It is where every job starts, and where you see what is happening.",
+      "tapWord": "Home",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Notifications",
+      "body": "Tap the bell to see updates, like a new proposal.",
+      "narration": "Tap the bell at the top to see updates, like a new proposal on your job.",
+      "tapWord": "bell",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.88,
+        "y": 0.08
+      }
+    },
+    {
+      "headline": "Post a job",
+      "body": "Tap Post a job to describe the work you need.",
+      "narration": "The big card below says Post a job. Tap it whenever you need something done.",
+      "tapWord": "Post",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Book a service",
+      "body": "Or tap a service, like plumbing or cleaning, to start with it chosen.",
+      "narration": "You can also tap a service, like plumbing or cleaning, to start with it already chosen.",
+      "tapWord": "service",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.3,
+        "y": 0.52
+      }
+    },
+    {
+      "headline": "Active jobs",
+      "body": "Your jobs in progress are listed here. Tap See all to open My Jobs.",
+      "narration": "Your active jobs are listed here. Tap See all to open My Jobs.",
+      "tapWord": "jobs",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.88,
+        "y": 0.7
+      }
+    },
+    {
+      "headline": "Messages",
+      "body": "Open the Messages tab to chat with a provider about a job.",
+      "narration": "The Messages tab is where you chat with providers about your jobs.",
+      "tapWord": "chat",
+      "screenshot": "placeholder:Messages",
+      "tap": {
+        "x": 0.63,
+        "y": 0.97
+      }
+    },
+    {
+      "headline": "Payments",
+      "body": "Open Profile, then Payments, to see what you paid, what is held and what was refunded.",
+      "narration": "Open Profile, then Payments, to see what you paid, what is held, and what was refunded.",
+      "tapWord": "Payments",
+      "screenshot": "placeholder:Payments",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Take the tour",
+      "body": "Tap Take the tour any time to see these steps again.",
+      "narration": "If you ever feel lost, tap Take the tour to see these steps again.",
+      "tapWord": "tour",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.8,
+        "y": 0.3
+      }
+    }
+  ]
+}

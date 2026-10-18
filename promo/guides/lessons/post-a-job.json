@@ -1,0 +1,98 @@
+{
+  "id": "post-a-job",
+  "track": "clients",
+  "number": 3,
+  "title": "Post a job",
+  "summary": "Tell providers what you need, step by step.",
+  "next": "Compare proposals and hire",
+  "steps": [
+    {
+      "headline": "Post a job",
+      "body": "On Home, tap Post a job to begin.",
+      "narration": "To start, tap Post a job on your Home screen.",
+      "tapWord": "Post",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Service",
+      "body": "Pick the kind of work you need, like plumbing or cleaning.",
+      "narration": "Step one is Service. Choose the kind of work you need, like plumbing or cleaning.",
+      "tapWord": "Service",
+      "screenshot": "placeholder:Post a job: Service",
+      "tap": {
+        "x": 0.3,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Where",
+      "body": "Add the address where the work will happen.",
+      "narration": "Step two is Where. Add the address where the work will happen.",
+      "tapWord": "address",
+      "screenshot": "placeholder:Post a job: Where",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Tasks",
+      "body": "Tick the tasks you need, or add your own, and describe the job.",
+      "narration": "Step three is Tasks. Tick the tasks you need, add your own, and describe the job.",
+      "tapWord": "Tasks",
+      "screenshot": "placeholder:Post a job: Tasks",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "When & price",
+      "body": "Pick a date and time, choose how urgent it is, then choose a price.",
+      "narration": "Step four is When and price. Pick a date and time, and say how urgent it is.",
+      "tapWord": "urgent",
+      "screenshot": "placeholder:Post a job: When & price",
+      "tap": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    },
+    {
+      "headline": "Choose a price",
+      "body": "Pick one of three estimated prices: basic, standard or premium.",
+      "narration": "Then choose one of three estimated prices: basic, standard or premium.",
+      "tapWord": "premium",
+      "screenshot": "placeholder:Post a job: When & price",
+      "tap": {
+        "x": 0.5,
+        "y": 0.7
+      }
+    },
+    {
+      "headline": "Review and post",
+      "body": "Check everything, then tap Post job.",
+      "narration": "Last, review everything and tap Post job. Nearby providers will see it right away.",
+      "tapWord": "Post",
+      "screenshot": "placeholder:Post a job: Review",
+      "tap": {
+        "x": 0.5,
+        "y": 0.92
+      }
+    },
+    {
+      "headline": "Your job is live",
+      "body": "Tap View my jobs to follow it. Providers can now send proposals.",
+      "narration": "Your job is now live. Tap View my jobs to follow it, and wait for providers to send proposals.",
+      "tapWord": "View",
+      "screenshot": "placeholder:Job posted",
+      "tap": {
+        "x": 0.5,
+        "y": 0.85
+      }
+    }
+  ]
+}

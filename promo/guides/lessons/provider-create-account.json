@@ -1,0 +1,98 @@
+{
+  "id": "provider-create-account",
+  "track": "providers",
+  "number": 1,
+  "title": "Create your account",
+  "summary": "Sign up as a provider and set up your profile.",
+  "next": "Get verified and set up payouts",
+  "steps": [
+    {
+      "headline": "Choose your role",
+      "body": "Pick I want to work to set up a provider account.",
+      "narration": "Welcome to TaskBuddy. To begin, choose I want to work. This sets up a provider account.",
+      "tapWord": "work",
+      "screenshot": "placeholder:Choose your role",
+      "tap": {
+        "x": 0.5,
+        "y": 0.6
+      }
+    },
+    {
+      "headline": "Enter your details",
+      "body": "Add your name, email and a password, then tap Create account.",
+      "narration": "Type your full name, your email and a password. Then tap Create account.",
+      "tapWord": "password",
+      "screenshot": "placeholder:Create your account form",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Check your email",
+      "body": "Enter the 6-digit code we sent you, then tap Verify Email.",
+      "narration": "We email you a six digit code. Type it in, then tap Verify Email.",
+      "tapWord": "code",
+      "screenshot": "placeholder:Check your email",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Welcome slides",
+      "body": "Three short slides explain how to get hired and paid.",
+      "narration": "Three short slides show how to get hired and paid. Tap Next, or tap Skip.",
+      "tapWord": "Next",
+      "screenshot": "placeholder:Welcome slides",
+      "tap": {
+        "x": 0.5,
+        "y": 0.92
+      }
+    },
+    {
+      "headline": "Finish setting up",
+      "body": "On Home, the setup card shows what is left to do.",
+      "narration": "On your Home screen, the setup card shows what is left to do.",
+      "tapWord": "setup",
+      "screenshot": "placeholder:Provider Feed: Finish setting up",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Edit profile",
+      "body": "Add your address, a short bio and how far you will travel.",
+      "narration": "Tap Edit profile. Add your address, a short bio, and how far you will travel.",
+      "tapWord": "bio",
+      "screenshot": "placeholder:Edit profile",
+      "tap": {
+        "x": 0.5,
+        "y": 0.55
+      }
+    },
+    {
+      "headline": "Portfolio",
+      "body": "Add photos of your work; examples show what good photos look like.",
+      "narration": "Next, open Portfolio. Add photos of your work. The examples show what good photos look like.",
+      "tapWord": "photos",
+      "screenshot": "placeholder:My Portfolio",
+      "tap": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    },
+    {
+      "headline": "Next: get verified",
+      "body": "Tap Get verified to unlock jobs near you.",
+      "narration": "When your profile is ready, you are one step away from verification.",
+      "tapWord": "verification",
+      "screenshot": "placeholder:Provider Profile",
+      "tap": {
+        "x": 0.5,
+        "y": 0.25
+      }
+    }
+  ]
+}

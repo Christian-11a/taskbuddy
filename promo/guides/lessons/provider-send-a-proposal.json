@@ -1,0 +1,98 @@
+{
+  "id": "provider-send-a-proposal",
+  "track": "providers",
+  "number": 4,
+  "title": "Send a proposal",
+  "summary": "Apply for a job in a few taps.",
+  "next": "Do the job",
+  "steps": [
+    {
+      "headline": "Open a job",
+      "body": "Tap a job in your Feed to read it first.",
+      "narration": "Tap a job in your Feed and read it first.",
+      "tapWord": "Feed",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.5,
+        "y": 0.55
+      }
+    },
+    {
+      "headline": "Check the pay",
+      "body": "Job price, Platform fee, You receive: see your pay before you apply.",
+      "narration": "Check your pay. You see the job price, the platform fee, and what you receive.",
+      "tapWord": "pay",
+      "screenshot": "placeholder:Provider Job details: pay",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Send proposal",
+      "body": "Tap Send proposal at the bottom of the job.",
+      "narration": "When you are ready, tap Send proposal at the bottom of the job. It only takes a minute.",
+      "tapWord": "Send",
+      "screenshot": "placeholder:Provider Job details",
+      "tap": {
+        "x": 0.5,
+        "y": 0.92
+      }
+    },
+    {
+      "headline": "Send a proposal",
+      "body": "Write a short message to the client.",
+      "narration": "Write a short message to the client. Say why you are right for the job.",
+      "tapWord": "message",
+      "screenshot": "placeholder:Send a proposal",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Send it",
+      "body": "Tap Send proposal to submit.",
+      "narration": "Then tap Send proposal again to send it.",
+      "tapWord": "again",
+      "screenshot": "placeholder:Send a proposal",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "If something is missing",
+      "body": "You may be asked to upload a certificate or link a payout account first.",
+      "narration": "If you see Upload certificate or Link payout account, finish that first. You need both to send proposals.",
+      "tapWord": "payout",
+      "screenshot": "placeholder:Send a proposal: setup needed",
+      "tap": {
+        "x": 0.5,
+        "y": 0.75
+      }
+    },
+    {
+      "headline": "My Work",
+      "body": "Track your proposals in My Work.",
+      "narration": "Track your proposals in My Work.",
+      "tapWord": "Work",
+      "screenshot": "placeholder:My Work",
+      "tap": {
+        "x": 0.38,
+        "y": 0.97
+      }
+    },
+    {
+      "headline": "Hired",
+      "body": "When a client hires you, you are notified.",
+      "narration": "When a client hires you, we notify you right away, and the job moves to your bookings.",
+      "tapWord": "notify",
+      "screenshot": "placeholder:Notifications",
+      "tap": {
+        "x": 0.88,
+        "y": 0.08
+      }
+    }
+  ]
+}

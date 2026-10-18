@@ -1,0 +1,98 @@
+{
+  "id": "provider-your-feed",
+  "track": "providers",
+  "number": 3,
+  "title": "Your Feed",
+  "summary": "Find jobs near you.",
+  "next": "Send a proposal",
+  "steps": [
+    {
+      "headline": "Feed",
+      "body": "Open the Feed tab to see open jobs near you.",
+      "narration": "Open the Feed tab. This is where open jobs near you appear.",
+      "tapWord": "Feed",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.13,
+        "y": 0.97
+      }
+    },
+    {
+      "headline": "Be seen",
+      "body": "Turn on your availability to get invited to jobs.",
+      "narration": "Turn on your availability, so clients can find you and invite you.",
+      "tapWord": "availability",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.8,
+        "y": 0.2
+      }
+    },
+    {
+      "headline": "Open jobs near you",
+      "body": "Scroll to see the service, place and time for each job.",
+      "narration": "Scroll through the list. Each job shows the service, the place and the time. Nothing to type.",
+      "tapWord": "Scroll",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.5,
+        "y": 0.6
+      }
+    },
+    {
+      "headline": "Filter by urgency",
+      "body": "Tap All, Urgent, Normal or Flexible to narrow the list.",
+      "narration": "Tap Urgent, Normal or Flexible to narrow the list by how soon the work is needed.",
+      "tapWord": "Urgent",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.4,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Job details",
+      "body": "Tap a job to read the tasks, the photos and where it is.",
+      "narration": "Tap a job to read the tasks, see the photos and check where it is.",
+      "tapWord": "tasks",
+      "screenshot": "placeholder:Provider Job details",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Know your pay",
+      "body": "Job details show the Job price, Platform fee and what you receive.",
+      "narration": "Job details also show the job price, the platform fee, and what you receive.",
+      "tapWord": "receive",
+      "screenshot": "placeholder:Provider Job details: pay",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Messages",
+      "body": "Chat with clients from the Messages tab.",
+      "narration": "Use the Messages tab to chat with clients about their jobs.",
+      "tapWord": "chat",
+      "screenshot": "placeholder:Messages",
+      "tap": {
+        "x": 0.63,
+        "y": 0.97
+      }
+    },
+    {
+      "headline": "Find jobs",
+      "body": "On Home, tap Find jobs to jump to the list.",
+      "narration": "On Home, you can also tap Find jobs to jump straight to the list.",
+      "tapWord": "Find",
+      "screenshot": "placeholder:Provider Home",
+      "tap": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    }
+  ]
+}
