@@ -376,6 +376,16 @@ describe('EscrowService', () => {
       });
     });
 
+    it('previews 160.45 at 10% as 16.05 / 144.40, like PostgreSQL round()', async () => {
+      const { supabase } = createSupabaseMock({});
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
+      expect(await service.feePreview(160.45, 0.1)).toEqual({
+        rate: 0.1,
+        amount: 16.05,
+        provider_receives: 144.4,
+      });
+    });
+
     it('falls back to no commission when the settings row cannot be read', async () => {
       // A settings read that fails must not strand a provider's payout, and
       // zero is the direction that errs in the user's favour.

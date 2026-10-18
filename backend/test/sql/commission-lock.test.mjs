@@ -20,9 +20,9 @@ before(async () => {
 });
 after(async () => { await db.close(); });
 
-async function hiredJob() {
+async function hiredJob(budget = 1000) {
   const [{ id }] = await query(`insert into jobs(client_id, category_id, title, description, address, latitude, longitude, assigned_provider_id, status, budget)
-    values ($1, 1, 'Case repair', 'Repair a leaking kitchen faucet and verify the water pressure.', 'QC', 14.6, 121, $2, 'in_progress', 1000) returning id`, [client, provider]);
+    values ($1, 1, 'Case repair', 'Repair a leaking kitchen faucet and verify the water pressure.', 'QC', 14.6, 121, $2, 'in_progress', $3) returning id`, [client, provider, budget]);
   await query("insert into wallet_transactions(profile_id, direction, kind, status, amount, title) values ($1, 'credit', 'topup', 'completed', 1000, 'Fixture funding')", [client]);
   await rpc('escrow_place_hold($1, $2)', [id, provider]);
   return id;
@@ -67,4 +67,23 @@ it('re-stamps the rate when a cancelled escrow is held again', async () => {
   await setRate(0.15);
   await rpc('escrow_place_hold($1, $2)', [id, provider]);
   assert.equal(Number((await escrow(id)).commission_rate), 0.15);
+});
+
+it('rounds like PostgreSQL numeric: 160.45 at 10% is a 16.05 fee', async () => {
+  await setRate(0.1);
+  const id = await hiredJob(160.45);
+  await releaseByAdmin(id);
+  assert.equal(Number((await escrow(id)).commission_amount), 16.05);
+  assert.equal(await payoutOf(id), 144.4);
+});
+
+it('escrow_settle ignores p_commission when a rate is locked', async () => {
+  await setRate(0.1);
+  const id = await hiredJob();
+  await setRate(0.2);
+  await query("update jobs set status = 'completed', completed_at = now() where id = $1", [id]);
+  // An old API instance would pass the current 20% commission (200).
+  await rpc(`escrow_settle((select id from escrow_transactions where job_id = $1), 'held', 'released', 200, 'Payout')`, [id]);
+  assert.equal(Number((await escrow(id)).commission_amount), 100);
+  assert.equal(await payoutOf(id), 900);
 });

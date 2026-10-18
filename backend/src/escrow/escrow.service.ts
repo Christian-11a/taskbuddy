@@ -321,8 +321,9 @@ export class EscrowService {
       );
     }
     const amount = Number(escrow.amount);
-    const commission = round2(
-      amount * (await this.effectiveRate(escrow.commission_rate)),
+    const commission = commissionOf(
+      amount,
+      await this.effectiveRate(escrow.commission_rate),
     );
     const title = await this.jobTitle(escrow.job_id);
     const released = await this.settle(escrow, 'released', {
@@ -489,8 +490,12 @@ export class EscrowService {
     locked?: number | string | null,
   ): Promise<{ rate: number; amount: number; provider_receives: number }> {
     const rate = await this.effectiveRate(locked);
-    const fee = round2(amount * rate);
-    return { rate, amount: fee, provider_receives: round2(amount - fee) };
+    const fee = commissionOf(amount, rate);
+    return {
+      rate,
+      amount: fee,
+      provider_receives: (centavos(amount) - Math.round(fee * 100)) / 100,
+    };
   }
 
   private async commissionRate(): Promise<number> {
@@ -514,6 +519,32 @@ export class EscrowService {
   }
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+/** Decimal string scaled to an integer with 4 decimal places (no float drift). */
+function scaled4(n: number | string): bigint {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0n;
+  const [int, frac = ''] = Math.abs(v).toFixed(4).split('.');
+  const out = BigInt(int + frac);
+  return v < 0 ? -out : out;
+}
+
+/** An amount in whole centavos, rounded half away from zero like numeric round(x, 2). */
+function centavos(amount: number | string): number {
+  const a = scaled4(amount);
+  const neg = a < 0n;
+  const abs = neg ? -a : a;
+  const q = (abs + 50n) / 100n;
+  return Number(neg ? -q : q);
+}
+
+/**
+ * round(amount * rate, 2) exactly as PostgreSQL numeric does it (half away
+ * from zero), using scaled integers so 160.45 * 0.10 is 16.05, not 16.04.
+ */
+function commissionOf(amount: number | string, rate: number | string): number {
+  const p = scaled4(amount) * scaled4(rate); // scale 8
+  const neg = p < 0n;
+  const abs = neg ? -p : p;
+  const q = (abs + 500000n) / 1000000n; // to scale 2
+  return Number(neg ? -q : q) / 100;
 }

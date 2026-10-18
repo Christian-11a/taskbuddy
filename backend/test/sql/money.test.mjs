@@ -206,6 +206,7 @@ describe('escrow_settle', () => {
 
     await q("update jobs set status = 'completed', assigned_provider_id = '22222222-2222-2222-2222-222222222222' where id = $1", [escrow.job_id]);
     await q("update jobs set completed_at = now() - interval '72 hours' where id = $1", [escrow.job_id]);
+    await q("update escrow_transactions set commission_rate = null where id = $1", [escrow.id]); // caller-supplied commission (no locked rate, 0067)
     const released = await rpc(
       `escrow_settle($1, 'held', 'released', 225, 'Payout — Fix kitchen faucet')`,
       [escrow.id],
@@ -257,6 +258,7 @@ describe('wallet_reserve_connect_transfer', () => {
     const { escrow } = await rpc(`escrow_place_hold($1, $2, ${args})`, [job, PROVIDER]);
     await q("update jobs set status = 'completed', assigned_provider_id = '22222222-2222-2222-2222-222222222222' where id = $1", [job]);
     await q("update jobs set completed_at = now() - interval '72 hours' where id = $1", [job]);
+    await q("update escrow_transactions set commission_rate = null where id = $1", [escrow.id]); // caller-supplied commission (no locked rate, 0067)
     await rpc(`escrow_settle($1, 'held', 'released', 225, 'Payout')`, [escrow.id]);
     return { escrow, job };
   }

@@ -949,6 +949,25 @@ describe('JobsService.getById platform fee', () => {
     expect(result.fee).toEqual({ rate: 0.15, amount: 150, provider_receives: 850 });
   });
 
+  it('shows what was paid on a released escrow, whatever the rate is now', async () => {
+    const { service, findByJob } = createService({
+      jobs: [ok(job({ status: 'completed', budget: 1000 }))],
+      escrow_transactions: [ok({ status: 'released', funding_method: 'wallet' })],
+    });
+    // Current platform rate is 0.1, but the provider was paid at 9%.
+    findByJob.mockResolvedValue({
+      amount: 1000,
+      status: 'released',
+      commission_amount: 90,
+      commission_rate: null,
+    });
+    const result = (await service.getById(assignedProvider, 'j1')) as Record<
+      string,
+      unknown
+    >;
+    expect(result.fee).toEqual({ rate: 0.09, amount: 90, provider_receives: 910 });
+  });
+
   it('never shows the fee to the client', async () => {
     const { service } = createService({
       jobs: [ok(job({ status: 'confirmed', budget: 1000 }))],

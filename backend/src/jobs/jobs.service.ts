@@ -722,6 +722,21 @@ export class JobsService {
       const escrow = jobId ? await this.escrow.findByJob(jobId) : null;
       const base = Number(escrow?.amount ?? job.budget);
       if (!Number.isFinite(base) || base <= 0) return null;
+      // A released escrow shows what was actually paid, never a recomputation
+      // at today's rate.
+      if (escrow?.status === 'released') {
+        const fee = Number(escrow.commission_amount ?? 0);
+        const locked = escrow.commission_rate;
+        const rate =
+          locked !== null && locked !== undefined
+            ? Number(locked)
+            : Math.round((fee / base) * 10000) / 10000;
+        return {
+          rate,
+          amount: fee,
+          provider_receives: Math.round((base - fee) * 100) / 100,
+        };
+      }
       return await this.escrow.feePreview(base, escrow?.commission_rate);
     } catch (err) {
       this.logger.warn(`fee preview: ${(err as Error).message}`);

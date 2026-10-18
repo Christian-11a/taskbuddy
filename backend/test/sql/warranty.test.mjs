@@ -32,6 +32,8 @@ async function complete(job, age = '0 hours') {
   await db.query('update jobs set completed_at = now() - $2::interval where id = $1', [job, age]);
 }
 async function release(escrow, expected = 'held') {
+  // These fixtures exercise the caller-supplied commission (rows with no locked rate, 0067).
+  await db.query('update escrow_transactions set commission_rate = null where id = $1', [escrow]);
   return (await db.query("select escrow_settle($1, $2::escrow_status, 'released', 50, 'Warranty payout') as result",
     [escrow, expected])).rows[0].result;
 }
@@ -53,6 +55,7 @@ it('releases exactly at 72 hours, only once, with commission and card transfer p
   await complete(job);
   await db.transaction(async (tx) => {
     await tx.query("update jobs set completed_at = now() - interval '72 hours' where id = $1", [job]);
+    await tx.query('update escrow_transactions set commission_rate = null where id = $1', [escrow]);
     const { rows: [{ result }] } = await tx.query("select escrow_settle($1, 'held', 'released', 50, 'Payout') as result", [escrow]);
     assert.equal(result.status, 'released');
     assert.equal(result.transfer_status, 'pending');
