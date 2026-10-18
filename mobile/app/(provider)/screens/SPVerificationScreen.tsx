@@ -238,7 +238,15 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const [certCategory, setCertCategory] = useState<number | null>(categoryId ?? null);
   /** A certificate was sent from the wizard's certificate step. */
   const [certSent, setCertSent] = useState(false);
+  /** A successful credential POST can arrive before the verification read catches up. */
+  const [submittedCertificate, setSubmittedCertificate] = useState<
+    Pick<Credential, 'category_id' | 'status'> | null
+  >(null);
   const [certBusy, setCertBusy] = useState(false);
+  /** The certificate photo picked on the wizard's certificate step; the review shows it. */
+  const [certAsset, setCertAsset] = useState<{ uri: string } | null>(null);
+  /** Replace certificate was tapped on the review, so the upload form is shown even though one was sent. */
+  const [certReplacing, setCertReplacing] = useState(false);
   const formRef = useRef<CertificateUploadFormHandle>(null);
   const scroll = useScrollToFirstError(CERTIFICATE_FIELD_ORDER);
   const scrollRef = scroll.scrollRef;
@@ -253,7 +261,23 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
   // The two-part state is only there on the new API; the old one keeps today's screens.
   const newShape = hasNewShape(verification);
-  const summary = verificationSummary(verification);
+  const serverSummary = verificationSummary(verification);
+  const primaryCategory = providerProfile?.category_id
+    ?? verification?.services?.find((item) => item.primary)?.category_id
+    ?? null;
+  const summary = submittedCertificate?.category_id === primaryCategory
+    && serverSummary.certificate === 'none'
+    ? {
+        ...serverSummary,
+        certificate: submittedCertificate.status,
+        headline: submittedCertificate.status === 'pending' && serverSummary.identity === 'approved'
+          ? 'ID approved · certificate under review'
+          : serverSummary.headline,
+        detail: submittedCertificate.status === 'pending' && serverSummary.identity === 'approved'
+          ? 'An admin is checking your certificate.'
+          : serverSummary.detail,
+      }
+    : serverSummary;
   const credentials = useAsyncData(
     useCallback(() => (newShape ? api.myCredentials() : Promise.resolve([] as Credential[])), [newShape]),
     [newShape],
@@ -447,11 +471,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
     if (item.service_categories) serviceNames[item.category_id] ??= item.service_categories.name;
   }
   /** Already approved or under review: the wizard's certificate step can be skipped. */
-  const certificateCovered = certSent || targetState === 'approved' || targetState === 'pending';
+  const certificateCovered = !certReplacing && (certSent || targetState === 'approved' || targetState === 'pending');
   const reviewStep = newShape ? 4 : 3;
   const openCertificate = (category: number | null = null) => {
     setCertCategory(category);
     setCertOnly(true);
+  };
+  /** Replace certificate on the review: back to the upload form for the same service (the certificate step is 3). */
+  const replaceCertificate = () => {
+    setCertReplacing(true);
+    setCertSent(false);
+    setStep(3);
   };
 
   /**
@@ -616,7 +646,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               lockService
               guidance={certificateGuidance(targetName)}
               onBusyChange={setCertBusy}
-              onSubmitted={() => {
+              onPhotoPicked={(uri) => setCertAsset({ uri })}
+              onSubmitted={(created) => {
+                if (created) setSubmittedCertificate({ category_id: created.category_id, status: created.status });
                 setCertOnly(false);
                 setCertCategory(null);
                 setAwaitingReload(true);
@@ -780,7 +812,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                     lockService
                     guidance={certificateGuidance(targetName)}
                     onBusyChange={setCertBusy}
+                    onPhotoPicked={(uri) => setCertAsset({ uri })}
                     onSubmitted={() => {
+                      setCertReplacing(false);
                       setCertSent(true);
                       credentials.reload();
                       setStep(reviewStep);
@@ -814,6 +848,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                       uri={selfieAsset.uri}
                       retakeLabel="Retake selfie"
                       onRetake={() => setStep(2)}
+                    />
+                  )}
+                  {newShape && (
+                    // The photo is only held for a certificate sent in this session; otherwise the card shows its status alone.
+                    <PhotoCard
+                      title={`Certificate${targetName ? ` · ${targetName}` : ''}`}
+                      uri={certSent ? (certAsset?.uri ?? null) : null}
+                      note={targetState === 'approved' && !certSent ? 'Approved' : 'Sent for review'}
+                      actionLabel="Replace"
+                      retakeLabel="Replace certificate"
+                      onRetake={certSent && certAsset ? replaceCertificate : undefined}
                     />
                   )}
                 </View>

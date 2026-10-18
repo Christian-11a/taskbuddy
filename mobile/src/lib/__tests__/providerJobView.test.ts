@@ -119,13 +119,13 @@ describe('providerJobView: a job I have not applied to', () => {
     expect(result.main).toEqual({ kind: 'sendProposal' });
   });
 
-  it('unverified provider sees VERIFY FIRST with Verify to apply as the main action', () => {
+  it('unverified provider sees VERIFY FIRST with Get verified as the main action', () => {
     const result = view({ status: 'open' }, { isVerified: false });
     expect(result.card).toEqual({
       tone: 'attention',
       overline: 'VERIFY FIRST',
-      title: 'Get verified to apply',
-      body: 'Verify your ID to send proposals.',
+      title: 'Finish verification to apply',
+      body: 'Verify your ID and upload your certificate to send proposals.',
     });
     expect(result.step).toBeNull();
     expect(result.main).toEqual({ kind: 'getVerified' });
@@ -579,5 +579,49 @@ describe('proposeBlockFor and the certificate card', () => {
     const result = view({ status: 'open', category_id: 2 }, { proposeBlock: 'certificate', serviceName: 'Cleaning' });
     expect(result.card.body).toBe('Upload your Cleaning certificate to send proposals for this job.');
     expect(result.main).toEqual({ kind: 'getVerified', categoryId: 2 });
+  });
+  it('still says which service the certificate is for when the service name is unknown', () => {
+    const result = view({ status: 'open', category_id: 2 }, { proposeBlock: 'certificate', serviceName: null });
+    expect(result.card.body).toBe('Upload the certificate for this service to send proposals for this job.');
+    expect(result.main).toEqual({ kind: 'getVerified', categoryId: 2 });
+  });
+});
+
+describe('providerJobView: what is missing before a proposal, in order', () => {
+  it('a verified provider with no payout account sees ONE STEP LEFT and Link payout account', () => {
+    const result = view({ status: 'open' }, { proposeBlock: null, needsPayout: true });
+    expect(result.card).toEqual({
+      tone: 'attention',
+      overline: 'ONE STEP LEFT',
+      title: 'Link a payout account to send proposals',
+      body: 'You are verified. Add a GCash, Maya or bank account so you can get paid, then send your proposal.',
+    });
+    expect(result.step).toBeNull();
+    expect(result.main).toEqual({ kind: 'linkPayout' });
+    expect(result.link).toBeNull();
+    expect(result.menu).toEqual([]);
+  });
+
+  it('a verified provider with a payout account sees Send a proposal', () => {
+    const result = view({ status: 'open' }, { proposeBlock: null, needsPayout: false });
+    expect(result.card.overline).toBe('NEW JOB');
+    expect(result.main).toEqual({ kind: 'sendProposal' });
+  });
+
+  it('a payout account is not asked for until the ID check passes', () => {
+    const result = view({ status: 'open' }, { proposeBlock: 'identity', needsPayout: true, isVerified: false });
+    expect(result.card.overline).toBe('VERIFY FIRST');
+    expect(result.main).toEqual({ kind: 'getVerified' });
+  });
+
+  it('a payout account is not asked for until the certificate for this service passes', () => {
+    const result = view({ status: 'open', category_id: 2 }, { proposeBlock: 'certificate', serviceName: 'Cleaning', needsPayout: true });
+    expect(result.card.overline).toBe('CERTIFICATE NEEDED');
+    expect(result.main).toEqual({ kind: 'getVerified', categoryId: 2 });
+  });
+
+  it('a provider who already applied sees the proposal, not the payout prompt', () => {
+    const result = view({ status: 'open' }, { proposeBlock: null, needsPayout: true, myApplication: makeApplication('pending') });
+    expect(result.card.overline).toBe('WAITING FOR CLIENT');
   });
 });

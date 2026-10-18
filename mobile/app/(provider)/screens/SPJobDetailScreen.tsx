@@ -27,7 +27,7 @@ import {
 } from 'lucide-react-native';
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import PhotoViewer from '../../../src/components/PhotoViewer';
-import ProposalModal, { PAYOUT_NOTE } from '../../../src/components/ProposalModal';
+import ProposalModal from '../../../src/components/ProposalModal';
 import DeclineBookingModal from '../../../src/components/DeclineBookingModal';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { capacityConflictMessage } from '../../../src/lib/capacityConflict';
@@ -86,7 +86,8 @@ function sortedTasks(job: Job | null): JobTask[] {
 function labelFor(action: Action, pending: boolean): string {
   switch (action.kind) {
     case 'sendProposal': return 'Send proposal';
-    case 'getVerified': return action.categoryId !== undefined ? 'Upload certificate' : 'Verify to apply';
+    case 'getVerified': return action.categoryId !== undefined ? 'Upload certificate' : 'Get verified';
+    case 'linkPayout': return 'Link payout account';
     case 'withdrawProposal': return 'Withdraw proposal';
     case 'findJobs': return pending ? 'Find more jobs' : 'Find similar jobs';
     case 'startJob': return 'Start job';
@@ -183,16 +184,16 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const pending = !isAssignedToMe && myApplication?.status === 'pending';
   // Wait for the applications list too, or "Send proposal" could show for a job already applied to.
   const applicationsSettling = appsLoading && myApps === null;
+  const needsPayout = payoutRefused || payoutLink?.linked === false;
   const view = job && !applicationsSettling
     ? providerJobView({
         job, me: profile, myApplication, dispute, tasks, isVerified, now: new Date(),
         proposeBlock: proposeBlockFor(verification, isVerified, job.category_id),
         serviceName: job.service_categories?.name ?? null,
+        needsPayout,
       })
     : null;
   const main = view?.main ?? null;
-  const needsPayout = payoutRefused || payoutLink?.linked === false;
-  const blockedByPayout = main?.kind === 'sendProposal' && needsPayout;
   const link = view?.link ?? null;
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
   const paid = Number(job?.budget ?? 0) > 0;
@@ -364,7 +365,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const run = (action: Action, current: Job) => {
     switch (action.kind) {
       case 'sendProposal':
-        if (needsPayout) return;
+        // The view offers Link payout account instead while no account is linked; if this still runs, never fail silently.
+        if (needsPayout) {
+          onNavigate('Payout Account');
+          return;
+        }
         setActionError(null);
         setCertificateRefused(false);
         setProposalOpen(true);
@@ -372,6 +377,9 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       case 'getVerified':
         if (action.categoryId !== undefined) onNavigate('Verification', undefined, { startAt: 'certificate', categoryId: action.categoryId });
         else onNavigate('Verification');
+        return;
+      case 'linkPayout':
+        onNavigate('Payout Account');
         return;
       case 'withdrawProposal':
         setWithdrawOpen(true);
@@ -639,19 +647,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       {!!actionError && !proposalOpen && !declineOpen && !withdrawOpen && (
         <Text style={styles.actionError} accessibilityRole="alert">{actionError}</Text>
       )}
-      {job && main && blockedByPayout && (
-        <>
-          <Text style={styles.payoutNote} testID="payout-note">{PAYOUT_NOTE}</Text>
-          <BottomActionBar
-            primaryLabel="Link payout account"
-            onPrimary={() => onNavigate('Payout Account')}
-            busy={busy}
-            secondaryLabel={link ? labelFor(link, pending) : undefined}
-            onSecondary={link ? () => run(link, job) : undefined}
-          />
-        </>
-      )}
-      {job && main && !blockedByPayout && (
+      {job && main && (
         <BottomActionBar
           primaryLabel={labelFor(main, pending)}
           onPrimary={() => run(main, job)}
@@ -838,10 +834,6 @@ function createThemedStyles(theme: ThemePalette) {
     },
     disputeBannerText: { fontFamily: 'Inter', fontSize: 14, lineHeight: 19, color: V6Colors.warningText },
     disputeBannerLink: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', color: V6Colors.warningText, textDecorationLine: 'underline' },
-    payoutNote: {
-      color: V6Colors.ink700, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center',
-      paddingHorizontal: Spacing.screenH, paddingTop: 10, backgroundColor: V6Colors.surface,
-    },
     actionError: {
       color: V6Colors.dangerText, fontSize: 13.5, fontFamily: 'Inter', textAlign: 'center',
       paddingHorizontal: Spacing.screenH, paddingTop: 10,
