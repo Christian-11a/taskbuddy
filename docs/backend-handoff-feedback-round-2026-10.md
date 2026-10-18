@@ -37,7 +37,8 @@ Please tell the owner when each step is done, so this file can say so.
 - **Render already runs `c6af502`** (the merged API) while `0065`–`0067` were not yet applied, the reverse of the
   order above. The API tolerates it (it reads `commission_rate` as optional), but until they are applied the
   Disputed filter errors, fees are not locked at hire, and the complaint cut-off is not enforced in the database.
-  Applying them is in progress; this line will say when it is done.
+  **Applied 2026-10-18 and verified** (Disputed filter, no post-completion complaints, `commission_rate` column and
+  lock trigger; no held escrow left without a rate). Deploy steps 1 and 2 are done.
 - `0064` is applied.
 - **Hotfix `0069_defer_job_dispute_sync.sql` is applied to production** (by hand; the file is idempotent). `0063`'s
   trigger made every client cancellation of a hired job fail; `0069` defers it to commit. Verified with a
