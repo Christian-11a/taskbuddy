@@ -19,7 +19,9 @@ export type TourAction =
   /** The user skipped (Skip tour, Android Back). */
   | { type: 'skip' }
   /** The current step's anchor could not be measured, so it is passed over. */
-  | { type: 'anchorMissing' };
+  | { type: 'anchorMissing' }
+  /** The current step's anchor is gone and the step is removed from the list, so the count stays true: the next step takes its place. */
+  | { type: 'drop' };
 
 export const initialTourState: TourState = { status: 'idle', stepIndex: 0, total: 0 };
 
@@ -38,6 +40,11 @@ export function tourReducer(state: TourState, action: TourAction): TourState {
       if (state.status !== 'running') return state;
       const stepIndex = state.stepIndex + 1;
       return stepIndex < state.total ? { ...state, stepIndex } : IDLE;
+    }
+    case 'drop': {
+      if (state.status !== 'running') return state;
+      const total = state.total - 1;
+      return state.stepIndex < total ? { ...state, total } : IDLE;
     }
     case 'skip':
       return state.status === 'running' ? IDLE : state;

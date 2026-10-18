@@ -16,7 +16,7 @@ export function jobRowStatus(job: Job, pendingCount?: number): { tone: JobRowTon
       if (pending > 0) {
         return { tone: 'needsYou', meta: `${pending} ${pending === 1 ? 'proposal' : 'proposals'} to review` };
       }
-      return { tone: 'waiting', meta: 'Open · waiting for offers' };
+      return { tone: 'waiting', meta: 'Open · waiting for proposals' };
     }
     case 'assigned':
     case 'confirmed':

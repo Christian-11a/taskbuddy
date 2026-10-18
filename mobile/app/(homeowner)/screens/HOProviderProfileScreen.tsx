@@ -111,7 +111,6 @@ export default function HOProviderProfileScreen({
 
       {/* The skeleton only stands in for a profile not loaded yet; a reload keeps the profile and shows the bar. */}
       {loading && !data && <ContentSkeleton variant="detail" />}
-      {loading && !!data && <RefreshBar />}
       {!!error && !loading && (
         <View style={styles.errorWrap}>
           <LoadErrorCard title="Couldn't load this provider" message={error} onRetry={reload} />
@@ -120,6 +119,7 @@ export default function HOProviderProfileScreen({
 
       {provider && (
         <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          {loading && !!data && <RefreshBar />}
           {/* Hero — matches .public-hero */}
           <View style={styles.hero}>
             <View style={styles.avatar}>
@@ -168,7 +168,7 @@ export default function HOProviderProfileScreen({
           {!!proposal?.message && (
             <View style={styles.section}>
               <Text style={styles.offerTitle}>
-                {proposal.jobTitle ? `Their offer for ${proposal.jobTitle}` : 'Their offer'}
+                {proposal.jobTitle ? `Their proposal for ${proposal.jobTitle}` : 'Their proposal'}
               </Text>
               <View style={styles.offerBubble}>
                 <Text style={styles.offerText}>{proposal.message}</Text>

@@ -147,8 +147,19 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Next, or a step passed over, moves to the following step, or finishes after the last one.
+  // A step whose control is gone is removed from the list rather than counted, so "Step N of M" counts only shown steps.
   const moveOn = (action: 'next' | 'anchorMissing') => {
     if (tourRef.current.status !== 'running') return;
+    if (action === 'anchorMissing' && optionsRef.current) {
+      const index = tourRef.current.stepIndex;
+      const remaining = optionsRef.current.steps.filter((_, i) => i !== index);
+      optionsRef.current = { ...optionsRef.current, steps: remaining };
+      setOptions(optionsRef.current);
+      const afterDrop = apply({ type: 'drop' });
+      if (afterDrop.status === 'running') showStep(afterDrop.stepIndex);
+      else end('finished');
+      return;
+    }
     const after = apply({ type: action });
     if (after.status === 'running') showStep(after.stepIndex);
     else end('finished');
@@ -168,13 +179,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const startTour = (next: TourOptions) => {
     stopTour();
-    if (next.steps.length === 0) {
+    // A step whose control is not registered at all (a provider's availability row before verification) is left out up front.
+    const steps = next.steps.filter((step) => anchorState(step.anchorId) !== 'absent');
+    if (steps.length === 0) {
       next.onFinish();
       return;
     }
-    optionsRef.current = next;
-    setOptions(next);
-    apply({ type: 'start', total: next.steps.length });
+    const shown = { ...next, steps };
+    optionsRef.current = shown;
+    setOptions(shown);
+    apply({ type: 'start', total: steps.length });
     showStep(0);
   };
 

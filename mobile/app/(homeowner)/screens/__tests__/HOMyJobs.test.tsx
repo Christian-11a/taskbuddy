@@ -113,7 +113,7 @@ it('groups the live jobs by date, and shows the finished ones under FINISHED', a
 it('shows each job with its status line', async () => {
   render(<MyJobs onNavigate={jest.fn()} />);
   expect(await screen.findByText('2 proposals to review')).toBeTruthy();
-  expect(screen.getByText('Open · waiting for offers')).toBeTruthy();
+  expect(screen.getByText('Open · waiting for proposals')).toBeTruthy();
   expect(screen.getByText('Confirmed')).toBeTruthy();
   expect(screen.getByText('In progress')).toBeTruthy();
   expect(screen.getByText('Completed')).toBeTruthy();
@@ -188,7 +188,7 @@ it('renders the list before proposal counts arrive', async () => {
   render(<MyJobs onNavigate={jest.fn()} />);
 
   await screen.findByText('Cleaning: Window cleaning');
-  expect(screen.getAllByText('Open · waiting for offers')).toHaveLength(2);
+  expect(screen.getAllByText('Open · waiting for proposals')).toHaveLength(2);
   expect(screen.getByLabelText('Needs you')).toBeTruthy();
 });
 

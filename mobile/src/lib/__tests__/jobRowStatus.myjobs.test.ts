@@ -6,13 +6,13 @@ function job(status: Job['status']): Job {
 }
 
 describe('jobRowStatus', () => {
-  it('shows an open job with no proposals as waiting for offers', () => {
-    expect(jobRowStatus(job('open'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for offers' });
-    expect(jobRowStatus(job('open'), 0)).toEqual({ tone: 'waiting', meta: 'Open · waiting for offers' });
+  it('shows an open job with no proposals as waiting for proposals', () => {
+    expect(jobRowStatus(job('open'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for proposals' });
+    expect(jobRowStatus(job('open'), 0)).toEqual({ tone: 'waiting', meta: 'Open · waiting for proposals' });
   });
 
   it('treats a recommending job the same way as an open one', () => {
-    expect(jobRowStatus(job('recommending'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for offers' });
+    expect(jobRowStatus(job('recommending'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for proposals' });
   });
 
   it('asks the homeowner to review pending proposals on an open job', () => {

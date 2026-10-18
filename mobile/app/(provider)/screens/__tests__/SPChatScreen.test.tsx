@@ -92,3 +92,11 @@ it('a failed text send with no usable message shows the fallback and keeps the t
   expect(screen.queryByText("Couldn't load this chat")).toBeNull();
   expect(screen.getByPlaceholderText('Message…').props.value).toBe('Retry me');
 });
+
+it('a disputed job says so at the top of the chat', async () => {
+  (api.openConversation as jest.Mock).mockResolvedValue({ ...conversation, job_status: 'disputed' });
+  (api.getJob as jest.Mock).mockResolvedValue({ id: 'job-2', title: 'Cleaning: Window cleaning', status: 'disputed', budget: '1500.00' });
+  render(<SPChatScreen jobId="job-2" onBack={jest.fn()} onViewJob={jest.fn()} />);
+
+  expect(await screen.findByText('A complaint is open. An admin is reviewing it.')).toBeTruthy();
+});

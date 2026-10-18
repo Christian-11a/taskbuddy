@@ -60,6 +60,7 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
   const { data, loading, error, reload } = useAsyncData(
     () => api.bookings({ from, to }),
     [from, to],
+    `sp-bookings-${from}`,
   );
   const [refreshing, setRefreshing] = useState(false);
   // reload() is fire-and-forget; a new `data` or `error` means the fetch settled.
@@ -180,7 +181,7 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
           </View>
         </View>
 
-        {loading && <ContentSkeleton variant="list" />}
+        {loading && !data && <ContentSkeleton variant="list" />}
 
         {!loading && !!error && (
           <LoadErrorCard title="Couldn't load your schedule" message={error} onRetry={reload} />
@@ -191,7 +192,7 @@ export default function SPCalendarScreen({ onNavigate, title = 'Calendar', heade
             <EmptyRow
               icon={CalendarDays}
               title="Nothing scheduled"
-              body="Jobs appear here after a client hires you."
+              body="Booked jobs appear here; proposals are in My Work."
             />
           </EmptyCard>
         )}

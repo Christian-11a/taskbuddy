@@ -5,8 +5,8 @@
  * a small picture made of the app's own parts (IntroIllustrations), the
  * greeting uses the person's first name, and the cards set expectations only:
  * the spotlight tour on Home teaches the controls. Skip is always on screen and
- * a dot marks each card. The last card's button, "Show me around", starts the
- * tour. On a replay (from Help or the Home card) Skip reads "Close".
+ * a dot marks each card. The last card has a main button and a "Look around
+ * first" link; the app decides where each goes. On a replay (from Help or the Home card) Skip reads "Close".
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
@@ -27,7 +27,7 @@ import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
 import { api, type Category } from '../../../src/lib/api';
-import { introCards, type IntroCard, type WelcomeRole } from '../../../src/lib/tourContent';
+import { introButtons, introCards, type IntroCard, type WelcomeRole } from '../../../src/lib/tourContent';
 import { V6Shadows } from '../../../src/constants/theme';
 
 /** The picture on each card, in order, per role. */
@@ -41,14 +41,16 @@ const TILE_MIN_HEIGHT = 210;
 const TILE_MAX_HEIGHT = 280;
 const TILE_SHARE_OF_SCREEN = 0.34;
 
+export type IntroChoice = 'primary' | 'lookAround';
+
 interface OnboardingScreenProps {
   role: 'homeowner' | 'provider' | null;
   /** The name to greet on the first card. Missing means "there". */
   firstName?: string;
   /** Opened from Help or the Home card, not on first sign-in: Skip reads "Close". */
   replay?: boolean;
-  /** The last card's button: starts the spotlight tour on Home. */
-  onFinish: () => void;
+  /** The last slide's buttons: the primary one ("primary") or the "Look around first" link ("lookAround"). */
+  onFinish: (choice: IntroChoice) => void;
   /** Skip, or Close on a replay. Kept under this name for the existing callers. */
   onLogin: () => void;
 }
@@ -63,6 +65,7 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const isLast = currentIndex === cards.length - 1;
+  const buttons = introButtons(welcomeRole);
 
   // The client's first card shows real service chips. Providers never see them, so their lookup is skipped.
   // Only the client's list is the shared, saved 'categories'; the provider's empty list keeps its own key.
@@ -84,11 +87,7 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
   ).current;
 
   const handleNext = () => {
-    if (isLast) {
-      onFinish();
-    } else {
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
-    }
+    flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
   };
 
   // The card's content is centred in the space above the dots. A screen too small for it scrolls instead.
@@ -160,15 +159,39 @@ export default function OnboardingScreen({ role, firstName, replay = false, onFi
           ))}
         </View>
 
-        <Tap
-          style={styles.nextBtn}
-          onPress={handleNext}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel={isLast ? 'Show me around' : 'Next'}
-        >
-          <Text style={styles.nextBtnText}>{isLast ? 'Show me around' : 'Next'}</Text>
-        </Tap>
+        {isLast ? (
+          <>
+            <Tap
+              style={styles.nextBtn}
+              onPress={() => onFinish('primary')}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel={buttons.primary}
+            >
+              <Text style={styles.nextBtnText}>{buttons.primary}</Text>
+            </Tap>
+            <Tap
+              style={styles.linkBtn}
+              onPress={() => onFinish('lookAround')}
+              activeOpacity={0.7}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={buttons.secondary}
+            >
+              <Text style={styles.linkText}>{buttons.secondary}</Text>
+            </Tap>
+          </>
+        ) : (
+          <Tap
+            style={styles.nextBtn}
+            onPress={handleNext}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Next"
+          >
+            <Text style={styles.nextBtnText}>Next</Text>
+          </Tap>
+        )}
       </View>
     </View>
   );
@@ -276,6 +299,8 @@ function createThemedStyles(theme: ThemePalette) {
       justifyContent: 'center',
       ...V6Shadows.primaryButton,
     },
+    linkBtn: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+    linkText: { color: Colors.link, fontSize: 16, fontWeight: '600', fontFamily: 'Inter' },
     nextBtnText: {
       color: Colors.onPrimary,
       fontSize: 17,

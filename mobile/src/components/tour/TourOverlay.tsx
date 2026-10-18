@@ -202,6 +202,7 @@ export default function TourOverlay({ step, index, total, hole, onNext, onSkip }
                 accessibilityLabel={`Step ${index + 1} of ${total}. ${step.title}. ${step.body}`}
                 style={styles.copy}
               >
+                <Text testID="tour-step-label" maxFontSizeMultiplier={1.3} style={[styles.stepLabel, { color: C.ink500 }]}>{`Step ${index + 1} of ${total}`}</Text>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.title, { color: C.ink900 }]}>{step.title}</Text>
                 <Text maxFontSizeMultiplier={1.3} style={[styles.body, { color: C.ink700 }]}>{step.body}</Text>
               </View>
@@ -260,6 +261,7 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   topRow: { flexDirection: 'row', justifyContent: 'flex-end' },
+  stepLabel: { fontFamily: 'Inter', fontSize: 13, fontWeight: '600', lineHeight: 18, marginBottom: 4 },
   skipText: { fontFamily: 'Inter', fontSize: 14, fontWeight: '600', lineHeight: 18 },
   copy: { gap: 6 },
   title: { fontFamily: 'Inter', fontSize: 18, fontWeight: '700', lineHeight: 24 },

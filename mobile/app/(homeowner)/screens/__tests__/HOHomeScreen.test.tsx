@@ -95,13 +95,14 @@ describe('HOHomeScreen — hero header keeps the avatar reachable with a long na
     expect(screen.getByText(LONG_NAME).props.numberOfLines).toBe(2);
   });
 
-  // At 1.3x text the greeting stays on one line and the name may wrap to two
-  // lines before it is cut with an ellipsis, so the header never grows a third line.
-  it('keeps the greeting on one line and lets the name wrap to two, with an ellipsis, at large text', async () => {
+  // At 1.3x text the greeting and the name may each wrap to two lines before
+  // they are cut with an ellipsis, so the header never grows a third line.
+  it('lets the greeting and the name wrap to two lines, with an ellipsis, at large text', async () => {
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
     const greeting = await screen.findByText(/^Good (morning|afternoon|evening)$/);
-    expect(greeting.props.numberOfLines).toBe(1);
+    expect(greeting.props.numberOfLines).toBe(2);
+    expect(greeting.props.maxFontSizeMultiplier).toBe(1.3);
     expect(greeting.props.ellipsizeMode).toBe('tail');
     const name = screen.getByText(LONG_NAME);
     expect(name.props.numberOfLines).toBe(2);
@@ -325,7 +326,7 @@ describe('HOHomeScreen — hero card is always there once Home has loaded', () =
 
     const hero = await screen.findByTestId('home-hero-searching');
     expect(StyleSheet.flatten(hero.props.style).backgroundColor).toBe(lightPalette.Colors.hero);
-    expect(within(hero).getByText('Waiting for offers')).toBeTruthy();
+    expect(within(hero).getByText('Waiting for proposals')).toBeTruthy();
     expect(within(hero).getByText("We're finding providers")).toBeTruthy();
     expect(within(hero).getByText('Cleaning: Window cleaning · posted May 6')).toBeTruthy();
     fireEvent.press(within(hero).getByLabelText('View Cleaning: Window cleaning'));
@@ -431,11 +432,11 @@ describe('HOHomeScreen — field, service chips, and active jobs', () => {
     expect(onNavigate).toHaveBeenCalledWith('Job Detail', 'job-booked');
   });
 
-  it('says an open job with no proposals is waiting for offers', async () => {
+  it('says an open job with no proposals is waiting for proposals', async () => {
     (api.myJobs as jest.Mock).mockResolvedValue([OPEN_JOB]);
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Open · waiting for offers')).toBeTruthy();
+    expect(await screen.findByText('Open · waiting for proposals')).toBeTruthy();
   });
 
   it('every control has an accessible name: bell, avatar, field, service chips and job rows', async () => {

@@ -36,9 +36,11 @@ import {
   ArrowRight,
   Bell,
   Check,
+  Compass,
   Inbox,
   Search,
   ShieldCheck,
+  X,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -47,7 +49,6 @@ import { SPScreen } from '../../../src/types/navigation';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useTourAnchor, type TourAnchor } from '../../../src/components/tour';
-import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api, type Job } from '../../../src/lib/api';
 import { isFeed, isList } from '../../../src/lib/savedShapes';
@@ -71,7 +72,9 @@ import {
 import OwnAvatar from '../../../src/components/OwnAvatar';
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView, { useRevealOnFocus } from '../../../src/components/ui/KeyboardAwareScrollView';
-import Pulse from '../../../src/components/ui/Pulse';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
+import { showToast } from '../../../src/components/Toast';
+import { MIN_TOUCH_DP } from '../../../src/components/ui/touchTarget';
 import FilterPill from '../../../src/components/ui/FilterPill';
 import SectionHeader from '../../../src/components/ui/SectionHeader';
 import JobRow from '../../../src/components/ui/JobRow';
@@ -95,6 +98,9 @@ const URGENCY_FILTERS: { key: FeedUrgency; label: string }[] = [
 
 /** Feed radius when the provider has not set one on their profile. */
 const DEFAULT_RADIUS_KM = 50;
+
+/** Jobs per feed page. */
+const FEED_PAGE = 20;
 
 /** The unverified hero's title and body: Figma's copy, or today's copy for a request already in review. */
 const VERIFY_HERO: Record<VerifyState, { title: string; body: string }> = {
@@ -269,14 +275,16 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // changes the setup copy instead of asking them to verify again.
   const { data: verification, reload: reloadVerification } = useAsyncData(async () => {
     if (isVerified) return null;
-    try { return await api.myVerification(); } catch { return null; }
-  }, [isVerified]);
+    // Not caught: a failed lookup must not be kept under the key Verification shares. It reads as "none".
+    return api.myVerification();
+  }, [isVerified], isVerified ? undefined : 'verification-me');
   useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); }, !isVerified);
   // Whether a payout account is linked; proposals are refused without one. A failed lookup is "unknown"
   // (null), which shows nothing rather than nagging. Read again when the app returns to the foreground.
   const { data: payoutLink, reload: reloadPayout } = useAsyncData<{ linked: boolean } | null>(async () => {
-    try { return { linked: !!(await api.payoutAccount()) }; } catch { return null; }
-  }, []);
+    // Not caught: a failed lookup stays "unknown" and is not kept under the key Job Detail shares.
+    return { linked: !!(await api.payoutAccount()) };
+  }, [], 'sp-payout-linked');
   useRefreshOnForeground(reloadPayout, true);
   const payoutLinked = payoutLink ? payoutLink.linked : null;
   const verifyState: VerifyState = verification?.status === 'pending' ? 'pending'
@@ -293,7 +301,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   const { data, reload: reloadFeed, error: feedError, loading: feedLoading, stale: feedStale, refreshing: feedFetching } = useAsyncData(async () => {
     const [feed, assigned] = await Promise.all([
       api.browseJobs({
-        limit: 20,
+        limit: FEED_PAGE,
         urgency: urgency === 'all' ? undefined : urgency,
         latitude: profile?.latitude ?? undefined,
         longitude: profile?.longitude ?? undefined,
@@ -304,6 +312,34 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     // `loaded` is the urgency the server filtered by, which the pill counts need.
     return { jobs: feed.jobs, summary: feed.summary, assigned, loaded: urgency };
   }, [profile?.latitude, profile?.longitude, radiusKm, urgency, serviceKey], `sp-feed-${profile?.id}-${serviceKey}-${profile?.latitude}-${profile?.longitude}-${radiusKm}-${urgency}`, { persist: true, validate: isFeed });
+
+  // "Load more": further pages of the same feed, appended under the first. Reset whenever the feed is fetched again.
+  const [more, setMore] = useState<{ jobs: Job[]; done: boolean }>({ jobs: [], done: false });
+  const [loadingMore, setLoadingMore] = useState(false);
+  useEffect(() => {
+    setMore({ jobs: [], done: false });
+  }, [data]);
+  const loadMore = async () => {
+    if (!data || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.browseJobs({
+        limit: FEED_PAGE,
+        offset: data.jobs.length + more.jobs.length,
+        urgency: urgency === 'all' ? undefined : urgency,
+        latitude: profile?.latitude ?? undefined,
+        longitude: profile?.longitude ?? undefined,
+        radius_km: radiusKm,
+      });
+      const seen = new Set([...data.jobs, ...more.jobs].map((job) => job.id));
+      const fresh = page.jobs.filter((job) => !seen.has(job.id));
+      setMore((m) => ({ jobs: [...m.jobs, ...fresh], done: page.jobs.length < FEED_PAGE }));
+    } catch {
+      showToast("Couldn't load more jobs. Try again.", 'error');
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const feedSlow = useSlowLoad(feedLoading, data !== null);
 
@@ -340,6 +376,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
       await api.setAvailability(next);
     } catch {
       setAvailable(!next); // revert on failure
+      showToast("Couldn't update your availability. Check your connection and try again.", 'error');
     } finally {
       setTogglingAvail(false);
     }
@@ -357,11 +394,17 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     feedRef.current?.scrollTo({ y: Math.max(0, bodyTop.current + searchTop.current - 12), animated: true });
   };
   const q = search.trim().toLowerCase();
-  const availableJobs = (data?.jobs ?? []).filter(
+  const availableJobs = [...(data?.jobs ?? []), ...more.jobs].filter(
     (job) =>
       (urgency === 'all' || job.urgency === urgency) &&
       (!q || job.title.toLowerCase().includes(q) || (job.service_categories?.name ?? '').toLowerCase().includes(q)),
   );
+  const filtersActive = urgency !== 'all' || q !== '';
+  const canLoadMore = !!data && !more.done && data.jobs.length >= FEED_PAGE;
+  const clearFilters = () => {
+    setSearch('');
+    setUrgency('all');
+  };
   const counts: Partial<Record<FeedUrgency, number>> = data ? feedFilterCounts(data.loaded, data.summary, data.jobs) : {};
 
   return (
@@ -381,7 +424,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
             <Tap
               testID="btn-home-avatar"
               style={styles.avatar}
-              hitSlop={4}
+              hitSlop={(MIN_TOUCH_DP - 40) / 2}
               accessibilityRole="button"
               accessibilityLabel="Profile"
               onPress={() => onNavigate('Profile')}
@@ -404,7 +447,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               <View>
                 <Tap
                   style={styles.bell}
-                  hitSlop={2}
+                  hitSlop={(MIN_TOUCH_DP - 44) / 2}
                   accessibilityRole="button"
                   accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
                   onPress={() => onNavigate('Notifications')}
@@ -424,7 +467,31 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
         </View>
 
         <View style={styles.bodyContent} onLayout={(e) => { bodyTop.current = e.nativeEvent.layout.y; }}>
-          {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
+          {tourOffer && (
+            <View testID="tour-offer" style={styles.tourBanner}>
+              <Compass size={18} color={Colors.primaryDeep} strokeWidth={2.2} />
+              <Text style={styles.tourText} numberOfLines={1}>New here? Take a 1-minute tour</Text>
+              <Tap
+                testID="tour-offer-start"
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Take the tour"
+                onPress={tourOffer.onStart}
+              >
+                <Text style={styles.tourStart}>Start</Text>
+              </Tap>
+              <Tap
+                testID="tour-offer-dismiss"
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss the tour offer"
+                style={styles.tourClose}
+                onPress={tourOffer.onDismiss}
+              >
+                <X size={16} color={C.ink700} strokeWidth={2.2} />
+              </Tap>
+            </View>
+          )}
           {!isVerified ? (
             <SetupPanel
               steps={setupSteps}
@@ -551,17 +618,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               <SectionHeader title="Open jobs near you" count={data ? availableJobs.length : undefined} />
 
               {feedSlow && <SlowLoadNote />}
-              {!data && !feedError && (
-                <Pulse>
-                  {[0, 1].map((i) => (
-                    <View key={i} style={styles.skeletonCard} accessibilityLabel="Loading jobs">
-                      <View style={[styles.skeletonLine, { width: i ? '55%' : '72%' }]} />
-                      <View style={[styles.skeletonLine, { width: '45%', height: 10 }]} />
-                      <View style={[styles.skeletonLine, { width: '30%', height: 22, borderRadius: 11 }]} />
-                    </View>
-                  ))}
-                </Pulse>
-              )}
+              {!data && !feedError && <ContentSkeleton variant="list" />}
 
               {!!feedError && !data && (
                 <LoadErrorCard title="Couldn't load open jobs" message={feedError} onRetry={reloadFeed} />
@@ -577,9 +634,21 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
                 <EmptyCard>
                   <EmptyRow
                     icon={Inbox}
-                    title="No open jobs near you"
-                    body="Adjust your search or urgency filter to see more opportunities."
+                    title={filtersActive ? 'No jobs match your filters' : 'No open jobs near you'}
+                    body={filtersActive
+                      ? 'Try a different search or urgency, or clear the filters.'
+                      : 'New jobs in your area and services show up here.'}
                   />
+                  {filtersActive && (
+                    <Tap
+                      style={styles.clearButton}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear filters"
+                      onPress={clearFilters}
+                    >
+                      <Text style={styles.clearButtonText}>Clear filters</Text>
+                    </Tap>
+                  )}
                 </EmptyCard>
               )}
 
@@ -602,6 +671,20 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
                   })}
                 </View>
               )}
+
+              {canLoadMore && (
+                <Tap
+                  testID="feed-load-more"
+                  style={styles.clearButton}
+                  disabled={loadingMore}
+                  accessibilityRole="button"
+                  accessibilityLabel="Load more jobs"
+                  accessibilityState={{ disabled: loadingMore, busy: loadingMore }}
+                  onPress={() => void loadMore()}
+                >
+                  <Text style={styles.clearButtonText}>{loadingMore ? 'Loading…' : 'Load more'}</Text>
+                </Tap>
+              )}
             </>
           )}
 
@@ -620,6 +703,17 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
     body: { flex: 1 },
+
+    tourBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44,
+      paddingLeft: 14, paddingRight: 6, borderRadius: 14, backgroundColor: Colors.primaryTonal,
+    },
+    tourText: {
+      flex: 1, minWidth: 0, color: C.ink900,
+      fontSize: 14, fontWeight: '500', fontFamily: 'Inter', lineHeight: 20,
+    },
+    tourStart: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', lineHeight: 20, paddingHorizontal: 8 },
+    tourClose: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
     statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.canvas },
     header: { paddingHorizontal: Spacing.screenH },
@@ -731,6 +825,11 @@ function createThemedStyles(theme: ThemePalette) {
     pillRow: { gap: 8, paddingHorizontal: Spacing.screenH },
 
     jobList: { gap: 8 },
+    clearButton: {
+      minHeight: 48, alignItems: 'center', justifyContent: 'center', alignSelf: 'center',
+      paddingHorizontal: 20, borderRadius: 999, backgroundColor: Colors.primaryTonal, marginVertical: 8,
+    },
+    clearButtonText: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '600', fontFamily: 'Inter', lineHeight: 18 },
 
     skeletonCard: {
       backgroundColor: C.surface, borderRadius: 20, padding: 16, marginBottom: 12, gap: 12,

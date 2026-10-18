@@ -2,7 +2,7 @@ import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
-import { LogOut, Trash2 } from 'lucide-react-native';
+import { Landmark, LogOut, Trash2, Wallet } from 'lucide-react-native';
 import SPProfileScreen from '../SPProfileScreen';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { api } from '../../../../src/lib/api';
@@ -212,6 +212,17 @@ describe('SPProfileScreen — profile', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Payout account' }));
 
     expect(onNavigate.mock.calls).toEqual([['My Services'], ['Portfolio'], ['Payout Account']]);
+  });
+
+  it('the Payout account row uses a bank icon, not a wallet, and the back and edit controls reach 48 dp', () => {
+    mockAuthWith({});
+    const onBack = jest.fn();
+    render(<SPProfileScreen onNavigate={jest.fn()} onLogout={jest.fn()} onBack={onBack} />);
+
+    expect(screen.UNSAFE_queryAllByType(Landmark).length).toBe(1);
+    expect(screen.UNSAFE_queryAllByType(Wallet).length).toBe(0);
+    const back = screen.getByLabelText('Back to Feed');
+    expect(40 + 2 * (back.props.hitSlop as number)).toBeGreaterThanOrEqual(48);
   });
 
   it('the Account card shows the location without repeating the city, and an empty phone links to Edit Profile', () => {

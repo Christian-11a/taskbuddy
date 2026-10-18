@@ -293,3 +293,14 @@ describe('ChatThread composer limits', () => {
     expect(send().props.accessibilityState?.disabled).toBe(false);
   });
 });
+
+describe('ChatThread notice', () => {
+  it('shows an amber note under the header when given one, and none otherwise', () => {
+    const { rerender } = render(<ChatThread {...baseProps()} />);
+    expect(screen.queryByTestId('chat-notice')).toBeNull();
+
+    rerender(<ChatThread {...baseProps({ notice: { tone: 'warning', text: 'A complaint is open. An admin is reviewing it.' } })} />);
+
+    expect(within(screen.getByTestId('chat-notice')).getByText('A complaint is open. An admin is reviewing it.')).toBeTruthy();
+  });
+});

@@ -9,11 +9,14 @@ import { clearRetainedState } from '../../../../src/hooks/useRetainedState';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 import { lightPalette } from '../../../../src/constants/palettes';
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
+import { showToast } from '../../../../src/components/Toast';
 import KeyboardAwareScrollView from '../../../../src/components/ui/KeyboardAwareScrollView';
 
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
 }));
+
+jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 
 jest.mock('../../../../src/lib/api', () => ({
   ApiError: class ApiError extends Error {},
@@ -678,5 +681,109 @@ describe('SPHomeScreen - payout account setup card', () => {
 
     await waitFor(() => expect(api.payoutAccount).toHaveBeenCalled());
     expect(screen.queryByTestId('payout-setup-card')).toBeNull();
+  });
+});
+
+describe('SPHomeScreen - feed states, paging and availability', () => {
+  const feedJob = (id: string, title: string) => (
+    { id, title, status: 'open', urgency: 'normal', address: 'Lipa', budget: 500, scheduled_at: null, distance_km: 1.0 }
+  );
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    clearRetainedState();
+    jest.spyOn(AppState, 'addEventListener').mockReturnValue({ remove: jest.fn() } as never);
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: 'provider', full_name: 'Alex', city: 'Lipa', latitude: 13.9, longitude: 121.1 },
+      providerProfile: { category_id: 1, is_available: true, service_radius_km: 25, approved_secondary_services: [] },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('a search that hides every job says no jobs match, and Clear filters brings them back', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [feedJob('a', 'Fix the sink')], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+
+    fireEvent.changeText(screen.getByPlaceholderText('Search open jobs'), 'zzz');
+    expect(await screen.findByText('No jobs match your filters')).toBeTruthy();
+    expect(screen.queryByText('No open jobs near you')).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Clear filters'));
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(screen.queryByText('No jobs match your filters')).toBeNull();
+  });
+
+  it('with no filters and no jobs, says no open jobs near you and offers no Clear filters', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('No open jobs near you')).toBeTruthy();
+    expect(screen.queryByLabelText('Clear filters')).toBeNull();
+  });
+
+  it('Load more asks for the next page by offset and appends it; a short page ends the list', async () => {
+    const first = Array.from({ length: 20 }, (_, i) => feedJob(`j${i}`, `Job ${i}`));
+    (api.browseJobs as jest.Mock)
+      .mockResolvedValueOnce({ jobs: first, summary: null })
+      .mockResolvedValueOnce({ jobs: [feedJob('j20', 'Job 20')], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('Job 0');
+
+    fireEvent.press(screen.getByLabelText('Load more jobs'));
+
+    expect(await screen.findByText('Job 20')).toBeTruthy();
+    expect((api.browseJobs as jest.Mock).mock.calls[1][0]).toMatchObject({ limit: 20, offset: 20 });
+    expect(screen.queryByLabelText('Load more jobs')).toBeNull();
+  });
+
+  it('shows no Load more when the first page is not full', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [feedJob('a', 'Fix the sink')], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+
+    expect(screen.queryByLabelText('Load more jobs')).toBeNull();
+  });
+
+  it('a failed availability change reverts the switch and shows a message', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.setAvailability as jest.Mock).mockRejectedValue(new Error('offline'));
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('No open jobs near you');
+
+    fireEvent.press(screen.getByTestId('home-availability'));
+
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringContaining('availability'), 'error'));
+    expect(screen.getByText('Available for jobs')).toBeTruthy();
+  });
+
+  it('the avatar and bell reach 48 dp', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    const avatar = await screen.findByTestId('btn-home-avatar');
+    const bell = screen.getByLabelText('Notifications');
+
+    expect(40 + 2 * (avatar.props.hitSlop as number)).toBeGreaterThanOrEqual(48);
+    expect(44 + 2 * (bell.props.hitSlop as number)).toBeGreaterThanOrEqual(48);
+  });
+
+  it('the payout lookup is kept between visits, so the setup card does not flash back', async () => {
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    const first = render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByTestId('payout-setup-card');
+    first.unmount();
+    (api.payoutAccount as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    // Remembered from the first visit: shown at once, while the lookup is still running.
+    expect(screen.getByTestId('payout-setup-card')).toBeTruthy();
   });
 });
