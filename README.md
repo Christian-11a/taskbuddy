@@ -6,13 +6,16 @@ descriptions and provider bios are written in Taglish.
 
 What makes it more than a job board is the matching: when a job sits unfilled
 past its urgency deadline, a trained Random Forest model scores every eligible
-provider against it and invites the best-matched few. Hiring moves real money
-through an escrow-backed wallet, so a provider who completes a job is paid from
-funds that were held the moment they were assigned.
+provider against it and invites the best-matched few. A client pays for the
+hire at checkout, the payment is held in escrow, and it is released to the
+provider's linked GCash, Maya or bank account the moment the client confirms
+the job is done. Payments and payouts run in Xendit's test mode.
 
 **Live API:** https://taskbuddy-kpek.onrender.com
 ([status page](https://taskbuddy-kpek.onrender.com/) ·
-[health JSON](https://taskbuddy-kpek.onrender.com/health)) — frontends call this;
+[health JSON](https://taskbuddy-kpek.onrender.com/health), which reports the
+deployed commit). Render deploys the fork's `main`
+(`Eduard-K-A/taskbuddy`), which tracks upstream `erianthe17/taskbuddy`. Frontends call this;
 see the [backend README](./backend/README.md#base-url).
 
 **Live ML-SERVICE:** https://taskbuddy-ml-service-8ppc.onrender.com
@@ -31,13 +34,14 @@ see the [backend README](./backend/README.md#base-url).
    them, and invites the **top 8** by notification.
 4. Invited providers apply like any other applicant; the client still approves
    exactly one.
-5. Approval **confirms** the job and **holds the budget in escrow**, debiting the
-   client's wallet. A booking and chat thread open automatically; the provider
-   starts actual work later, without another acceptance.
-6. Client completion confirmation starts a **72-hour warranty hold**. Funds
-   release after that window if no timely complaint remains open. Hired-job
-   cancellation keeps funds held during the response/admin-review process;
-   a decision determines whether they release or refund.
+5. The client **pays at hire** (Xendit test checkout: GCash, Maya, card or
+   online banking). The payment webhook holds the money in escrow and confirms
+   the job; a booking and chat thread open automatically. A provider must have
+   a linked payout account before they can apply.
+6. The provider ticks off the job's checklist with proof photos. When the
+   client confirms completion, the payment is **released at once**, minus the
+   platform commission. A complaint opened before that freezes the money until
+   an admin releases or refunds it, and the job shows as `disputed`.
 7. The client leaves a rating, which feeds back into the provider's score for
    future recommendations.
 
@@ -62,9 +66,10 @@ the model service directly.
              └────────┬─────────┘         │  rf-a-v1           │
                       │                   └────────────────────┘
                       ▼
-             ┌──────────────────┐         ┌────────────────────┐
-             │    Supabase      │         │  Stripe · Expo Push │
-             │  Postgres · Auth │         └─────────────────────┘
+             ┌──────────────────┐         ┌──────────────────────┐
+             │    Supabase      │         │ Xendit · Stripe ·    │
+             │  Postgres · Auth │         │ Geoapify · Expo Push │
+             │                  │         └──────────────────────┘
              │  Storage · RLS   │
              └──────────────────┘
 ```
@@ -104,30 +109,26 @@ outcome, so production data accumulates as future retraining rows. Details in
 
 ## Money
 
-The wallet ledger is the **only account of record** — balances are derived from
-it, never stored. A wallet-funded hire holds the job budget in escrow, so a
-client whose wallet balance cannot cover it is refused when accepting an
-application. Card-funded hires use a separate payment before escrow is held.
+There is **no user wallet** (migration 0056). Money comes in for one job and
+goes straight back out:
 
-Clients fund their wallet through Stripe (test mode), or pay a hire by card at
-the moment they accept. A successful top-up is credited to the wallet by
-Stripe's webhook, never by the app reporting its own success. A card-funded
-hire instead places its payment into escrow when the webhook confirms it.
-Balance can appear one other way: an admin issuing a recovery credit after a
-dispute, which is a separate audited route for that
-reason ([§28.1](./backend/BACKEND_SCHEMA.md)).
+- **Paying.** A client pays for a hire at a Xendit test-mode checkout, or by
+  Stripe card checkout when Xendit is not configured. The hire is made by the
+  payment webhook, never by the app reporting its own success.
+- **Releasing.** Confirming completion releases the payment immediately
+  (0060). There is no warranty hold, and early release was removed (0064).
+- **Payouts.** The provider's share goes to their linked GCash, Maya or bank
+  account through Xendit's sandbox Payouts API (0058), sent by the API's
+  payments tick and retried automatically if it fails. Providers never request
+  a withdrawal. Refunds to clients are simulated.
+- **Commission.** A configurable fraction of each released payment is
+  withheld. Admins see the total earned, this month's figure and a pending
+  estimate (`GET /admin/commission`, dashboard totals).
+- **Price changes** after hire: a decrease is refunded, and an increase waits
+  for the client to pay the difference (0057).
 
-Providers can connect a Stripe Connect Express account. A card-funded job's
-payout becomes eligible for transfer after the warranty period, provided no
-open dispute blocks release. The undeployed post-UAT backend branch adds
-client-authorized early release. Other wallet funds are withdrawn by request
-and settled manually by an admin. Full rules in
-[`BACKEND_SCHEMA.md` §18, §21 and §29](./backend/BACKEND_SCHEMA.md).
-
-Stripe is not available to Philippine businesses, and cannot hold pesos, which
-is why only card-funded payouts can be sent on through it (§29). A production
-launch would move to PayMongo, Xendit or Maya, which also support GCash. The
-escrow design, with the ledger as the account of record, is gateway-independent.
+`wallet_transactions` remains as the internal ledger the escrow functions
+write to. Full rules: [`backend/README.md` → Payments without a wallet](./backend/README.md#payments-without-a-wallet).
 
 ## Getting started
 
@@ -142,6 +143,9 @@ frontends depend on it:
 ```
 
 The mobile app defaults to the deployed API, so it runs with no local setup.
+The web console defaults to `http://localhost:3001`; set
+`NEXT_PUBLIC_API_URL` in `web/.env.local` to use the deployed API (see
+[`web/README.md`](./web/README.md)).
 
 > **Free-tier note:** the Render backend spins down after ~15 minutes idle, so
 > the first request can take 30–60 s. A slow first load is a cold start, not a
@@ -154,57 +158,30 @@ The mobile app defaults to the deployed API, so it runs with no local setup.
 |---|---|
 | [`docs/google-auth-setup.md`](./docs/google-auth-setup.md) | Server-side Google OAuth (works in Expo Go) |
 | [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) | Supabase email template + SMTP for reset codes |
-| [`docs/stripe-setup.md`](./docs/stripe-setup.md) | Stripe keys, webhooks, Identity, local CLI testing |
+| [`docs/email-otp-setup.md`](./docs/email-otp-setup.md) | Signup confirmation codes |
+| [`docs/stripe-setup.md`](./docs/stripe-setup.md) | Stripe keys, webhooks, Identity (card checkout fallback and identity verification) |
 
-## Backend handoff
+## Status and open work (October 2026)
 
-**For backend / Render / Stripe / Supabase / Firebase work, start at
-[`HANDOFF.md`](./HANDOFF.md).** Check its dated updates against the current
-environment before acting: some older deployment and webhook asks have since
-been completed.
+- **Deployed:** the API on Render runs upstream `main` (check `/health` for
+  the commit). Supabase has migrations through **0064**. Some were applied
+  outside the migration history, so verify by the objects each file creates.
+- **Web admin lags the backend.** It still shows the wallet tab, manual
+  withdrawal queue, recovery credit and a 72-hour warranty line, and doesn't
+  show the commission totals or `disputed` status yet. See
+  [`web/README.md`](./web/README.md).
+- **Device checks** of the newest mobile flows (pay at hire, completion
+  release, payout account gate, notification routing, proof photos) are open.
+- **ML service** health has been returning HTTP 429; recommendations may be
+  unavailable.
+- **Push notifications** need Firebase `google-services.json` and FCM
+  credentials, then a new EAS build (EAS owner `taskbuddy-android`).
+- **Admin verification emails** need a verified sending domain.
+- **Production payments** would need live Xendit keys and real refunds.
 
-| Priority | Ask | Needs | Details |
-|---|---|---|---|
-| High | Sandbox top-ups now have matching completed wallet credits, and two card-funded hires have escrow rows. Test card-funded release/Connect transfer and Identity completion on a device; neither is proven | Stripe + Render + mobile | [`docs/backend-handoff-stripe-webhook-secret.md`](./docs/backend-handoff-stripe-webhook-secret.md) |
-| High | Check the current Render `STRIPE_MOBILE_API_VERSION` and exercise Identity/top-up creation; an earlier Identity request failed with `Invalid Stripe API version: 2025-21-27` | Render + Stripe | [`docs/backend-handoff-stripe-identity-config.md`](./docs/backend-handoff-stripe-identity-config.md) |
-| High | Migration 0038 is applied to the linked Supabase project. Verify the restarted Render API serves the new admin search and `has_password` contracts; the health check does not identify the deployed commit. Deploy the web/mobile clients separately | Render + Vercel + EAS | [`backend/README.md`](./backend/README.md) |
-| High | PR #81 is merged into upstream main; migrations 0046–0052 are applied to the linked Supabase project. Deploy the matching backend API; mobile feature screens and device checks remain pending | Supabase + Render + mobile + web | [`backend/README.md`](./backend/README.md) |
-| Medium | Admin verification emails need a verified sending domain and provider configuration; the platform-identity migration is applied, while matching API deployment remains pending | Domain + backend + web | [`docs/backend-handoff-web-admin.md`](./docs/backend-handoff-web-admin.md) |
-| Medium | Investigate the ML service's HTTP 429 before claiming recommendations work end to end | Render + ML service | [`HANDOFF.md`](./HANDOFF.md) |
-| Medium | Push notifications: add Firebase `google-services.json` + FCM credentials, then rebuild | Firebase + EAS | `HANDOFF.md` §4 |
-| Low | Run the k6 money-path load test (it writes to prod, so it needs a go-ahead) | Render/Supabase tier visibility | `HANDOFF.md` §3, [`backend/load/README.md`](./backend/load/README.md) |
+[`HANDOFF.md`](./HANDOFF.md) and `docs/backend-handoff-*.md` hold older,
+dated handoff notes, many from the wallet and Stripe era. Check them against
+the READMEs before acting on them.
 
-Product decisions that block further backend work are listed in `HANDOFF.md` (Update 2026-09-24 and
-2026-09-29). `docs/backend-handoff-*.md` has deeper writeups on specific subsystems, for example
-[`docs/backend-handoff-wallet-payout-rail-spike.md`](./docs/backend-handoff-wallet-payout-rail-spike.md)
-(why the withdrawal payout rail can't reuse the Stripe Connect payout service as-is).
-
-The linked project's migration history was reconciled after inspecting the existing
-schema, and migrations 0046–0052 were applied in order. Their history entries and
-new database objects were verified. Deployment of this branch's backend API
-remains pending. During the earlier deployment, the Render API restarted after
-the fork's `main` push and returned HTTP 200 with
-database `up`, but exact deployed-commit identity and client releases remain
-unverified. Password-reset OTP expiry is configured in Supabase Auth to one
-hour; see [`docs/password-reset-setup.md`](./docs/password-reset-setup.md) for
-the template and failure-log checks.
-
-## Test-document implementation — October 4
-
-[Implementation plan](test-docs/IMPLEMENTATION_PLAN.md) and
-[requirement verification matrix](test-docs/VERIFICATION_MATRIX.md) track all 22
-populated PDF requirements. Phases 1–9 are implemented locally: confirmed hiring,
-warranty/cancellation review, shared notifications, approved services and saved
-location, job filters, owned portfolios, readable signup/policy/photo viewing,
-reactive themes, and traceable payout requests. Migrations **0039–0045** were applied and registered atomically on October 4.
-Render is live at `68feb6f`; database and ML health checks pass. Web deployment
-requires the Vercel project owner; deployed workflows and device checks remain open.
-
-The selected withdrawal demonstration is a **local simulator**, not bank/GCash
-delivery. Run `node backend/scripts/payout-demo.mjs`; see
-[payout evidence](test-docs/PAYOUT_VERIFICATION.md). Automated validation does not
-replace deployed two-role/admin or physical-device verification.
-
-Local QA credential files are excluded by the root `.gitignore` so EAS build
-archives omit them. A local archive inspection verified this before upload;
-`.git/info/exclude` alone was insufficient for EAS.
+Local QA credential files are excluded by the root `.gitignore`, so EAS build
+archives omit them (`.git/info/exclude` alone was not enough for EAS).
