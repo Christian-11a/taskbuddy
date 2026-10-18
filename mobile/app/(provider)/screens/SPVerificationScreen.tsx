@@ -239,6 +239,10 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   /** A certificate was sent from the wizard's certificate step. */
   const [certSent, setCertSent] = useState(false);
   const [certBusy, setCertBusy] = useState(false);
+  /** The certificate photo picked on the wizard's certificate step; the review shows it. */
+  const [certAsset, setCertAsset] = useState<{ uri: string } | null>(null);
+  /** Replace certificate was tapped on the review, so the upload form is shown even though one was sent. */
+  const [certReplacing, setCertReplacing] = useState(false);
   const formRef = useRef<CertificateUploadFormHandle>(null);
   const scroll = useScrollToFirstError(CERTIFICATE_FIELD_ORDER);
   const scrollRef = scroll.scrollRef;
@@ -447,11 +451,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
     if (item.service_categories) serviceNames[item.category_id] ??= item.service_categories.name;
   }
   /** Already approved or under review: the wizard's certificate step can be skipped. */
-  const certificateCovered = certSent || targetState === 'approved' || targetState === 'pending';
+  const certificateCovered = !certReplacing && (certSent || targetState === 'approved' || targetState === 'pending');
   const reviewStep = newShape ? 4 : 3;
   const openCertificate = (category: number | null = null) => {
     setCertCategory(category);
     setCertOnly(true);
+  };
+  /** Replace certificate on the review: back to the upload form for the same service (the certificate step is 3). */
+  const replaceCertificate = () => {
+    setCertReplacing(true);
+    setCertSent(false);
+    setStep(3);
   };
 
   /**
@@ -616,6 +626,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               lockService
               guidance={certificateGuidance(targetName)}
               onBusyChange={setCertBusy}
+              onPhotoPicked={(uri) => setCertAsset({ uri })}
               onSubmitted={() => {
                 setCertOnly(false);
                 setCertCategory(null);
@@ -780,7 +791,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                     lockService
                     guidance={certificateGuidance(targetName)}
                     onBusyChange={setCertBusy}
+                    onPhotoPicked={(uri) => setCertAsset({ uri })}
                     onSubmitted={() => {
+                      setCertReplacing(false);
                       setCertSent(true);
                       credentials.reload();
                       setStep(reviewStep);
@@ -814,6 +827,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                       uri={selfieAsset.uri}
                       retakeLabel="Retake selfie"
                       onRetake={() => setStep(2)}
+                    />
+                  )}
+                  {newShape && (
+                    // The photo is only held for a certificate sent in this session; otherwise the card shows its status alone.
+                    <PhotoCard
+                      title={`Certificate${targetName ? ` · ${targetName}` : ''}`}
+                      uri={certSent ? (certAsset?.uri ?? null) : null}
+                      note={targetState === 'approved' && !certSent ? 'Approved' : 'Sent for review'}
+                      actionLabel="Replace"
+                      retakeLabel="Replace certificate"
+                      onRetake={certSent && certAsset ? replaceCertificate : undefined}
                     />
                   )}
                 </View>
