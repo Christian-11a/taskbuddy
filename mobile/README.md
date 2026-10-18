@@ -1,32 +1,46 @@
 # TaskBuddy Mobile
 
-## October 2026 revisions (not yet deployed)
+## Current state (October 2026)
+
+The backend these features need is deployed (migrations through 0064). Device
+checks of the newest flows remain open.
 
 - **No wallet.** Hires are paid at a Xendit test-mode checkout (GCash, Maya,
   card, online banking). Payouts go to the provider's linked GCash/Maya/bank
-  account through Xendit's sandbox, and refunds (simulated) to the original
-  payment method.
-  The Wallet tab is now **Messages** (every job conversation). Older sections
-  below that describe the wallet are history. Needs backend migrations
-  0053–0058 and `XENDIT_SECRET_KEY` / `XENDIT_CALLBACK_TOKEN` on the API.
+  account through Xendit's sandbox, and refunds (simulated) go to the original
+  payment method. The Wallet tab is now **Messages**.
+- **Payment releases at completion.** Confirming completion pays the provider
+  at once and is final; there is no warranty hold and no early release.
+- **Payout account before proposing.** A provider must link a payout account
+  before sending proposals (`ProposalModal` handles `payout_account_required`;
+  `src/lib/providerSetup.ts` lists it as a setup step with address, bio and
+  verification).
 - **Price options instead of a budget field.** Step 4 of posting a job shows
-  three tappable prices (`POST /jobs/price-estimate`) based on the service,
-  the tasks' effort and the urgency.
-- **Certifications.** Providers upload TESDA, PRC or trade certificates under
-  Profile → Certifications; approved ones show as a Certified badge on
-  proposals and the provider profile.
-- **Terms v2** cover pricing, holding of funds and payment release; accounts
-  on older terms must accept again.
+  three tappable prices (`POST /jobs/price-estimate`) based on the service, the
+  tasks' effort (`src/lib/taskEffort.ts`) and the urgency.
+- **Task checklist with proof photos.** Providers tick tasks off with 1–4
+  photos taken with the camera or picked from the gallery (`TaskProofSheet`,
+  `EvidencePhotoPicker`); clients see the checklist read-only.
+- **Notification routing by server `target`.** Taps route through
+  `src/lib/notificationRouting.ts`, which reads the API's
+  `target: { screen, job_id? }` first and falls back to inference for old rows.
+- **Service radius 1–50 km** with a stepper in `SPEditProfileScreen` (default
+  15 km).
+- **Disputes.** The whole job chat is attached to a case; there is no message
+  picker. Jobs with an open dispute read `display_status: 'disputed'`.
+- **Certifications, portfolio and My Services** (skill requests) for
+  providers, with a Certified badge on proposals and profiles.
+- **Terms v2** cover pricing and payment release; accounts on older terms must
+  accept again (`TermsUpdatePrompt`).
+- **Guided tour** for both roles (`src/components/tour/`, `src/lib/tourFlow.ts`).
 
-## FullTest remediation — 2026-10-02
+Sections further down that describe the wallet, top-ups, withdrawals, Stripe
+Connect payouts or the 72-hour warranty are **history** and no longer match the
+app.
 
-Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios; see the current implementation section below.
+## History: FullTest remediation — 2026-10-02
 
-All migrations through **0052** are applied to the linked Supabase project
-(verified 2026-10-16), and the matching API is deployed with its contracts
-checked live ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)).
-Run the Android device flows before releasing this app. See
-[backend handover](../HANDOFF.md) for remaining checks.
+Bug fixes cover approved skill filtering, job photos and lifecycle, escrow totals, cancellation/warranty dispute access, notification creation, and responsive auth/privacy/job forms. The October 4 follow-up implements shared light/dark palettes and provider photo portfolios.
 
 The Expo / React Native app for **TaskBuddy**, a Philippine home-services
 marketplace. Clients post jobs, providers apply and complete them.
@@ -48,8 +62,10 @@ buttons that still do nothing.
 | Auth | **AuthContext** backed by the NestJS API (JWT + Supabase sessions) |
 | Storage | **AsyncStorage** — session persistence only |
 | Icons | **lucide-react-native** |
-| UI extras | **react-native-calendars**, **expo-image-picker**, **expo-notifications**, **react-native-sse** |
-| Navigation | Custom `useState` in `App.tsx` — no router library |
+| UI extras | **react-native-calendars**, **expo-image-picker** (camera and gallery), **expo-notifications**, **react-native-sse**, **@gorhom/bottom-sheet**, **lottie-react-native**, **expo-location** |
+| Navigation | Custom `useState` in `App.tsx` — no router library in use (`@react-navigation/*` is installed but not imported) |
+| Theme | `ThemeContext` light/dark palettes |
+| Builds | EAS, owner **`taskbuddy-android`**; profiles `development` (dev client APK), `preview` (internal APK), `production`; OTA via `expo-updates` (runtime version = app version) |
 
 ---
 
@@ -89,17 +105,20 @@ By default the app talks to the deployed backend at
 `https://taskbuddy-kpek.onrender.com`, so it works with no local setup.
 
 To run against a local backend, copy `.env.example` to `.env` and point at
-your machine — on an **emulator** use `10.0.2.2` (the host's loopback alias;
-stable across networks), on a **physical device** use the machine's **LAN IP** —
-never `localhost`, which on a phone/emulator refers to the device itself:
+your machine. On an **emulator**, either use `10.0.2.2` or run
+`adb reverse tcp:3000 tcp:3000` and use `localhost`. On a **physical device**,
+use the machine's **LAN IP**:
 
 ```env
 EXPO_PUBLIC_API_URL=http://10.0.2.2:3000        # emulator
 # EXPO_PUBLIC_API_URL=http://192.168.1.20:3000  # physical device
+# Optional: used only if the primary fails a health check at app start
+# EXPO_PUBLIC_API_URL_FALLBACK=http://localhost:3000
 ```
 
-Only `EXPO_PUBLIC_*` variables reach the app at bundle time. Restart the dev
-server after changing `.env` — a Metro restart is enough; no Gradle rebuild.
+The backend is chosen once per launch and logged. Only `EXPO_PUBLIC_*`
+variables reach the app, and they are inlined at bundle time: restart Expo
+with `--clear` after changing them, or the old value stays in the bundle.
 
 > **Free-tier note:** the Render backend spins down after ~15 minutes idle, so
 > the first request can take 30–60 s. If the splash screen seems stuck, that's
@@ -111,6 +130,7 @@ Other scripts:
 npm run typecheck   # tsc --noEmit
 npm test            # jest (jest-expo preset + React Native Testing Library)
 npm run ios         # expo run:ios (dev build, same reasoning as Android)
+npm run web         # expo start --web
 ```
 
 ---
@@ -121,8 +141,12 @@ npm run ios         # expo run:ios (dev build, same reasoning as Android)
 mobile/
 ├── App.tsx                     # Root: session gate + all navigation state
 ├── index.ts                    # Expo entry point
-├── app.json                    # Expo config (scheme: taskbuddy, package: com.taskbuddy.app)
+├── app.json                    # Expo config (scheme: taskbuddy, package: com.taskbuddy.app, EAS owner taskbuddy-android)
+├── eas.json                    # build profiles: development, preview, production
+├── plugins/                    # config plugins (e.g. withNoForceDark)
+├── maestro/                    # end-to-end flows
 ├── app/
+│   ├── index.tsx               # empty placeholder; not a router entry
 │   ├── layout.tsx              # 600px max-width centred frame
 │   ├── SplashScreen.tsx
 │   ├── (auth)/screens/         # Onboarding, Login, Register, ForgotPassword, T&C
@@ -133,6 +157,9 @@ mobile/
     ├── lib/pushNotifications.ts # Expo permission + push-token registration helper
     ├── lib/format.ts           # peso(), shortDate(), timeAgo(), jobStatusMeta()…
     ├── context/AuthContext.tsx # Session, profile, role, signInWithGoogle
+    ├── context/ThemeContext.tsx, NotificationsContext.tsx
+    ├── lib/notificationRouting.ts # push/list tap → screen, from the server `target`
+    ├── components/tour/        # guided tour
     ├── lib/onboarding.ts       # "has this account seen the slides?" flag
     ├── hooks/useAsyncData.ts   # { data, loading, error, reload }
     ├── hooks/useSettings.ts    # user_settings row, optimistic toggle writes
@@ -356,6 +383,14 @@ sign-in, and notification rows remain available in the in-app list either way.
 
 ---
 
+### Other screens
+
+Also routed in `App.tsx`: `GoogleRoleSelectionScreen` and
+`GoogleSPDetailsScreen` (Google sign-up), `HOCalendarScreen`,
+`HOProviderProfileScreen`, `HOLeaveReviewScreen`, `HODisputeStatusScreen`,
+`SPPortfolioScreen`, `SPSkillRequestScreen` (My Services), and the provider
+dispute filing/status screens.
+
 ## Money, Briefly
 
 Hiring holds the job's price in escrow. There is no wallet. Accept on a
@@ -370,16 +405,20 @@ proposal (`HOJobApplicationsScreen`) opens `HirePaymentModal`:
 - A job with no price (posted before pricing existed) is hired directly with
   `POST /applications/:id/accept`.
 
-Client completion confirmation starts a **72-hour warranty hold**. Funds release
-after expiry without an open timely complaint, or earlier if the client
-releases them. A release is sent to the provider's linked account (Profile →
-Payout account; it waits if none is linked), and a refund goes back to the
-client's payment method. Both are simulated in this prototype: no real money
-moves. Full rules: `backend/README.md` → *Payments without a wallet*.
+Confirming completion releases the payment to the provider **at once**, and
+the confirm dialog says it is final. An open complaint blocks release until an
+admin decides. A release is sent to the provider's linked account (Profile →
+Payout account), and a refund goes back to the client's payment method. Both
+are sandbox or simulated in this prototype. Full rules: `backend/README.md` →
+*Payments without a wallet*.
 
 ---
 
 ## Requires the current backend
+
+> **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
+> recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
+> longer apply; see *Current state* at the top.
 
 The app now uses endpoints and columns added by backend migrations **0018,
 0019, and 0020**: `POST /jobs` sends a `tasks` checklist, `POST /jobs/:id/accept`
@@ -463,7 +502,7 @@ after QA round 2, all shipped on the same branch:
   the onboarding slides (`src/components/HelpSupportScreen.tsx`'s new `onViewTutorial` prop,
   wired to a new `'Tutorial'` screen key rendering `OnboardingScreen` bare, not wrapped in
   `ScreenFrame`, since it already pads its own safe areas).
-- **Push-tap routing groundwork.** Tapping a push notification now resolves a target screen
+- **Push-tap routing groundwork** (since replaced by the server `target`; see the top of this README). Tapping a push notification now resolves a target screen
   (`src/lib/notificationRouting.ts`'s `resolveNotificationTarget`, extracted from — and now shared
   by — both in-app notification screens' existing logic) and routes there once auth/onboarding
   gates clear, handling both a live tap and the cold-start case (`getLastNotificationResponse`).
@@ -486,6 +525,10 @@ after QA round 2, all shipped on the same branch:
 ---
 
 ## Backend Handoff Docs
+
+> **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
+> recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
+> longer apply; see *Current state* at the top.
 
 > **2026-10-02:** one sandbox Stripe webhook resend returned HTTP 200 after the
 > signing-secret change (§7 below). The fork's `main` was pushed and Render
@@ -648,6 +691,10 @@ Done button, so it can no longer start a second charge. The wallet also supports
 
 ## Remaining Backend Work
 
+> **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
+> recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
+> longer apply; see *Current state* at the top.
+
 The migration and deployment handoff above is complete. Everything the mobile
 acceptance audit raised has since been done (full reasoning in
 `backend/BACKEND_SCHEMA.md` §28), and so have the decisions that were left
@@ -724,6 +771,10 @@ anything from the app:
 ---
 
 ## Current State of the App
+
+> **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
+> recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
+> longer apply; see *Current state* at the top.
 
 The mobile app currently implements the homeowner-posted job and
 provider-application marketplace. It does not implement a separate customer
@@ -859,8 +910,9 @@ One more piece was wired alongside them:
 - Push delivery is through Expo, not direct FCM/APNs. The API's scheduler reads
   pending notification rows and honours `push_enabled`; the in-app notification
   list remains the source of truth.
-- `expo-crypto` remains in `package.json` but is no longer imported — nonce
-  generation for Google auth moved to the backend. Safe to remove.
+- `expo-crypto` is used by `AuthContext` (`Crypto.randomUUID()`); keep it.
+- `@shopify/flash-list`, `expo-camera` and `@react-navigation/*` are installed
+  but not imported (the camera goes through `expo-image-picker`).
 
 ## October 4 implementation and verification
 
