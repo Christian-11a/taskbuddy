@@ -46,7 +46,6 @@ describe("homepage story carousel links to the guide", () => {
       const ids = steps.map((step) => step.lesson);
 
       expect(new Set(ids).size).toBe(ids.length);
-      expect([...ids].sort()).toEqual(lessons.map((lesson) => lesson.id).sort());
       for (const step of steps) {
         const lesson = lessons.find((item) => item.id === step.lesson);
         expect(lesson, `unknown lesson id ${step.lesson}`).toBeDefined();

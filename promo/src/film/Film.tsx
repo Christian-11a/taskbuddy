@@ -176,12 +176,13 @@ const CUTS: Record<'c' | 'p', number[]> = {
 };
 const FAST = 16;
 type Warp = { heroAt: (l: number) => number; localAt: (h: number) => number };
-const makeWarp = (role: 'c' | 'p', from: number, to: number, dur: number): Warp => {
+export const makeWarp = (role: 'c' | 'p', from: number, to: number, dur: number): Warp => {
   const wins = CUTS[role].filter((c) => c >= from && c < to).map((c) => [c, Math.min(c + FAST, to)] as [number, number]);
   const fastLen = wins.reduce((n, [a, b]) => n + (b - a), 0);
   const slowHero = to - from - fastLen;
   const slowOut = dur - fastLen;
-  if (slowOut <= 1 || slowHero <= 0) {
+  // a range that is mostly one screen change would freeze on the old screen: play it evenly instead
+  if (slowOut <= 1 || slowHero <= 0 || slowHero < (to - from) * 0.4) {
     return { heroAt: (l) => from + Math.min(1, Math.max(0, l / dur)) * (to - from), localAt: (h) => ((h - from) / (to - from)) * dur };
   }
   const rate = slowHero / slowOut;

@@ -58,7 +58,7 @@
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
           lesson: "your-home-screen",
-          lessonTitle: "Your Home screen"
+          lessonTitle: "Your Home and My Jobs"
         },
         {
           image: "/film/story/customer-3.jpg",
@@ -88,7 +88,7 @@
           title: "Follow the job, then confirm and review.",
           body: "Follow the checklist and proof photos, confirm the job is done or report a problem, then leave a review.",
           lesson: "track-confirm-and-review",
-          lessonTitle: "Track, confirm and review"
+          lessonTitle: "Confirm the job and leave a review"
         }
       ]
     },
@@ -116,7 +116,7 @@
           title: "Finish your setup first.",
           body: "Add your ID, a selfie, a certificate for each service, and a payout account before you send proposals.",
           lesson: "provider-get-verified",
-          lessonTitle: "Get verified and set up payouts"
+          lessonTitle: "Get verified"
         },
         {
           image: "/film/story/provider-3.jpg",
@@ -126,7 +126,7 @@
           title: "Find jobs that fit your skills.",
           body: "Browse requests and look for jobs that match your services.",
           lesson: "provider-your-feed",
-          lessonTitle: "Your Feed"
+          lessonTitle: "Your Feed and availability"
         },
         {
           image: "/film/story/provider-4.jpg",

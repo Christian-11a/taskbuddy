@@ -116,9 +116,9 @@ describe("GuidePage", () => {
     unmount();
     render(<GuidePage />);
     expect(await screen.findByRole("button", { name: "Completed" })).toBeInTheDocument();
-    expect(screen.getByText("1 of 5 complete")).toBeInTheDocument();
+    expect(screen.getByText(`1 of ${GUIDE_TRACKS.clients.length} complete`)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reset progress" }));
-    expect(screen.getByText("0 of 5 complete")).toBeInTheDocument();
+    expect(screen.getByText(`0 of ${GUIDE_TRACKS.clients.length} complete`)).toBeInTheDocument();
   });
 
   it("still works when localStorage throws", async () => {
@@ -132,6 +132,6 @@ describe("GuidePage", () => {
     render(<GuidePage />);
     await user.click(screen.getByRole("button", { name: "Mark as complete" }));
     expect(screen.getByRole("button", { name: "Completed" })).toBeInTheDocument();
-    expect(screen.getByText("Video coming soon")).toBeInTheDocument();
+    expect(document.querySelector("video.guide-video")).toHaveAttribute("src", GUIDE_TRACKS.clients[0].video);
   });
 });
