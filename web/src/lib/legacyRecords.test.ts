@@ -25,6 +25,7 @@ describe("LEGACY_CUTOFF", () => {
 describe("hasXenditMarker", () => {
   it.each([
     ["Sending via Xendit", true],
+    ["Sending via Xendit (in flight)", true],
     ["XENDIT-9f2a", true],
     ["Xendit: Account number invalid", true],
     ["  Xendit: padded  ", true],
