@@ -247,8 +247,24 @@ Checks for cloud tasks: web lint, tsc, tests, build; page text read back at 375 
 
 ## Suggested run order now
 
-1. T0 (orchestrator).
-2. T1 (Haiku) and T5 (Sonnet) in parallel.
-3. T2 (Haiku), then T3 (Haiku).
-4. T4 (Sonnet) and T6 (Sonnet) in parallel.
+1. T0 (orchestrator). - DONE
+2. T1 (Haiku) and T5 (Sonnet) in parallel. - DONE
+3. T2 (Haiku), then T3 (Haiku). - DONE
+4. T4 (Sonnet) and T6 (Sonnet) in parallel. - DONE
 5. Orchestrator reviews everything, then asks the owner about committing.
+
+### T8 notes from the abandoned cloud attempt (2026-10-18, never pushed; redo locally)
+Decisions that worked, reuse them:
+- T8a: lesson ids become `compare-proposals-and-hire` and `provider-send-a-proposal` (update GuidePage test and sample JSON).
+- T8b: two new FAQ entries were useful: "How much does a job cost?" and "Can I change the date?".
+- T8c: hide the header icon on narrow screens so the header fits at 375 px; `/account` page points to Get the app.
+- T8d: copy `mobile/src/lib/legalText.ts` verbatim into `web/src/lib/legalText.ts` plus `web/scripts/sync-legal-text.mjs`
+  to re-copy it, and `web/src/lib/legalHtml.ts` (+ test) to render it; LegalPage, the home modal and complete-profile read it.
+  Do not reword legal text (it says "service provider" and mentions warranty/stored balance only to say TaskBuddy has neither).
+- T8e: provider cards follow the setup order; add a "Get paid" card (the attempt had none) and avoid two client cards
+  opening the same lesson.
+- T8f: 11 lesson JSON files, 6–9 steps, 45–60 s narration each; screenshots are placeholders naming the screen to capture;
+  keep "(test mode)" / "Prototype" text off camera.
+- T8h: `--color-muted` #64748b → #586a7f (≥ 4.84:1 on the palest blue); `web/src/lib/getApp.ts` exports
+  `GET_APP_HREF = "/#download"`, used by HomePage, SiteHeader and the account page.
+Commits must be authored and committed by the owner, no AI attribution.

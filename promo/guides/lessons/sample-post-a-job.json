@@ -4,7 +4,7 @@
   "number": 3,
   "title": "Post a job",
   "summary": "Tell providers what you need, step by step.",
-  "next": "Compare offers and hire",
+  "next": "Compare proposals and hire",
   "steps": [
     {
       "headline": "Start a new job",

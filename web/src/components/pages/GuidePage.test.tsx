@@ -68,9 +68,9 @@ describe("GuidePage", () => {
   });
 
   it("selects the lesson from the hash and follows hashchange", async () => {
-    window.history.replaceState(null, "", "/guide#provider-send-an-offer");
+    window.history.replaceState(null, "", "/guide#provider-send-a-proposal");
     render(<GuidePage />);
-    expect(await screen.findByRole("heading", { level: 2, name: "Send an offer" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Send a proposal" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "For providers" })).toHaveAttribute("aria-selected", "true");
 
     window.history.replaceState(null, "", "/guide#post-a-job");
@@ -85,7 +85,7 @@ describe("GuidePage", () => {
     await user.click(screen.getByRole("button", { name: /Post a job/ }));
     expect(window.location.hash).toBe("#post-a-job");
     await user.click(screen.getByRole("button", { name: "Next lesson" }));
-    expect(window.location.hash).toBe("#compare-offers-and-hire");
+    expect(window.location.hash).toBe("#compare-proposals-and-hire");
   });
 
   it("scrolls the player into view and focuses its heading when a lesson is tapped from the list", async () => {

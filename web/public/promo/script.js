@@ -61,11 +61,11 @@
         {
           image: "/film/story/customer-3.jpg",
           video: "/film/story/customer-3.mp4",
-          alt: "Client comparing three offers and hiring a verified provider",
-          caption: "Compare offers, then hire.",
-          title: "Compare offers, then hire.",
+          alt: "Client comparing three proposals and hiring a verified provider",
+          caption: "Compare proposals, then hire.",
+          title: "Compare proposals, then hire.",
           body: "See each provider’s price, rating, and message side by side, then hire with one tap.",
-          points: ["Compare prices and ratings", "Read each offer", "Hire with one tap"]
+          points: ["Compare prices and ratings", "Read each proposal", "Hire with one tap"]
         },
         {
           image: "/film/story/customer-4.jpg",
@@ -123,7 +123,7 @@
         {
           image: "/film/story/provider-4.jpg",
           video: "/film/story/provider-4.mp4",
-          alt: "Provider reviewing job details and submitting an offer",
+          alt: "Provider reviewing job details and submitting a proposal",
           caption: "See the job details first.",
           title: "See the job details first.",
           body: "Check the request, schedule, location, and client details before you apply.",

@@ -1,6 +1,6 @@
 # Promo site plan: align with the redesigned mobile app
 
-Status: PLAN ONLY. Nothing here is built yet. Work starts when the mobile changes land.
+Status: IN PROGRESS. T0-T6 are built and committed; T8 (site content for the final app) is being built. Section 2e is the source of truth for the app.
 Scope: the public promo site in `web/` (`/`, `/account/*`, `/terms`, `/privacy`, `web/public/promo`,
 `web/public/film`) and the videos made in `promo/` (Remotion). The admin dashboard (`/admin/*`) is out of scope.
 
@@ -43,7 +43,7 @@ Handoff needed from the mobile team: the branch, the final wording for each item
 Read from the PR and `team/main` (fetched as `refs/remotes/team/main`; the owner's fork is not synced yet).
 
 What is now real in the app:
-- **No wallet.** The client pays when hiring, through Xendit (GCash, Maya, GrabPay, card, online banking),
+- **No wallet.** The client pays when hiring, through Xendit (GCash, Maya, card, online banking),
   currently in TEST mode. The money is held in escrow. Providers link a GCash, Maya or bank account
   (Profile → Payout account) and are paid there on release. Refunds go back to the payment method.
 - **Tabs:** Wallet tab replaced by **Messages** on both sides (Home / My Jobs / Messages / Profile;
@@ -52,7 +52,7 @@ What is now real in the app:
   premium)** worked out from the service, tasks and urgency. Note: three options, not a "range".
 - **Verification:** Stripe Identity now also checks the name matches the account; otherwise an admin decides.
 - **Credentials:** providers can upload TESDA, PRC or trade certificates per service; approved ones show a
-  **Certified** badge on offers and the profile. Optional, not required.
+  **Certified** badge on offers and the profile. Optional, not required. (OUTDATED: certificates are required before sending proposals; see 2e)
 - **Photo evidence:** ticking a task done needs 1–4 proof photos; complaints can carry up to 6 photos.
 - **Terms v2:** new sections on pricing, holding of funds, release, complaints, liability. The text lives in
   `mobile/src/lib/legalText.ts` (use it as the single source for the site's Terms). Marked as a draft that
