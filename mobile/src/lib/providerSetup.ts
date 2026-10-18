@@ -4,7 +4,7 @@ import { addressSaved } from './verifyFlow';
 /** Where the provider's identity check stands, as the Feed reads `api.myVerification`. */
 export type VerifyState = 'none' | 'pending' | 'rejected';
 
-export type SetupStepId = 'address' | 'bio' | 'verify' | 'certificate' | 'payout';
+export type SetupStepId = 'address' | 'bio' | 'verify' | 'payout';
 /** `done` when finished; `next` for the first unfinished step; `locked` for the rest. */
 export type SetupStepState = 'done' | 'next' | 'locked';
 
@@ -17,44 +17,16 @@ export interface SetupStep {
   state: SetupStepState;
   /** Button text while this is the next step. The screen adds the arrow. */
   actionLabel: string;
+  /** Get verified only: true when the next action is the certificate, so the tap opens the certificate screen. */
+  opensCertificate?: boolean;
 }
 
 type ProfileFields = Partial<Pick<Profile, 'address' | 'city'>> | null | undefined;
 type ProviderFields = Partial<Pick<ProviderProfile, 'bio' | 'is_verified'>> | null | undefined;
 
-const VERIFY_SUBTITLE: Record<VerifyState, string> = {
-  none: 'ID photo + selfie · about 2 minutes',
-  pending: 'Under review',
-  rejected: 'Not accepted · upload new photos',
-};
-
-const VERIFY_ACTION: Record<VerifyState, string> = {
-  none: 'Verify your ID',
-  pending: 'View status',
-  rejected: 'Try again',
-};
-
 function trimmed(value: string | null | undefined): string {
   return (value ?? '').trim();
 }
-
-const CERT_SUBTITLE: Record<CertificateState | 'unknown', string> = {
-  none: 'TESDA, PRC or trade certificate for your service',
-  pending: 'Under review',
-  approved: 'Approved',
-  rejected: 'Not accepted · upload a new certificate',
-  expired: 'Expired · upload a renewed certificate',
-  unknown: 'TESDA, PRC or trade certificate for your service',
-};
-
-const CERT_ACTION: Record<CertificateState | 'unknown', string> = {
-  none: 'Upload your certificate',
-  pending: 'View status',
-  approved: 'View certificate',
-  rejected: 'Upload again',
-  expired: 'Renew certificate',
-  unknown: 'Upload your certificate',
-};
 
 export interface SetupExtras {
   /** The primary service's certificate (`me.certificate`, or derived from `myCredentials()`). Missing counts as not done. */
@@ -64,9 +36,40 @@ export interface SetupExtras {
 }
 
 /**
- * The steps a new provider finishes, in order: address, bio, ID, certificate,
- * then a payout account (proposals need one). A step is done when its data is
- * saved. `payoutLinked` is true once `GET /payouts/account` returns an account.
+ * The Get verified step's copy while it is not done. The ID check comes first:
+ * until it is approved the step follows the request status, and after that it
+ * names the certificate that is still missing or needs attention.
+ */
+function verifyCopy(
+  verifyState: VerifyState,
+  identityApproved: boolean,
+  certificate: CertificateState | 'unknown',
+): Pick<SetupStep, 'subtitle' | 'actionLabel' | 'opensCertificate'> {
+  if (!identityApproved) {
+    if (verifyState === 'pending') return { subtitle: 'ID under review', actionLabel: 'View status', opensCertificate: false };
+    if (verifyState === 'rejected') return { subtitle: 'Not accepted · upload new photos', actionLabel: 'Try again', opensCertificate: false };
+    if (certificate === 'none' || certificate === 'unknown') {
+      return { subtitle: 'ID photo, selfie and certificate · about 5 minutes', actionLabel: 'Get verified', opensCertificate: false };
+    }
+    return { subtitle: 'ID photo and selfie needed', actionLabel: 'Get verified', opensCertificate: false };
+  }
+  switch (certificate) {
+    case 'pending':
+      return { subtitle: 'ID approved · certificate under review', actionLabel: 'View status', opensCertificate: true };
+    case 'rejected':
+      return { subtitle: 'Certificate not accepted · upload a new one', actionLabel: 'Upload again', opensCertificate: true };
+    case 'expired':
+      return { subtitle: 'Certificate expired · upload a renewed one', actionLabel: 'Renew certificate', opensCertificate: true };
+    default:
+      return { subtitle: 'ID approved · certificate needed', actionLabel: 'Upload your certificate', opensCertificate: true };
+  }
+}
+
+/**
+ * The steps a new provider finishes, in order: address, bio, Get verified (the ID
+ * check and the certificate for the main service, one step), then a payout account
+ * (proposals need one). A step is done when its data is saved. `payoutLinked` is
+ * true once `GET /payouts/account` returns an account.
  */
 export function providerSetupSteps(
   profile: ProfileFields,
@@ -78,9 +81,15 @@ export function providerSetupSteps(
   const address = trimmed(profile?.address);
   const city = trimmed(profile?.city);
   const bio = trimmed(providerProfile?.bio);
-  const verified = extras.identityApproved ?? providerProfile?.is_verified === true;
   const certificate = extras.certificate ?? 'none';
+  const identityApproved = extras.identityApproved ?? providerProfile?.is_verified === true;
+  // is_verified is only set once the ID and the main service's certificate are both approved, so it counts as done on its own.
+  const verifyDone = providerProfile?.is_verified === true || (identityApproved && certificate === 'approved');
   const addressDone = addressSaved(profile);
+
+  const verify = verifyDone
+    ? { subtitle: 'Verified', actionLabel: 'Get verified', opensCertificate: false }
+    : verifyCopy(verifyState, identityApproved, certificate);
 
   const steps: Omit<SetupStep, 'state'>[] = [
     {
@@ -99,17 +108,9 @@ export function providerSetupSteps(
     },
     {
       id: 'verify',
-      title: 'Verify your ID',
-      done: verified,
-      subtitle: verified ? 'ID approved' : VERIFY_SUBTITLE[verifyState],
-      actionLabel: VERIFY_ACTION[verifyState],
-    },
-    {
-      id: 'certificate',
-      title: 'Upload your certificate',
-      done: certificate === 'approved',
-      subtitle: CERT_SUBTITLE[certificate],
-      actionLabel: CERT_ACTION[certificate],
+      title: 'Get verified',
+      done: verifyDone,
+      ...verify,
     },
     {
       id: 'payout',

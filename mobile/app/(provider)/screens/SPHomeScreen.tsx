@@ -70,7 +70,6 @@ import {
   providerSetupSteps,
   setupProgress,
   type SetupStep,
-  type SetupStepId,
   type VerifyState,
 } from '../../../src/lib/providerSetup';
 import OwnAvatar from '../../../src/components/OwnAvatar';
@@ -175,7 +174,7 @@ function SetupPanel({ steps, verifyState, verified, categoryName, onStep, setupT
   verifyState: VerifyState;
   verified: boolean;
   categoryName: string | null;
-  onStep: (id: SetupStepId) => void;
+  onStep: (step: SetupStep) => void;
   setupTour: TourAnchor;
 }) {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
@@ -246,7 +245,7 @@ function SetupPanel({ steps, verifyState, verified, categoryName, onStep, setupT
             hitSlop={4}
             accessibilityRole="button"
             accessibilityLabel={next.actionLabel}
-            onPress={() => onStep(next.id)}
+            onPress={() => onStep(next)}
           >
             <Text style={styles.setupButtonText}>{next.actionLabel}</Text>
             <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
@@ -554,7 +553,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               verifyState={verifyState}
               verified={isVerified}
               categoryName={providerProfile?.service_categories?.name ?? null}
-              onStep={(id) => (id === 'certificate' ? openCertificate() : onNavigate(id === 'verify' ? 'Verification' : id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
+              onStep={(step) => (step.opensCertificate ? openCertificate() : onNavigate(step.id === 'verify' ? 'Verification' : step.id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
               setupTour={setupTour}
             />
           )}

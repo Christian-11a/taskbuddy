@@ -313,9 +313,9 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
-      expect(screen.getByText('Finish setting up · 1 of 5')).toBeTruthy();
+      expect(screen.getByText('Finish setting up · 1 of 4')).toBeTruthy();
       expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
-      expect(screen.getByText('ID photo + selfie · about 2 minutes')).toBeTruthy();
+      expect(screen.getByText('ID photo, selfie and certificate · about 5 minutes')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Add a short bio' })).toBeTruthy();
     });
 
@@ -330,7 +330,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 5')).toBeTruthy();
+      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
       expect(screen.getByTestId('setup-badge-bio')).not.toBe(badgeBefore);
       expect(screen.getByTestId('setup-segment-bio')).not.toBe(segmentBefore);
       expect(StyleSheet.flatten(screen.getByTestId('setup-segment-bio').props.style).backgroundColor).toBe(lightPalette.Colors.onPrimary);
@@ -353,8 +353,8 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       const onNavigate = jest.fn();
       render(<SPHomeScreen onNavigate={onNavigate} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 5')).toBeTruthy();
-      fireEvent.press(screen.getByRole('button', { name: 'Verify your ID' }));
+      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
+      fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
 
       expect(onNavigate).toHaveBeenCalledWith('Verification');
     });
@@ -365,7 +365,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Verification under review')).toBeTruthy();
-      expect(screen.getByText('Under review')).toBeTruthy();
+      expect(screen.getByText('ID under review')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'View status' })).toBeTruthy();
     });
 
@@ -413,7 +413,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       expect(screen.queryByTestId('certificate-expiry-banner')).toBeNull();
     });
 
-    it('shows five steps, with the certificate next once the ID is approved, and opens Get verified at the certificate step', async () => {
+    it('shows four steps, with the certificate next inside Get verified once the ID is approved, and opens the certificate there', async () => {
       unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       (useAuth as jest.Mock).mockReturnValue({
         ...(useAuth as jest.Mock)(),
@@ -425,8 +425,10 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       const onNavigate = jest.fn();
       render(<SPHomeScreen onNavigate={onNavigate} />);
 
-      expect(await screen.findByText('Finish setting up · 3 of 5')).toBeTruthy();
-      expect(screen.getByTestId('setup-badge-certificate')).toBeTruthy();
+      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
+      expect(screen.getByText('ID approved · certificate needed')).toBeTruthy();
+      expect(screen.getByTestId('setup-badge-verify')).toBeTruthy();
+      expect(screen.queryByTestId('setup-badge-certificate')).toBeNull();
       fireEvent.press(screen.getByRole('button', { name: 'Upload your certificate' }));
       expect(onNavigate).toHaveBeenCalledWith('Verification', undefined, { startAt: 'certificate', categoryId: 3 });
     });
@@ -743,7 +745,7 @@ describe('SPHomeScreen - payout account is the last setup step', () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue(null);
     render(<SPHomeScreen onNavigate={jest.fn()} />);
 
-    expect(await screen.findByText('Finish setting up · 4 of 5')).toBeTruthy();
+    expect(await screen.findByText('Finish setting up · 3 of 4')).toBeTruthy();
     expect(screen.getByText('Almost there')).toBeTruthy();
     expect(screen.getByText('Link a payout account to send proposals.')).toBeTruthy();
     expect(screen.getByTestId('setup-badge-payout')).toBeTruthy();
