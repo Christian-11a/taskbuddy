@@ -256,3 +256,21 @@ it('admin alerts are deduplicated and dismissed alerts stay out of snapshots', a
   const [{ unread }] = await query('select count(*)::int as unread from notifications where recipient_id = $1 and read_at is null and dismissed_at is null', [admin]);
   assert.equal(snapshot.unreadCount, unread);
 });
+
+it('keeps jobs.dispute_state in step with complaints and cancellations (0063, 0065)', async () => {
+  const state = async (id) => (await query('select dispute_state from jobs where id = $1', [id]))[0].dispute_state;
+
+  const cancelled = await job();
+  const c = await cancel(cancelled);
+  assert.equal(c.cancellation_state, 'pending');
+  assert.equal(await state(cancelled), 'open');
+  await resolve(c.id);
+  assert.equal(await state(cancelled), 'resolved');
+
+  const working = await job('in_progress');
+  assert.equal(await state(working), null);
+  const raised = await complaint(working);
+  assert.equal(await state(working), 'open');
+  await resolve(raised.id, 'released_to_provider');
+  assert.equal(await state(working), 'resolved');
+});
