@@ -116,14 +116,15 @@ section[id] { scroll-margin-top: 6rem; }
 .story-capture figcaption { align-self: end; justify-self: start; color: var(--color-muted); font-size: .82rem; }
 .story-copy { position: relative; display: block; min-width: 0; min-height: 0; overflow: hidden; padding: clamp(2rem, 4vw, 4rem) clamp(2rem, 5vw, 5rem) 8rem; }
 .story-copy__topline { display: flex; align-items: center; gap: .75rem; color: var(--color-accent-deep); font-size: .73rem; letter-spacing: .1em; text-transform: uppercase; }
-.story-copy__topline, .story-copy h3, .story-copy [data-story-body], .story-copy .story-points { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
-.story-copy.is-changing .story-copy__topline, .story-copy.is-changing h3, .story-copy.is-changing [data-story-body], .story-copy.is-changing .story-points { opacity: 0; transform: translateY(.5rem); }
+.story-copy__topline, .story-copy h3, .story-copy [data-story-body], .story-copy .story-points, .story-copy [data-story-guide] { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.story-copy.is-changing .story-copy__topline, .story-copy.is-changing h3, .story-copy.is-changing [data-story-body], .story-copy.is-changing .story-points, .story-copy.is-changing [data-story-guide] { opacity: 0; transform: translateY(.5rem); }
 .story-number { color: var(--color-ink); font-family: var(--font-display); font-size: 1.5rem; letter-spacing: 0; }
 .story-copy h3 { margin-top: 1.25rem; font-size: clamp(1.85rem, 3.5vw, 3.3rem); }
 .story-copy > p { margin-top: 1rem; color: var(--color-muted); font-size: 1.06rem; line-height: 1.55; }
 .story-points { display: grid; gap: .7rem; margin: 1.5rem 0 2rem; padding: 0; list-style: none; }
 .story-points li { display: flex; align-items: baseline; gap: .65rem; }
 .story-points li::before { content: ""; width: .45rem; height: .45rem; flex: 0 0 auto; border-radius: 50%; background: var(--color-accent); }
+.story-copy .story-guide { margin-top: 1.25rem; }
 .story-controls { position: absolute; right: clamp(2rem, 5vw, 5rem); bottom: 3rem; left: clamp(2rem, 5vw, 5rem); display: flex; align-items: center; gap: .8rem; min-height: 3.2rem; }
 .arrow-button { display: grid; width: 3rem; height: 3rem; place-items: center; flex: 0 0 auto; border: 1px solid var(--color-rule); border-radius: 50%; background: var(--color-surface); color: var(--color-ink); transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
 .arrow-button:hover { border-color: var(--color-accent); background: var(--color-accent-soft); transform: translateY(-2px); }

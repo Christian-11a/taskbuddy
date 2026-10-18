@@ -9,7 +9,7 @@
   var roleLabel = document.querySelector("[data-story-role]");
   var title = document.querySelector("[data-story-title]");
   var body = document.querySelector("[data-story-body]");
-  var points = document.querySelector("[data-story-points]");
+  var guideLink = document.querySelector("[data-story-guide]");
   var storyCopy = document.querySelector(".story-copy");
   var progress = document.querySelector("[data-story-progress]");
   var status = document.querySelector("[data-story-status]");
@@ -44,10 +44,21 @@
           image: "/film/story/customer-1.jpg",
           video: "/film/story/customer-1.mp4",
           alt: "TaskBuddy client home screen with services and the Post button",
+          caption: "Create your account.",
+          title: "Create your account.",
+          body: "Sign up in the app and verify your email to start posting jobs.",
+          lesson: "create-your-account",
+          lessonTitle: "Create your account"
+        },
+        {
+          image: "/film/story/customer-1.jpg",
+          video: "/film/story/customer-1.mp4",
+          alt: "TaskBuddy client home screen with services and the Post button",
           caption: "Start with what you need.",
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
-          points: ["See your active jobs", "Know what to do next", "Move at your own pace"]
+          lesson: "your-home-screen",
+          lessonTitle: "Your Home screen"
         },
         {
           image: "/film/story/customer-2.jpg",
@@ -55,8 +66,9 @@
           alt: "Client posting a job: service, tasks, urgency, and price options",
           caption: "Tell providers what you need.",
           title: "Tell providers what you need.",
-          body: "Pick a service, the tasks, and how urgent it is, then choose one of three estimated price options.",
-          points: ["Choose the tasks", "Set the urgency", "Pick a price option"]
+          body: "Pick a service, its tasks and urgency, then choose one of three estimated price options.",
+          lesson: "post-a-job",
+          lessonTitle: "Post a job"
         },
         {
           image: "/film/story/customer-3.jpg",
@@ -64,26 +76,19 @@
           alt: "Client comparing three proposals and hiring a verified provider",
           caption: "Compare proposals, then hire.",
           title: "Compare proposals, then hire.",
-          body: "See each provider’s price, rating, and message side by side, then hire. Hire opens payment.",
-          points: ["Compare prices and ratings", "Read each proposal", "Hire and pay in the app"]
+          body: "Compare each proposal’s price and rating side by side, then hire to open payment.",
+          lesson: "compare-proposals-and-hire",
+          lessonTitle: "Compare proposals and hire"
         },
         {
           image: "/film/story/customer-4.jpg",
           video: "/film/story/customer-4.mp4",
           alt: "Client tracking the job checklist with proof photos",
-          caption: "Follow the job.",
-          title: "Follow the job.",
-          body: "Track the checklist with proof photos while your payment stays held.",
-          points: ["See each task get done", "View proof photos", "Chat in the app"]
-        },
-        {
-          image: "/film/story/customer-5.jpg",
-          video: "/film/story/customer-5.mp4",
-          alt: "Client rating the provider five stars and submitting a review",
-          caption: "Finish the job and leave a review.",
-          title: "Finish the job and leave a review.",
-          body: "Confirm the job is done, or report a problem first. Then share your experience.",
-          points: ["Confirm the job is done", "Report a problem if needed", "Leave a review"]
+          caption: "Follow the job, then confirm and review.",
+          title: "Follow the job, then confirm and review.",
+          body: "Follow the checklist and proof photos, confirm the job is done or report a problem, then leave a review.",
+          lesson: "track-confirm-and-review",
+          lessonTitle: "Track, confirm and review"
         }
       ]
     },
@@ -97,10 +102,11 @@
           image: "/film/story/provider-1.jpg",
           video: "/film/story/provider-1.mp4",
           alt: "Provider feed of jobs near you with a new job arriving",
-          caption: "Find jobs that fit your skills.",
-          title: "Find jobs that fit your skills.",
-          body: "Browse requests and look for jobs that match your services.",
-          points: ["Scan jobs quickly", "See key details first", "Choose the jobs you want"]
+          caption: "Create your provider account.",
+          title: "Create your provider account.",
+          body: "Sign up as a provider and set up your profile.",
+          lesson: "provider-create-account",
+          lessonTitle: "Create your account"
         },
         {
           image: "/film/story/provider-2.jpg",
@@ -108,17 +114,19 @@
           alt: "Provider setup: ID photo, selfie, certificates, and payout account",
           caption: "Finish your setup first.",
           title: "Finish your setup first.",
-          body: "Add your ID, selfie, a certificate for each service, and a payout account before you send proposals.",
-          points: ["ID photo and selfie", "Certificate for each service", "Payout account"]
+          body: "Add your ID, a selfie, a certificate for each service, and a payout account before you send proposals.",
+          lesson: "provider-get-verified",
+          lessonTitle: "Get verified and set up payouts"
         },
         {
-          image: "/film/story/provider-3.jpg",
-          video: "/film/story/provider-3.mp4",
-          alt: "Provider Earnings screen listing what was paid out and what is on its way",
-          caption: "Get paid automatically.",
-          title: "Get paid automatically.",
-          body: "Payment goes to your linked GCash, Maya, or bank account once the client confirms. See it in Earnings.",
-          points: ["Fee shown up front", "Paid out automatically", "Track it in Earnings"]
+          image: "/film/story/provider-1.jpg",
+          video: "/film/story/provider-1.mp4",
+          alt: "Provider feed of jobs near you with a new job arriving",
+          caption: "Find jobs that fit your skills.",
+          title: "Find jobs that fit your skills.",
+          body: "Browse requests and look for jobs that match your services.",
+          lesson: "provider-your-feed",
+          lessonTitle: "Your Feed"
         },
         {
           image: "/film/story/provider-4.jpg",
@@ -126,8 +134,9 @@
           alt: "Provider reviewing job details and sending a proposal",
           caption: "See the job details first.",
           title: "See the job details first.",
-          body: "Check the request, schedule, location, and the price you would receive before you send a proposal.",
-          points: ["See the work and schedule", "Read the client’s request", "Decide before you send a proposal"]
+          body: "Check the work, schedule, location and the price you would receive before you send a proposal.",
+          lesson: "provider-send-a-proposal",
+          lessonTitle: "Send a proposal"
         },
         {
           image: "/film/story/provider-5.jpg",
@@ -135,8 +144,19 @@
           alt: "Provider doing the job with proof photos after being hired",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
-          body: "Do the tasks and add proof photos. The client confirms when it is done.",
-          points: ["Know when you are hired", "Add proof photos", "Chat with the client"]
+          body: "Do the tasks and add proof photos, then wait for the client to confirm.",
+          lesson: "provider-do-the-job",
+          lessonTitle: "Do the job"
+        },
+        {
+          image: "/film/story/provider-3.jpg",
+          video: "/film/story/provider-3.mp4",
+          alt: "Provider Earnings screen listing what was paid out and what is on its way",
+          caption: "Get paid automatically.",
+          title: "Get paid automatically.",
+          body: "Once the client confirms, your pay arrives in your payout account automatically, listed in Earnings.",
+          lesson: "provider-get-paid",
+          lessonTitle: "Get paid"
         }
       ]
     }
@@ -312,12 +332,8 @@
     roleLabel.textContent = set.role;
     title.textContent = step.title;
     body.textContent = step.body;
-    points.textContent = "";
-    step.points.forEach(function (point) {
-      var item = document.createElement("li");
-      item.textContent = point;
-      points.appendChild(item);
-    });
+    guideLink.setAttribute("href", "/guide#" + step.lesson);
+    guideLink.setAttribute("aria-label", "Watch the guide: " + step.lessonTitle);
     status.textContent = set.role + " step " + (currentIndex + 1) + " of " + set.steps.length;
     renderProgress();
     syncHeroFilm();
