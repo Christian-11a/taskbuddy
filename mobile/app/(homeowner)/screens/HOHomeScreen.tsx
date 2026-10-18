@@ -22,8 +22,10 @@ import {
   Bell,
   ChevronRight,
   ClipboardList,
+  Compass,
   Hand,
   Plus,
+  X,
 } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { HOScreen } from '../../../src/types/navigation';
@@ -57,7 +59,6 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { useTourAnchor } from '../../../src/components/tour';
-import TourOfferCard from '../../../src/components/tour/TourOfferCard';
 
 const ACTIVE_STATUSES = [
   'open',
@@ -133,7 +134,17 @@ function simpleHeroCopy(hero: Exclude<HomeHero, { kind: 'proposals' }>, onNaviga
   const label = `View ${job.title}`;
   const onPress = () => onNavigate('Job Detail', job.id);
   switch (hero.kind) {
-    case 'working':
+    case 'working': {
+      if (job.display_status === 'disputed') {
+        return {
+          chip: 'Complaint open',
+          title: job.title,
+          line: 'An admin is reviewing a complaint on this job.',
+          button,
+          label,
+          onPress,
+        };
+      }
       return {
         chip: hero.needsConfirmation ? 'Needs your confirmation' : 'In progress',
         title: job.title,
@@ -142,6 +153,7 @@ function simpleHeroCopy(hero: Exclude<HomeHero, { kind: 'proposals' }>, onNaviga
         label,
         onPress,
       };
+    }
     case 'booking':
       return {
         chip: hero.upcoming ? 'Next booking' : 'Booked',
@@ -388,7 +400,31 @@ export default function HOHomeScreen({ onNavigate, tourOffer }: HOHomeScreenProp
             error={hintError}
             onRetry={retryStale}
           />
-          {tourOffer && <TourOfferCard onStart={tourOffer.onStart} onDismiss={tourOffer.onDismiss} />}
+          {tourOffer && (
+            <View testID="tour-offer" style={styles.tourBanner}>
+              <Compass size={18} color={Colors.primaryDeep} strokeWidth={2.2} />
+              <Text style={styles.tourText} numberOfLines={1}>New here? Take a 1-minute tour</Text>
+              <Tap
+                testID="tour-offer-start"
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Take the tour"
+                onPress={tourOffer.onStart}
+              >
+                <Text style={styles.tourStart}>Start</Text>
+              </Tap>
+              <Tap
+                testID="tour-offer-dismiss"
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Dismiss the tour offer"
+                style={styles.tourClose}
+                onPress={tourOffer.onDismiss}
+              >
+                <X size={16} color={C.ink700} strokeWidth={2.2} />
+              </Tap>
+            </View>
+          )}
 
           {/* What do you need done? opens the job form with no category, as My Jobs' "New" does. */}
           <Tap
@@ -530,6 +566,17 @@ function createThemedStyles(theme: ThemePalette) {
     },
 
     body: { paddingHorizontal: Spacing.screenH, paddingTop: 18, gap: 18 },
+
+    tourBanner: {
+      flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44,
+      paddingLeft: 14, paddingRight: 6, borderRadius: 14, backgroundColor: Colors.primaryTonal,
+    },
+    tourText: {
+      flex: 1, minWidth: 0, color: C.ink900,
+      fontSize: 14, fontWeight: '500', fontFamily: 'Inter', lineHeight: 20,
+    },
+    tourStart: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', lineHeight: 20, paddingHorizontal: 8 },
+    tourClose: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
 
     askField: {
       flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 54,

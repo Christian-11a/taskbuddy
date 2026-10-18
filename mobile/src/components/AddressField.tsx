@@ -23,7 +23,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -76,9 +76,15 @@ interface Props {
   /** Lets the screen scroll the field into view when the keyboard opens. */
   onFocus?: () => void;
   onBlur?: () => void;
+  /**
+   * True while the screen already holds coordinates for the text in the field
+   * (a saved address or a confirmed location). No lookup runs and no
+   * "Looking up addresses…" line shows while it is true.
+   */
+  resolved?: boolean;
 }
 
-export default function AddressField({
+const AddressField = forwardRef<TextInput, Props>(function AddressField({
   value,
   onChangeText,
   onResolve,
@@ -91,7 +97,8 @@ export default function AddressField({
   maxLength,
   onFocus,
   onBlur,
-}: Props) {
+  resolved = false,
+}, ref) {
   const { Colors, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
   const [open, setOpen] = useState(false);
@@ -101,6 +108,8 @@ export default function AddressField({
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const revealField = useRevealOnFocus(inputRef);
+  // The caller's ref reaches the inner input, so a failed submit can focus it.
+  useImperativeHandle(ref, () => inputRef.current as TextInput, []);
 
   // The text a suggestion or GPS fix produced. While the field still holds it,
   // there is nothing to look up — and no dropdown to reopen on the next render.
@@ -111,6 +120,13 @@ export default function AddressField({
   useEffect(() => {
     const query = value.trim();
 
+    if (resolved) {
+      ++queryIdRef.current;
+      setSuggestions([]);
+      setOpen(false);
+      setSearching(false);
+      return;
+    }
     if (query === resolvedTextRef.current) return;
     if (query.length < MIN_QUERY_LENGTH) {
       setSuggestions([]);
@@ -299,13 +315,15 @@ export default function AddressField({
         </View>
       )}
 
-      {searching && !open && <Text style={styles.hint}>Looking up addresses…</Text>}
+      {searching && !open && !resolved && <Text style={styles.hint}>Looking up addresses…</Text>}
       {!!notice && <Text style={styles.notice}>{notice}</Text>}
       {!!hint && !notice && <Text style={styles.hint}>{hint}</Text>}
       {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
     </View>
   );
-}
+});
+
+export default AddressField;
 
 function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;

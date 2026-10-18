@@ -63,6 +63,7 @@ export default function ContentSkeleton({ variant = 'list' }: { variant?: Varian
   }
 
   return (
+    <View accessible accessibilityLabel="Loading content">
     <Pulse style={styles.list}>
       {[0, 1, 2].map((i) => (
         <View key={i} style={[styles.card, card]}>
@@ -72,6 +73,7 @@ export default function ContentSkeleton({ variant = 'list' }: { variant?: Varian
         </View>
       ))}
     </Pulse>
+    </View>
   );
 }
 

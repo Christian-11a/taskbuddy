@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet, TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import RegisterScreen from '../RegisterScreen';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -458,5 +458,52 @@ describe('RegisterScreen — the email code', () => {
     expect(screen.getByLabelText('Verification code').props.value).toBe('123456');
     await act(async () => fireEvent.press(screen.getByText('Verify Email')));
     expect(verifyEmailOtp).toHaveBeenCalledWith({ email: 'test@example.test', token: '123456' });
+  });
+});
+
+describe('RegisterScreen — failed Create account', () => {
+  beforeEach(() => {
+    (useAuth as jest.Mock).mockReturnValue({ verifyEmailOtp: jest.fn() });
+  });
+
+  it('scrolls to and focuses the first invalid field, top to bottom', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+
+    scrollTo.mockClear();
+    focus.mockClear();
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    // The name is fine and the email is empty, so the email is the first problem.
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.instances[0]).toMatchObject({ props: { testID: 'input-email' } });
+    scrollTo.mockRestore();
+    focus.mockRestore();
+  });
+
+  it('scrolls to the consents without focusing a field when only they are missing', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    render(<RegisterScreen {...baseProps} />);
+    fireEvent.press(screen.getByText('Continue'));
+    fireEvent.changeText(screen.getByTestId('input-name'), 'Test User');
+    fireEvent.changeText(screen.getByTestId('input-email'), 'test@example.test');
+    fireEvent.changeText(screen.getByTestId('input-password'), 'password123');
+    fireEvent.changeText(screen.getByTestId('input-confirm-password'), 'password123');
+
+    scrollTo.mockClear();
+    focus.mockClear();
+    await act(async () => fireEvent.press(screen.getByTestId('btn-create-account')));
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(focus).not.toHaveBeenCalled();
+    scrollTo.mockRestore();
+    focus.mockRestore();
   });
 });

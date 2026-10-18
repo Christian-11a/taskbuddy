@@ -40,7 +40,8 @@ describe('groupNotificationsByDay', () => {
     ];
     const groups = groupNotificationsByDay(rows, now);
     expect(groups.today.map((r) => r.id)).toEqual(['a', 'b']);
-    expect(groups.earlier.map((r) => r.id)).toEqual(['c']);
+    expect(groups.thisWeek.map((r) => r.id)).toEqual(['c']);
+    expect(groups.earlier).toEqual([]);
   });
 
   it('keeps a timestamp a little ahead of this clock under today', () => {
@@ -54,8 +55,8 @@ describe('groupNotificationsByDay', () => {
     expect(groups.earlier.map((r) => r.id)).toEqual(['x']);
   });
 
-  it('returns two empty groups for an empty list', () => {
-    expect(groupNotificationsByDay([], now)).toEqual({ today: [], earlier: [] });
+  it('returns three empty groups for an empty list', () => {
+    expect(groupNotificationsByDay([], now)).toEqual({ today: [], thisWeek: [], earlier: [] });
   });
 });
 

@@ -5,7 +5,7 @@ import HOJobDetailScreen from '../HOJobDetailScreen';
 import { ApiError, api } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 
@@ -894,5 +894,48 @@ describe('HOJobDetailScreen — a reload keeps the job on screen', () => {
     expect(screen.getByText('Fix the sink')).toBeTruthy();
     expect(screen.getByTestId('refresh-bar')).toBeTruthy();
     expect(screen.UNSAFE_queryByType(ContentSkeleton)).toBeNull();
+  });
+});
+
+describe('HOJobDetailScreen pull-to-refresh', () => {
+  const pullControl = () =>
+    screen.UNSAFE_getAllByType(ScrollView).find((node) => node.props.refreshControl)!.props.refreshControl;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getJob as jest.Mock).mockResolvedValue(inProgressJob);
+    (api.getProvider as jest.Mock).mockResolvedValue({ profile_id: 'provider-1', profiles: { full_name: 'Jane Provider' }, cached_completed_jobs: 1 });
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  it('pulling reloads the job, provider and dispute', async () => {
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    (api.getJob as jest.Mock).mockClear();
+    (api.getProvider as jest.Mock).mockClear();
+    (api.jobDispute as jest.Mock).mockClear();
+
+    await act(async () => {
+      pullControl().props.onRefresh();
+    });
+
+    await waitFor(() => expect(api.getJob).toHaveBeenCalledWith('job-1'));
+    expect(api.getProvider).toHaveBeenCalledWith('provider-1');
+    expect(api.jobDispute).toHaveBeenCalledWith('job-1');
+    await waitFor(() => expect(pullControl().props.refreshing).toBe(false));
+  });
+
+  it('stops the spinner when the reload fails', async () => {
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    (api.getJob as jest.Mock).mockClear();
+    (api.getJob as jest.Mock).mockRejectedValueOnce(new Error('offline'));
+
+    await act(async () => {
+      pullControl().props.onRefresh();
+    });
+
+    await waitFor(() => expect(api.getJob).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(pullControl().props.refreshing).toBe(false));
   });
 });

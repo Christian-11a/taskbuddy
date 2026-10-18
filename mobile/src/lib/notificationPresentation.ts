@@ -81,24 +81,30 @@ export function notificationIconName(copy: {
 
 export interface NotificationDayGroups<T> {
   today: T[];
+  /** Before today but within the last 7 days (today and the 6 days before it). */
+  thisWeek: T[];
   earlier: T[];
 }
 
 /**
- * Splits rows (already newest first) into Today and Earlier. "Today" starts
- * at local midnight; a timestamp slightly ahead of this device's clock is
- * still Today, and one that cannot be read is Earlier.
+ * Splits rows (already newest first) into Today, This week and Earlier.
+ * "Today" starts at local midnight; a timestamp slightly ahead of this
+ * device's clock is still Today, and one that cannot be read is Earlier.
  */
 export function groupNotificationsByDay<T extends { created_at: string }>(
   rows: readonly T[],
   now: Date = new Date(),
 ): NotificationDayGroups<T> {
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6).getTime();
   const today: T[] = [];
+  const thisWeek: T[] = [];
   const earlier: T[] = [];
   for (const row of rows) {
     const created = new Date(row.created_at).getTime();
-    (created >= startOfToday ? today : earlier).push(row);
+    if (created >= startOfToday) today.push(row);
+    else if (created >= startOfWeek) thisWeek.push(row);
+    else earlier.push(row);
   }
-  return { today, earlier };
+  return { today, thisWeek, earlier };
 }

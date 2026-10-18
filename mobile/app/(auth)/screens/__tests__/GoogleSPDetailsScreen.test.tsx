@@ -1,4 +1,5 @@
 import React from 'react';
+import { ScrollView } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import GoogleSPDetailsScreen from '../GoogleSPDetailsScreen';
 it('completes Google provider onboarding with the same three signup consents', async () => {
@@ -38,4 +39,22 @@ it('collects the same three consents for a client, without a skill category', as
   fireEvent.press(screen.getByTestId('chk-gsp-data'));
   await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
   expect(complete).toHaveBeenCalledWith({ consentedTerms: true, consentedPrivacy: true, consentedDataCollection: true });
+});
+
+it('scrolls to the consents when a client submits without ticking them', async () => {
+  const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+  render(<GoogleSPDetailsScreen role="client" onBack={jest.fn()} onComplete={jest.fn()} />);
+  scrollTo.mockClear();
+  await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+  scrollTo.mockRestore();
+});
+
+it('scrolls to the skill category first when a provider submits with nothing filled', async () => {
+  const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo').mockImplementation(() => {});
+  render(<GoogleSPDetailsScreen onBack={jest.fn()} onComplete={jest.fn()} />);
+  scrollTo.mockClear();
+  await act(async () => fireEvent.press(screen.getByText('Complete Registration')));
+  expect(scrollTo).toHaveBeenCalledTimes(1);
+  scrollTo.mockRestore();
 });

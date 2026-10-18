@@ -264,4 +264,13 @@ describe('disputed jobs', () => {
     expect(matchesJobFilter(disputed, 'closed', {})).toBe(false);
     expect(countJobsByFilter([disputed], {}).booked).toBe(1);
   });
+
+  it('also appear under Needs you, and count there', () => {
+    const disputed = job({ id: 'd', status: 'in_progress', display_status: 'disputed' });
+    const working = job({ id: 'w', status: 'in_progress' });
+    expect(matchesJobFilter(disputed, 'needs', {})).toBe(true);
+    expect(matchesJobFilter(working, 'needs', {})).toBe(false);
+    expect(countJobsByFilter([disputed, working], {}).needs).toBe(1);
+    expect(filterJobs([disputed, working], 'needs', {}).map((j) => j.id)).toEqual(['d']);
+  });
 });

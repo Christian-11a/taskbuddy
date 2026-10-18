@@ -29,7 +29,7 @@ import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import StaleHint from '../../../src/components/ui/StaleHint';
 import SlowLoadNote from '../../../src/components/ui/SlowLoadNote';
-import ScreenSkeleton from '../../../src/components/ScreenSkeleton';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import { HOScreen } from '../../../src/types/navigation';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useRetainedScroll, useRetainedState } from '../../../src/hooks/useRetainedState';
@@ -163,7 +163,7 @@ export default function MyJobs({ onNavigate, headerRight }: MyJobsProps) {
       >
         <StaleHint stale={stale} refreshing={fetching} error={error} onRetry={reload} />
         {slow && <SlowLoadNote />}
-        {loading && <ScreenSkeleton variant="list" />}
+        {loading && <ContentSkeleton variant="list" />}
         {!!error && !loading && data === null && (
           <LoadErrorCard title="Couldn't load your jobs" message={error} onRetry={reload} />
         )}
