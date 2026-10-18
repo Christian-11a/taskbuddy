@@ -45,12 +45,15 @@ import {
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SPScreen } from '../../../src/types/navigation';
+import { SPScreen, type VerifyParams } from '../../../src/types/navigation';
+import { certificateExpiry, type ExpiryState } from '../../../src/lib/verificationStatus';
+import { certificateStateFrom } from '../../../src/lib/tourContent';
+import { dateKey } from '../../../src/lib/localDate';
 
 import { useAuth } from '../../../src/context/AuthContext';
 import { useTourAnchor, type TourAnchor } from '../../../src/components/tour';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
-import { api, type Job } from '../../../src/lib/api';
+import { api, type CertificateState, type Job } from '../../../src/lib/api';
 import { isFeed, isList } from '../../../src/lib/savedShapes';
 import { peso } from '../../../src/lib/format';
 import {
@@ -119,9 +122,23 @@ const VERIFY_HERO: Record<VerifyState, { title: string; body: string }> = {
 };
 
 interface SPHomeScreenProps {
-  onNavigate: (screen: SPScreen, jobId?: string) => void;
+  onNavigate: (screen: SPScreen, jobId?: string, params?: VerifyParams) => void;
   /** Shows the one-time "take a quick tour" card at the top of Home, when the App is offering it. */
   tourOffer?: { onStart: () => void; onDismiss: () => void };
+}
+
+/** The certificate that needs attention most: an expired one, else the one closest to expiring. */
+function worstExpiry(states: ExpiryState[]): ExpiryState | null {
+  const bad = states.filter((s) => s.state !== 'ok');
+  if (bad.length === 0) return null;
+  return bad.find((s) => s.state === 'expired') ?? bad.sort((a, b) => (a.daysLeft ?? 0) - (b.daysLeft ?? 0))[0];
+}
+
+function expiryLine(expiry: ExpiryState, serviceName: string | null): string {
+  const what = serviceName ? `Your ${serviceName} certificate` : 'Your certificate';
+  if (expiry.state === 'expired') return `${what} has expired. Upload a renewal to keep sending proposals.`;
+  const days = expiry.daysLeft ?? 0;
+  return `${what} expires ${days === 0 ? 'today' : days === 1 ? 'in 1 day' : `in ${days} days`}.`;
 }
 
 /** "Wed, Oct 15 · 12:22 AM · Arturo Tanco Drive, Lipa"; without a date, "No date yet · address". */
@@ -273,12 +290,16 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // backgrounded, so the setup panel re-reads the request on foreground (QA P2.1).
   // Where an unverified provider's request stands: "under review" or "not approved"
   // changes the setup copy instead of asking them to verify again.
+  // The two-part state (ID + certificate) is read for a verified provider too: the setup card and the renewal banner use it.
   const { data: verification, reload: reloadVerification } = useAsyncData(async () => {
-    if (isVerified) return null;
     // Not caught: a failed lookup must not be kept under the key Verification shares. It reads as "none".
     return api.myVerification();
-  }, [isVerified], isVerified ? undefined : 'verification-me');
-  useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); }, !isVerified);
+  }, [], 'verification-me');
+  // The provider's certificates: the setup card's certificate step (old API) and the renewal banner.
+  const { data: credentials, reload: reloadCredentials } = useAsyncData(async () => {
+    return api.myCredentials();
+  }, [], 'sp-credentials-home');
+  useRefreshOnForeground(() => { void refreshProfile(); reloadVerification(); reloadCredentials(); }, true);
   // Whether a payout account is linked; proposals are refused without one. A failed lookup is "unknown"
   // (null), which shows nothing rather than nagging. Read again when the app returns to the foreground.
   const { data: payoutLink, reload: reloadPayout } = useAsyncData<{ linked: boolean } | null>(async () => {
@@ -287,8 +308,8 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   }, [], 'sp-payout-linked');
   useRefreshOnForeground(reloadPayout, true);
   const payoutLinked = payoutLink ? payoutLink.linked : null;
-  const verifyState: VerifyState = verification?.status === 'pending' ? 'pending'
-    : verification?.status === 'rejected' ? 'rejected' : 'none';
+  const idState = verification?.identity ?? verification?.status;
+  const verifyState: VerifyState = idState === 'pending' ? 'pending' : idState === 'rejected' ? 'rejected' : 'none';
   useEffect(() => {
     if (!isVerified) void refreshProfile();
     // Only on mount — refreshProfile itself is stable (useCallback([])), and
@@ -383,7 +404,19 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   };
 
   const name = profile?.full_name ?? '';
-  const setupSteps = providerSetupSteps(profile, providerProfile, verifyState, payoutLinked);
+  // The certificate step: the new field when the API has it; otherwise the credentials list; otherwise unknown.
+  const certificate: CertificateState | 'unknown' = verification?.certificate
+    ?? (Array.isArray(credentials) ? certificateStateFrom(credentials) : 'unknown');
+  const setupSteps = providerSetupSteps(profile, providerProfile, verifyState, payoutLinked, {
+    certificate,
+    identityApproved: verification?.identity !== undefined ? verification.identity === 'approved' : undefined,
+  });
+  const expiring = Array.isArray(credentials) ? worstExpiry(certificateExpiry(credentials, dateKey(new Date()))) : null;
+  const expiringName = expiring
+    ? (credentials ?? []).find((c) => c.category_id === expiring.categoryId)?.service_categories?.name ?? null
+    : null;
+  const openCertificate = (categoryId?: number) =>
+    onNavigate('Verification', undefined, { startAt: 'certificate', categoryId: categoryId ?? providerProfile?.category_id });
   // The hero waits for the feed's load, so "Find your next job" is never shown before the bookings are known.
   const hero = data ? pickProviderHero(data.assigned, new Date()) : null;
   const feedRef = useRef<ScrollView>(null);
@@ -497,11 +530,31 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               steps={setupSteps}
               verifyState={verifyState}
               categoryName={providerProfile?.service_categories?.name ?? null}
-              onStep={(id) => onNavigate(id === 'verify' ? 'Verification' : id === 'payout' ? 'Payout Account' : 'Edit Profile')}
+              onStep={(id) => (id === 'certificate' ? openCertificate() : onNavigate(id === 'verify' ? 'Verification' : id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
               setupTour={setupTour}
             />
           ) : (
             <>
+              {expiring && (
+                <View
+                  testID="certificate-expiry-banner"
+                  style={[styles.expiryCard, expiring.state === 'expired' ? styles.expiryExpired : styles.expirySoon]}
+                >
+                  <Text style={[styles.expiryText, expiring.state === 'expired' ? styles.expiryTextExpired : styles.expiryTextSoon]}>
+                    {expiryLine(expiring, expiringName)}
+                  </Text>
+                  <Tap
+                    style={styles.setupButton}
+                    hitSlop={4}
+                    accessibilityRole="button"
+                    accessibilityLabel="Upload renewal"
+                    onPress={() => openCertificate(expiring.categoryId)}
+                  >
+                    <Text style={styles.setupButtonText}>Upload renewal</Text>
+                    <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
+                  </Tap>
+                </View>
+              )}
               {payoutLinked === false && (
                 <View testID="payout-setup-card" style={styles.payoutCard}>
                   <Text style={styles.payoutTitle}>Link a payout account</Text>
@@ -790,6 +843,12 @@ function createThemedStyles(theme: ThemePalette) {
     stepTitleNext: { color: C.ink900, fontWeight: '700' },
     stepTitleLater: { color: C.ink500 },
     stepSubtitle: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', lineHeight: 18 },
+    expiryCard: { borderRadius: 16, padding: 14, gap: 10, marginBottom: 14, borderWidth: 1 },
+    expirySoon: { backgroundColor: Colors.warningSurface, borderColor: Colors.warningBorder },
+    expiryExpired: { backgroundColor: Colors.dangerSurface, borderColor: Colors.dangerBorder },
+    expiryText: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', fontFamily: 'Inter' },
+    expiryTextSoon: { color: Colors.warningText },
+    expiryTextExpired: { color: Colors.dangerText },
     payoutCard: {
       backgroundColor: C.wellBg, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14,
     },

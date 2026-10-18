@@ -284,7 +284,7 @@ describe('welcome tour — an unverified provider', () => {
     await tapThroughTour();
 
     expect(await screen.findByTestId('tour-finish')).toBeTruthy();
-    expect(screen.getByLabelText('Get verified, next step')).toBeTruthy();
+    expect(screen.getByLabelText('Verify your ID, next step')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Finish setting up' })).toBeTruthy();
   }, 15000);
 });

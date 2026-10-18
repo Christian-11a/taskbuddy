@@ -65,7 +65,7 @@ import {
 import HirePaymentModal from '../../../src/components/HirePaymentModal';
 import HiredView from '../../../src/components/HiredView';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
-import { capacityConflictMessage } from '../../../src/lib/capacityConflict';
+import { capacityConflictMessage, hireVerificationMessage } from '../../../src/lib/capacityConflict';
 import Banner from '../../../src/components/ui/Banner';
 import { showToast } from '../../../src/components/Toast';
 import HOProviderProfileScreen from './HOProviderProfileScreen';
@@ -337,6 +337,13 @@ function JobProposals({
       closeHire();
       reload();
     } catch (e) {
+      const refused = hireVerificationMessage(e) ?? capacityConflictMessage(e);
+      if (refused) {
+        closeHire();
+        setCapacityNotice(refused);
+        reload();
+        return;
+      }
       setHireMessage({
         text: e instanceof Error ? e.message : 'Could not complete the hire.',
         tone: 'error',
@@ -423,7 +430,7 @@ function JobProposals({
       setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
       await settleCardPayment(hireTarget, outcome === 'success');
     } catch (e) {
-      const capacity = capacityConflictMessage(e);
+      const capacity = hireVerificationMessage(e) ?? capacityConflictMessage(e);
       if (capacity) {
         closeHire();
         setCapacityNotice(capacity);
@@ -499,10 +506,12 @@ function JobProposals({
     const name = provider?.full_name ?? 'Provider';
     const stats = provider?.provider_profiles ?? null;
     const verified = stats?.is_verified === true;
+    // A provider with an approved certificate can be hired for that service without the primary badge; the server decides (409).
+    const hireable = verified || (app.certifications?.length ?? 0) > 0;
     const sent = timeAgo(app.applied_at);
     const waitingHere = awaitingConfirmation?.applicationId === app.id;
     const waitingElsewhere = waitingOnAnother(app.id);
-    const actionsDisabled = busyId !== null || !verified || waitingElsewhere || !hydrated;
+    const actionsDisabled = busyId !== null || !hireable || waitingElsewhere || !hydrated;
     // A card payment for this proposal is still with the server, so it cannot be declined meanwhile.
     // Until the remembered waits are read, it is not known whether it is waiting, so it is held too.
     const declineDisabled = busyId !== null || waitingHere || !hydrated;
@@ -544,7 +553,7 @@ function JobProposals({
                 {plural(stats?.cached_completed_jobs, 'job')} done
               </Text>
             </View>
-            {state === 'open' && !verified && (
+            {state === 'open' && !hireable && (
               <View style={styles.unverifiedChip}>
                 <ShieldAlert size={11} color={C.amber700} />
                 <Text style={styles.unverifiedChipText}>Not verified</Text>
@@ -601,7 +610,7 @@ function JobProposals({
                 <Text style={styles.hirePillText}>Hire</Text>
               </Tap>
             </View>
-            {!verified && <Text style={styles.hireNote}>Hiring unlocks once they&apos;re verified.</Text>}
+            {!hireable && <Text style={styles.hireNote}>Hiring unlocks once they&apos;re verified.</Text>}
             {waitingHere && (
               <Text style={styles.hireNote}>We&apos;re still confirming your payment. Tap Hire to check on it.</Text>
             )}

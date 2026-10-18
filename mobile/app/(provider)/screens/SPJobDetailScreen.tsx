@@ -52,7 +52,7 @@ import { Spacing, V6Radii } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { SPScreen } from '../../../src/types/navigation';
+import { SPScreen, type VerifyParams } from '../../../src/types/navigation';
 import { api, ApiError, type Job, type JobChangeRequest, type JobTask } from '../../../src/lib/api';
 import ScheduleChangeCard from '../../../src/components/ScheduleChangeCard';
 import ScheduleChangeSheet from '../../../src/components/ScheduleChangeSheet';
@@ -62,6 +62,7 @@ import { dayHeading } from '../../../src/lib/jobCalendar';
 import { dateKeyOf } from '../../../src/lib/localDate';
 import {
   providerJobView,
+  proposeBlockFor,
   type Action,
   type ProviderApplication,
 } from '../../../src/lib/providerJobView';
@@ -72,7 +73,7 @@ type MyApplication = ProviderApplication & { jobs: { id: string } | null };
 interface SPJobDetailScreenProps {
   jobId: string | null;
   onBack: () => void;
-  onNavigate: (screen: SPScreen, jobId?: string) => void;
+  onNavigate: (screen: SPScreen, jobId?: string, params?: VerifyParams) => void;
   isUrgent?: boolean;
 }
 
@@ -85,7 +86,7 @@ function sortedTasks(job: Job | null): JobTask[] {
 function labelFor(action: Action, pending: boolean): string {
   switch (action.kind) {
     case 'sendProposal': return 'Send proposal';
-    case 'getVerified': return 'Verify to apply';
+    case 'getVerified': return action.categoryId !== undefined ? 'Upload certificate' : 'Verify to apply';
     case 'withdrawProposal': return 'Withdraw proposal';
     case 'findJobs': return pending ? 'Find more jobs' : 'Find similar jobs';
     case 'startJob': return 'Start job';
@@ -108,6 +109,13 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const { V6Colors, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const { profile, isVerified, refreshProfile } = useAuth();
+  // The two-part check (ID + this service's certificate). Not caught: a failed lookup is not kept under the key the
+  // Verification screen shares, and reads as "unknown" (the cached isVerified decides).
+  const { data: verification, reload: reloadVerification } = useAsyncData(
+    async () => api.myVerification(),
+    [],
+    'verification-me',
+  );
   const { data: job, loading, error, reload } = useAsyncData(() => {
     if (!jobId) return Promise.reject(new Error('No job selected.'));
     return api.getJob(jobId);
@@ -160,6 +168,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const [actionError, setActionError] = useState<string | null>(null);
   // The server answered 403 `payout_account_required`, whatever the lookup said.
   const [payoutRefused, setPayoutRefused] = useState(false);
+  // The server answered 403 `certificate_required` for this service, whatever the check said.
+  const [certificateRefused, setCertificateRefused] = useState(false);
   // Which checklist row is mid-flight, so only that row shows a spinner.
   const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
@@ -174,7 +184,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   // Wait for the applications list too, or "Send proposal" could show for a job already applied to.
   const applicationsSettling = appsLoading && myApps === null;
   const view = job && !applicationsSettling
-    ? providerJobView({ job, me: profile, myApplication, dispute, tasks, isVerified, now: new Date() })
+    ? providerJobView({
+        job, me: profile, myApplication, dispute, tasks, isVerified, now: new Date(),
+        proposeBlock: proposeBlockFor(verification, isVerified, job.category_id),
+        serviceName: job.service_categories?.name ?? null,
+      })
     : null;
   const main = view?.main ?? null;
   const needsPayout = payoutRefused || payoutLink?.linked === false;
@@ -227,6 +241,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       // so re-read it: the Verify button below then replaces Submit Proposal.
       if (e instanceof ApiError && e.code === 'verification_required') {
         void refreshProfile();
+        reloadVerification();
       }
     } finally {
       setBusy(false);
@@ -257,11 +272,16 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       } else if (e instanceof ApiError && e.code === 'payout_account_required') {
         setPayoutRefused(true);
         setActionError(null);
+      } else if (e instanceof ApiError && e.code === 'certificate_required') {
+        setCertificateRefused(true);
+        setActionError(errorMessage(e));
+        reloadVerification();
       } else {
         setActionError(errorMessage(e));
       }
       if (e instanceof ApiError && e.code === 'verification_required') {
         void refreshProfile();
+        reloadVerification();
       }
     } finally {
       setBusy(false);
@@ -346,10 +366,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       case 'sendProposal':
         if (needsPayout) return;
         setActionError(null);
+        setCertificateRefused(false);
         setProposalOpen(true);
         return;
       case 'getVerified':
-        onNavigate('Verification');
+        if (action.categoryId !== undefined) onNavigate('Verification', undefined, { startAt: 'certificate', categoryId: action.categoryId });
+        else onNavigate('Verification');
         return;
       case 'withdrawProposal':
         setWithdrawOpen(true);
@@ -673,6 +695,11 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
         fee={fee}
         busy={busy}
         error={proposalOpen ? actionError : null}
+        certificateRequired={certificateRefused}
+        onUploadCertificate={() => {
+          setProposalOpen(false);
+          onNavigate('Verification', undefined, { startAt: 'certificate', categoryId: job?.category_id });
+        }}
         payoutRequired={payoutRefused}
         onLinkPayout={() => {
           setProposalOpen(false);

@@ -26,6 +26,7 @@ jest.mock('../../../../src/lib/api', () => ({
     myApplications: jest.fn(),
     setAvailability: jest.fn(),
     myVerification: jest.fn(),
+    myCredentials: jest.fn().mockResolvedValue([]),
     payoutAccount: jest.fn().mockResolvedValue({ id: 'acct-1' }),
   },
 }));
@@ -312,7 +313,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
-      expect(screen.getByText('Finish setting up · 1 of 4')).toBeTruthy();
+      expect(screen.getByText('Finish setting up · 1 of 5')).toBeTruthy();
       expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
       expect(screen.getByText('ID photo + selfie · about 2 minutes')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Add a short bio' })).toBeTruthy();
@@ -329,7 +330,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
       view.rerender(<SPHomeScreen onNavigate={jest.fn()} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
+      expect(await screen.findByText('Finish setting up · 2 of 5')).toBeTruthy();
       expect(screen.getByTestId('setup-badge-bio')).not.toBe(badgeBefore);
       expect(screen.getByTestId('setup-segment-bio')).not.toBe(segmentBefore);
       expect(StyleSheet.flatten(screen.getByTestId('setup-segment-bio').props.style).backgroundColor).toBe(lightPalette.Colors.onPrimary);
@@ -352,8 +353,8 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       const onNavigate = jest.fn();
       render(<SPHomeScreen onNavigate={onNavigate} />);
 
-      expect(await screen.findByText('Finish setting up · 2 of 4')).toBeTruthy();
-      fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+      expect(await screen.findByText('Finish setting up · 2 of 5')).toBeTruthy();
+      fireEvent.press(screen.getByRole('button', { name: 'Verify your ID' }));
 
       expect(onNavigate).toHaveBeenCalledWith('Verification');
     });
@@ -405,12 +406,83 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       expect(await screen.findByText("We'll notify you as soon as you're approved. Then nearby Cleaning jobs appear here.")).toBeTruthy();
     });
 
-    it('does not fetch the verification status for a verified provider', async () => {
+    it('shows no setup card for a verified provider', async () => {
       render(<SPHomeScreen onNavigate={jest.fn()} />);
       await screen.findByTestId('btn-home-avatar');
-      expect(api.myVerification).not.toHaveBeenCalled();
       expect(screen.queryByText('Get verified to see jobs near you')).toBeNull();
+      expect(screen.queryByTestId('certificate-expiry-banner')).toBeNull();
     });
+
+    it('shows five steps, with the certificate next once the ID is approved, and opens Get verified at the certificate step', async () => {
+      unverified({ address: 'Arturo Tanco Drive, Lipa', bio: 'Plumber for eight years' });
+      (useAuth as jest.Mock).mockReturnValue({
+        ...(useAuth as jest.Mock)(),
+        providerProfile: { is_available: false, service_radius_km: 15, bio: 'Plumber for eight years', is_verified: false, category_id: 3 },
+      });
+      (api.myVerification as jest.Mock).mockResolvedValue({
+        status: 'approved', identity: 'approved', certificate: 'none', verified: false, services: [],
+      });
+      const onNavigate = jest.fn();
+      render(<SPHomeScreen onNavigate={onNavigate} />);
+
+      expect(await screen.findByText('Finish setting up · 3 of 5')).toBeTruthy();
+      expect(screen.getByTestId('setup-badge-certificate')).toBeTruthy();
+      fireEvent.press(screen.getByRole('button', { name: 'Upload your certificate' }));
+      expect(onNavigate).toHaveBeenCalledWith('Verification', undefined, { startAt: 'certificate', categoryId: 3 });
+    });
+  });
+});
+
+describe('SPHomeScreen — certificate expiry banner', () => {
+  const inDays = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const credential = (expires_on: string | null, status = 'approved') => ({
+    id: 'c1', category_id: 2, credential_type: 'trade_certificate', title: 'Cert', issuer: 'TESDA',
+    issued_on: null, expires_on, status, service_categories: { id: 2, name: 'Plumbing' },
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Pat', city: 'Cebu', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25, category_id: 1 },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.assignedJobs as jest.Mock).mockResolvedValue([]);
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.myVerification as jest.Mock).mockResolvedValue({ status: 'approved', identity: 'approved', certificate: 'approved', verified: true });
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+  });
+
+  it('warns with the days left and opens the certificate step for that service', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([credential(inDays(10))]);
+    const onNavigate = jest.fn();
+    render(<SPHomeScreen onNavigate={onNavigate} />);
+
+    expect(await screen.findByText('Your Plumbing certificate expires in 10 days.')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Upload renewal' }));
+    expect(onNavigate).toHaveBeenCalledWith('Verification', undefined, { startAt: 'certificate', categoryId: 2 });
+  });
+
+  it('says an expired certificate has expired', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([credential(inDays(-3))]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    expect(await screen.findByText(/Your Plumbing certificate has expired/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Upload renewal' })).toBeTruthy();
+  });
+
+  it('shows nothing for a certificate with plenty of time or no expiry date', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([credential(inDays(200)), { ...credential(null), id: 'c2', category_id: 5 }]);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByTestId('btn-home-avatar');
+    await waitFor(() => expect(api.myCredentials).toHaveBeenCalled());
+    expect(screen.queryByTestId('certificate-expiry-banner')).toBeNull();
   });
 });
 

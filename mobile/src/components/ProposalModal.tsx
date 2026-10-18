@@ -48,6 +48,9 @@ interface ProposalModalProps {
   /** The server refused with `payout_account_required`: show the note and a way to link an account instead of the error. */
   payoutRequired?: boolean;
   onLinkPayout?: () => void;
+  /** The server refused with `certificate_required` (the error holds its message): show it and a way to upload the certificate. */
+  certificateRequired?: boolean;
+  onUploadCertificate?: () => void;
   onSubmit: (message: string) => void;
   onCancel: () => void;
 }
@@ -58,7 +61,8 @@ interface ProposalModalProps {
  * chance to say why them — shown to the client on the Proposals screen.
  */
 export default function ProposalModal({
-  visible, jobTitle, jobBudget, fee, busy = false, error, payoutRequired = false, onLinkPayout, onSubmit, onCancel,
+  visible, jobTitle, jobBudget, fee, busy = false, error, payoutRequired = false, onLinkPayout,
+  certificateRequired = false, onUploadCertificate, onSubmit, onCancel,
 }: ProposalModalProps) {
   const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
@@ -156,9 +160,22 @@ export default function ProposalModal({
             </Tap>
           )}
         </>
-      ) : !!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
+      ) : !!error && <Text style={styles.error} accessibilityRole="alert" testID="proposal-error">{error}</Text>}
 
-      {!payoutRequired && (
+      {certificateRequired && !payoutRequired && !!onUploadCertificate && (
+        <Tap
+          style={styles.sendBtn}
+          onPress={onUploadCertificate}
+          scale
+          accessibilityRole="button"
+          accessibilityLabel="Upload certificate"
+          testID="proposal-upload-certificate"
+        >
+          <Text style={styles.sendText}>Upload certificate</Text>
+        </Tap>
+      )}
+
+      {!payoutRequired && !certificateRequired && (
         <Tap
           style={[styles.sendBtn, busy && styles.dimmed]}
           onPress={trySend}

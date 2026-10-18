@@ -26,6 +26,9 @@ export type HOScreen =
   | 'Payments'
   | 'Tutorial';
 
+/** Where Get verified opens: no params = the ID step; `startAt: 'certificate'` = the certificate step for `categoryId`. */
+export interface VerifyParams { startAt?: 'certificate'; categoryId?: number }
+
 // Provider screen keys
 export type SPScreen =
   | 'Dashboard'
