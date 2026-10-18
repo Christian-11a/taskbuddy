@@ -215,7 +215,11 @@ describe('ProfilesService', () => {
       longitude: 121.0,
     } as Profile;
 
-    function setup(geocoding = createGeocodingMock()) {
+    function setup(
+      geocoding:
+        | GeocodingService
+        | ReturnType<typeof createGeocodingMock> = createGeocodingMock(),
+    ) {
       const { supabase, calls } = createSupabaseMock([
         { data: { id: 'u1' }, error: null },
       ]);
