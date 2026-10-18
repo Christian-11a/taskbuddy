@@ -34,8 +34,12 @@ import type {
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
-  AdminCredentialListResponse,
+  AdminCredentialType,
+  AdminVerificationCaseApi,
   AdminCredentialApiRow,
+  ListVerificationCasesApiResponse,
+  CasePart,
+  DecideVerificationCaseApiResponse,
   AdminSkillRequestApiRow,
   AdminWalletTxnApiRow,
   AdminWithdrawalApiRow,
@@ -224,10 +228,13 @@ function mapUserRow(row: AdminUserApiRow): AdminUser {
   };
 }
 
-/** The badge wins; otherwise the latest submission says where they are. */
+/** "Verified" only when the provider is fully verified; otherwise the latest submission says where they are. */
 function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
   if (row.role !== "provider") return null;
   if (row.is_verified) return "VERIFIED";
+  // Verified needs identity AND a certificate. The users list does not say which half is missing; an approved
+  // identity check on a provider who is not verified means the certificate is the missing half.
+  if (row.latest_verification_status === "approved") return "IDENTITY_ONLY";
   if (row.latest_verification_status === "pending") return "PENDING";
   if (row.latest_verification_status === "rejected") return "REJECTED";
   return "UNVERIFIED";
@@ -1369,66 +1376,149 @@ export async function requestDisputeClarification(id: string, body: string): Pro
   await client.post(`/admin/disputes/${id}/clarification`, { body });
 }
 
-// ─── Provider credentials (TESDA / PRC / trade certificates) ─────────────────
+// ─── Verification cases: ID + selfie + certificate, one per provider ────────
 
-export type CredentialStatus = "pending" | "approved" | "rejected";
-
-export interface Credential {
+export interface VerificationCase {
+  /** The verification id, or the credential id when only a certificate is pending. */
   id: string;
+  type: string;
   providerId: string;
-  providerName: string;
-  type: AdminCredentialApiRow["credential_type"];
-  title: string;
-  issuer: string;
-  number: string | null;
-  categoryName: string;
-  issuedOn: string | null;
-  expiresOn: string | null;
-  /** "expired" is an approved credential past its expiry date. */
-  status: AdminCredentialApiRow["status"];
-  rejectionReason: string | null;
-  createdAt: string;
-  /** Signed link, valid one hour. Fetch the list again for a fresh one. */
-  documentUrl: string | null;
+  name: string;
+  email: string;
+  identity: "pending" | "approved" | "none";
+  submittedAt: string;
+  /** The pending ID + selfie submission; null when identity needs no review (Stripe, or a certificate-only case). */
+  verification: { id: string; method: "manual" | "stripe_identity"; documentType: string | null; documents: string[] } | null;
+  credential: {
+    id: string;
+    type: AdminCredentialType;
+    title: string;
+    issuer: string;
+    number: string | null;
+    serviceName: string;
+    issuedOn: string | null;
+    expiresOn: string | null;
+    documentUrl: string | null;
+  } | null;
 }
 
-function mapCredentialRow(row: AdminCredentialApiRow): Credential {
+function mapCaseRow(row: AdminVerificationCaseApi): VerificationCase {
+  const v = row.verification;
+  const c = row.credential;
   return {
-    id: row.id,
+    id: row.case_id,
+    type: row.case_type,
     providerId: row.provider_id,
-    providerName: row.profiles?.full_name ?? "Unknown provider",
-    type: row.credential_type,
-    title: row.title,
-    issuer: row.issuer,
-    number: row.credential_number,
-    categoryName: row.service_categories?.name ?? `Category #${row.category_id}`,
-    issuedOn: row.issued_on,
-    expiresOn: row.expires_on,
-    status: row.status,
-    rejectionReason: row.rejection_reason,
-    createdAt: row.created_at,
-    documentUrl: row.document_url,
+    name: row.full_name ?? "Unknown provider",
+    email: row.email ?? "",
+    identity: row.identity,
+    submittedAt: v?.submitted_at ?? c?.created_at ?? "",
+    verification: v ? { id: v.id, method: v.method ?? "manual", documentType: v.document_type ?? null, documents: v.documents ?? [] } : null,
+    credential: c
+      ? {
+          id: c.id,
+          type: c.credential_type,
+          title: c.title,
+          issuer: c.issuer,
+          number: c.credential_number,
+          serviceName: c.service_categories?.name ?? `Category #${c.category_id}`,
+          issuedOn: c.issued_on,
+          expiresOn: c.expires_on,
+          documentUrl: c.document_url,
+        }
+      : null,
   };
 }
 
-export async function getCredentials(query: { status: CredentialStatus; page: number; pageSize: number }): Promise<{ items: Credential[]; total: number }> {
-  const params = new URLSearchParams({
-    status: query.status,
-    limit: String(query.pageSize),
-    offset: String((query.page - 1) * query.pageSize),
-  });
-  const res = await client.get<AdminCredentialListResponse>(`/admin/credentials?${params}`);
-  if (!Array.isArray(res.credentials) || !Number.isSafeInteger(res.total) || res.total < 0) {
-    throw new Error("Credential list is unavailable. Please update the backend.");
+export async function getVerificationCases(query: { page: number; pageSize: number }): Promise<{ items: VerificationCase[]; total: number }> {
+  const params = new URLSearchParams({ limit: String(query.pageSize), offset: String((query.page - 1) * query.pageSize) });
+  const res = await client.get<ListVerificationCasesApiResponse>(`/admin/verification-cases?${params}`);
+  if (!Array.isArray(res.cases) || !Number.isSafeInteger(res.total) || res.total < 0) {
+    throw new Error("Verification list is unavailable. Please update the backend.");
   }
-  return { items: res.credentials.map(mapCredentialRow), total: res.total };
+  return { items: res.cases.map(mapCaseRow), total: res.total };
 }
 
-export async function approveCredential(id: string): Promise<void> {
-  await client.post(`/admin/credentials/${id}/approve`);
+/** The number of cases waiting, for the sidebar and the dashboard card. */
+export async function getVerificationCaseCount(): Promise<number> {
+  const res = await client.get<ListVerificationCasesApiResponse>("/admin/verification-cases?limit=1&offset=0");
+  if (!Number.isSafeInteger(res.total) || res.total < 0) throw new Error("Verification count is unavailable.");
+  return res.total;
 }
 
-/** The reason is required (1-500 characters) and is sent to the provider. */
-export async function rejectCredential(id: string, reason: string): Promise<void> {
-  await client.post(`/admin/credentials/${id}/reject`, { reason });
+// ─── Decided verifications (read-only history) ──────────────────────────────
+
+export interface VerificationHistoryEntry {
+  id: string;
+  kind: "identity" | "certificate";
+  providerId: string;
+  providerName: string;
+  /** What was decided: "Identity (ID + selfie)", "Identity (Stripe)" or "Certificate: <service> - <title>". */
+  subject: string;
+  /** "expired" is an approved certificate whose expiry date has since passed (the API reports it that way). */
+  result: "approved" | "rejected" | "expired";
+  reason: string | null;
+  /** When it was decided; falls back to the submission date. */
+  decidedAt: string;
+}
+
+/**
+ * Every approved and rejected identity check and certificate, newest first.
+ * The API has no reviewer name or search on these lists, so the page filters
+ * by provider name on what is loaded here.
+ */
+export async function getVerificationHistory(): Promise<VerificationHistoryEntry[]> {
+  const results = ["approved", "rejected"] as const;
+  const [identity, certs] = await Promise.all([
+    Promise.all(results.map((st) => fetchAllRows<AdminVerificationApiRow>(`/admin/verifications?status=${st}&include_documents=false`, "verifications"))),
+    Promise.all(results.map((st) => fetchAllRows<AdminCredentialApiRow>(`/admin/credentials?status=${st}`, "credentials"))),
+  ]);
+  const entries: VerificationHistoryEntry[] = [];
+  for (const row of identity.flat()) {
+    if (row.status !== "approved" && row.status !== "rejected") continue;
+    entries.push({
+      id: `v:${row.id}`,
+      kind: "identity",
+      providerId: row.provider_id,
+      providerName: row.full_name ?? "Unknown provider",
+      subject: row.method === "stripe_identity" ? "Identity (Stripe)" : "Identity (ID + selfie)",
+      result: row.status,
+      reason: row.rejection_reason,
+      decidedAt: row.reviewed_at ?? row.submitted_at,
+    });
+  }
+  for (const row of certs.flat()) {
+    // The admin list reports an approved certificate past its expiry as "expired".
+    if (row.status !== "approved" && row.status !== "rejected" && row.status !== "expired") continue;
+    entries.push({
+      id: `c:${row.id}`,
+      kind: "certificate",
+      providerId: row.provider_id,
+      providerName: row.profiles?.full_name ?? "Unknown provider",
+      subject: `Certificate: ${row.service_categories?.name ?? `Category #${row.category_id}`} - ${row.title}`,
+      result: row.status,
+      reason: row.rejection_reason,
+      decidedAt: row.reviewed_at ?? row.created_at,
+    });
+  }
+  return entries.sort((a, b) => (a.decidedAt < b.decidedAt ? 1 : a.decidedAt > b.decidedAt ? -1 : 0));
+}
+
+export interface CaseDecision {
+  verificationId?: string;
+  credentialId?: string;
+  decision: "approve" | "reject";
+  /** Reject only. Pending parts that are not listed are approved by the server. */
+  failedParts?: CasePart[];
+  note?: string;
+}
+
+/** One call; the server applies ID, selfie and certificate together in one transaction. */
+export async function decideVerificationCase(d: CaseDecision): Promise<DecideVerificationCaseApiResponse> {
+  return client.post<DecideVerificationCaseApiResponse>("/admin/verification-cases/decision", {
+    ...(d.verificationId ? { verification_id: d.verificationId } : {}),
+    ...(d.credentialId ? { credential_id: d.credentialId } : {}),
+    decision: d.decision,
+    ...(d.decision === "reject" ? { failed_parts: d.failedParts ?? [], note: d.note } : {}),
+  });
 }

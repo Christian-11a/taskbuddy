@@ -222,12 +222,14 @@ const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
  * a failed side comes back `undefined` so the caller keeps what it had. Never
  * rejects.
  */
-async function readCountOnlyQueues(): Promise<{ withdrawals?: number; "skill-requests"?: number }> {
-  const [withdrawals, requests] = await Promise.allSettled([
+async function readCountOnlyQueues(): Promise<{ verifications?: number; withdrawals?: number; "skill-requests"?: number }> {
+  const [withdrawals, requests, cases] = await Promise.allSettled([
     services.getFailedPayoutCount(),
     services.getPendingServiceRequestCount(),
+    services.getVerificationCaseCount(),
   ]);
   return {
+    verifications: cases.status === "fulfilled" && typeof cases.value === "number" ? cases.value : undefined,
     withdrawals: withdrawals.status === "fulfilled" && typeof withdrawals.value === "number" ? withdrawals.value : undefined,
     "skill-requests": requests.status === "fulfilled" && typeof requests.value === "number" ? requests.value : undefined,
   };
@@ -345,8 +347,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [bookingsByCategory, setBookingsByCategory] = useState<CategoryShare[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [topProviders, setTopProviders] = useState<TopProvider[]>([]);
-  /** Failed-payout (queue id "withdrawals") and service-request counts; the other two queues derive from the lists above. */
-  const [extraCounts, setExtraCounts] = useState<Pick<QueueCounts, "withdrawals" | "skill-requests">>({
+  /** Failed-payout (queue id "withdrawals") service-request and verification-case counts; disputes derive from the list above. */
+  const [extraCounts, setExtraCounts] = useState<Pick<QueueCounts, "verifications" | "withdrawals" | "skill-requests">>({
+    verifications: null,
     withdrawals: null,
     "skill-requests": null,
   });
@@ -601,6 +604,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }),
       settle("counts", countsRead, (reads) => {
         setExtraCounts((prev) => ({
+          verifications: reads.verifications ?? prev.verifications,
           withdrawals: reads.withdrawals ?? prev.withdrawals,
           "skill-requests": reads["skill-requests"] ?? prev["skill-requests"],
         }));
@@ -698,6 +702,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const reads = await readCountOnlyQueues();
     if (loadAtStart !== loadSeq.current || mine !== countsSeq.current) return;
     setExtraCounts((prev) => ({
+      verifications: reads.verifications ?? prev.verifications,
       withdrawals: reads.withdrawals ?? prev.withdrawals,
       "skill-requests": reads["skill-requests"] ?? prev["skill-requests"],
     }));
@@ -893,9 +898,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const bookings = useMemo<BookingRow[]>(() => [], []);
   const queueCounts = useMemo<QueueCounts>(
     () => ({
-      verifications: verifications.filter((v) => v.status === "pending").length,
       disputes: disputes.filter((d) => d.isOpen).length,
       ...extraCounts,
+      // One case per provider (ID + selfie + certificate). Until the case count answers, the old pending-submission count stands in.
+      verifications: extraCounts.verifications ?? verifications.filter((v) => v.status === "pending").length,
     }),
     [verifications, disputes, extraCounts],
   );

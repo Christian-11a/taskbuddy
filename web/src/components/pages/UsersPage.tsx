@@ -56,7 +56,7 @@ export function bulkMessage(verb: string, { succeeded, failed, errors }: BulkCou
 type RoleFilter = "all" | "provider" | "customer";
 type StatusFilter = "all" | "active" | "suspended" | "deleted";
 type JoinedFilter = "all" | "7d" | "30d";
-type VerificationFilter = "all" | "Verified" | "Pending review" | "Rejected" | "Not submitted";
+type VerificationFilter = "all" | "Verified" | "Identity approved · certificate needed" | "Pending review" | "Rejected" | "Not submitted";
 
 const JOINED_DAYS: Record<Exclude<JoinedFilter, "all">, number> = { "7d": 7, "30d": 30 };
 
@@ -68,6 +68,7 @@ const STATUS_TONE: Record<string, "ok" | "danger" | "warn" | "neutral"> = {
 };
 const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = {
   Verified: "ok",
+  "Identity approved · certificate needed": "warn",
   "Pending review": "warn",
   Rejected: "danger",
   "Not submitted": "neutral",
@@ -583,6 +584,7 @@ export function UsersPage() {
             >
               <option value="all">Verification: any</option>
               <option value="Verified">Verified</option>
+              <option value="Identity approved · certificate needed">Identity approved · certificate needed</option>
               <option value="Pending review">Pending review</option>
               <option value="Rejected">Rejected</option>
               <option value="Not submitted">Not submitted</option>

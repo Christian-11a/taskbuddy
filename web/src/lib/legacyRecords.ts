@@ -29,6 +29,20 @@ export function hasXenditMarker(reviewNote: string | null | undefined): boolean 
   return note === XENDIT_QUEUED_NOTE || note.includes(XENDIT_REFERENCE_MARK) || note.startsWith(XENDIT_FAILURE_PREFIX);
 }
 
+/**
+ * A post-cutoff client refund sweep in test mode: pass_through_balances writes a
+ * 'Refund sent' withdrawal with a simulated 'SIM-…' note. Shown, not hidden.
+ * Provider "Payout sent" rows can also get a SIM- note (when payouts are not
+ * queued); those stay hidden because the owner asked about refunds only.
+ */
+export function isTestModeRefund(
+  row: Pick<WalletTransaction, "kind" | "title" | "createdAt"> & { reviewNote?: string | null },
+): boolean {
+  const createdMs = Date.parse(row.createdAt);
+  if (Number.isNaN(createdMs) || createdMs < LEGACY_CUTOFF_MS) return false;
+  return row.kind === "withdrawal" && row.title === "Refund sent" && (row.reviewNote ?? "").trim().startsWith("SIM-");
+}
+
 /** Wallet/payment record rows from the wallet era: hidden from the Payment records tab. */
 export function isLegacyWalletRow(
   row: Pick<WalletTransaction, "kind" | "title" | "createdAt"> & { reviewNote?: string | null },
@@ -38,7 +52,9 @@ export function isLegacyWalletRow(
   if (row.title === PROTOTYPE_WALLET_RETIRED_TITLE) return true;
   // Admin-issued recovery credits (Issue Credit) are wallet-era records.
   if (row.kind === "recovery_credit") return true;
-  // A withdrawal with no Xendit marker is a pre-Xendit payout, or a simulated 'SIM-' refund sweep.
+  // Post-cutoff test-mode refund sweeps are shown.
+  if (isTestModeRefund(row)) return false;
+  // A withdrawal with no Xendit marker is a pre-Xendit payout (or a SIM- provider sweep).
   if (row.kind === "withdrawal" && !hasXenditMarker(row.reviewNote)) return true;
   return false;
 }

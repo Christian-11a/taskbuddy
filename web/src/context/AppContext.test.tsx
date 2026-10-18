@@ -15,7 +15,7 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getRevenueSeries: vi.fn(), getCommissionSeries: vi.fn(), getBookingsSeries: vi.fn(),
     getBookingsByCategory: vi.fn(), getTopProviders: vi.fn(),
     setUserStatus: vi.fn(), bulkSetUserStatus: vi.fn(),
-    getFailedPayoutCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
+    getFailedPayoutCount: vi.fn(), getPendingServiceRequestCount: vi.fn(), getVerificationCaseCount: vi.fn(),
     setMaintenanceStatus: vi.fn(),
     postApproveVerification: vi.fn(), postRejectVerification: vi.fn(),
     getPendingVerifications: vi.fn(),
@@ -70,6 +70,7 @@ describe("AppContext — moderation refresh results", () => {
     vi.mocked(services.getTopProviders).mockResolvedValue([]);
     vi.mocked(services.getFailedPayoutCount).mockResolvedValue(0);
     vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(0);
+    vi.mocked(services.getVerificationCaseCount).mockRejectedValue(new Error("not answered"));
   });
 
   describe("queue counts and follow-up reads", () => {
@@ -81,6 +82,12 @@ describe("AppContext — moderation refresh results", () => {
     it("loads the payout and service-request counts with the console", async () => {
       await mount();
       expect(context.queueCounts).toMatchObject({ withdrawals: 2, "skill-requests": 5 });
+    });
+
+    it("counts verification cases (one per provider) once the case count answers", async () => {
+      vi.mocked(services.getVerificationCaseCount).mockResolvedValue(4);
+      await mount();
+      expect(context.queueCounts.verifications).toBe(4);
     });
 
     it("derives pending verifications and open disputes from the loaded lists", async () => {

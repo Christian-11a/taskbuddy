@@ -1658,3 +1658,29 @@ describe("job capacity (migration 0048)", () => {
     });
   });
 });
+
+describe("getVerificationHistory", () => {
+  it("keeps approved certificates that later expired, newest decision first", async () => {
+    const cert = (id: string, status: string, reviewed_at: string) => ({
+      id, provider_id: "p1", category_id: 1, title: "NC II", status, rejection_reason: null, reviewed_at, created_at: "2026-01-01T00:00:00Z",
+      service_categories: { id: 1, name: "Plumbing" }, profiles: { full_name: "Ana" },
+    });
+    global.fetch = vi.fn((url: string) => {
+      if (String(url).includes("/admin/credentials?status=approved")) {
+        return Promise.resolve(jsonResponse({ credentials: [cert("c-old", "expired", "2026-08-01T00:00:00Z"), cert("c-ok", "approved", "2026-10-01T00:00:00Z")], total: 2 }));
+      }
+      if (String(url).includes("/admin/credentials?status=rejected")) {
+        return Promise.resolve(jsonResponse({ credentials: [cert("c-no", "rejected", "2026-09-01T00:00:00Z")], total: 1 }));
+      }
+      return Promise.resolve(jsonResponse({ verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+
+    const history = await services.getVerificationHistory();
+
+    expect(history.map((h) => [h.id, h.result])).toEqual([
+      ["c:c-ok", "approved"],
+      ["c:c-no", "rejected"],
+      ["c:c-old", "expired"],
+    ]);
+  });
+});

@@ -424,6 +424,22 @@ describe("TransactionsPage - online payments and payment records", () => {
   });
 });
 
+describe("TransactionsPage — test-mode refunds", () => {
+  it("shows a post-cutoff SIM refund with the test-mode label", async () => {
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);
+    mockedSearchWalletTransactions.mockResolvedValue({
+      items: [
+        { id: "w3", profileName: "Client Lee", direction: "debit", kind: "withdrawal", status: "completed", amount: 300, title: "Refund sent", createdAt: "2026-10-18T10:00:00.000Z", reviewNote: "SIM-AB12CD34EF" },
+      ],
+      total: 1,
+    });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Payment records" }));
+    expect(await screen.findByText("Refund recorded (test mode)")).toBeInTheDocument();
+  });
+});
+
 describe("TransactionsPage — legacy test records are hidden", () => {
   beforeEach(() => {
     mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(), users: [], settings: { anonymizeExports: false } } as unknown as ReturnType<typeof useApp>);

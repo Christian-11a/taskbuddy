@@ -4,6 +4,7 @@
 // Keeping this mapping in one place means components never change when the
 // data source flips from mock to the real API.
 
+import { isTestModeRefund } from "@/lib/legacyRecords";
 import type {
   AdminBooking,
   AdminUser,
@@ -348,6 +349,7 @@ export function toUserRow(u: AdminUser): UserRow {
 
 const VERIFICATION_DISPLAY: Record<NonNullable<AdminUser["verification"]>, { label: string; badgeClass: string }> = {
   VERIFIED: { label: "Verified", badgeClass: "badge-approved" },
+  IDENTITY_ONLY: { label: "Identity approved · certificate needed", badgeClass: "badge-pending" },
   PENDING: { label: "Pending review", badgeClass: "badge-pending" },
   REJECTED: { label: "Rejected", badgeClass: "badge-rejected" },
   UNVERIFIED: { label: "Not submitted", badgeClass: "badge-processing" },
@@ -465,7 +467,9 @@ export function isClientRefundWithdrawal(t: Pick<WalletTransaction, "kind" | "ti
 }
 
 export function toWalletTxnRow(t: WalletTransaction): WalletTxnRow {
-  const display = isClientRefundWithdrawal(t) ? WALLET_KIND_DISPLAY.refund : WALLET_KIND_DISPLAY[t.kind];
+  const display = isTestModeRefund(t)
+    ? { label: "Refund recorded (test mode)", badgeClass: WALLET_KIND_DISPLAY.refund.badgeClass }
+    : isClientRefundWithdrawal(t) ? WALLET_KIND_DISPLAY.refund : WALLET_KIND_DISPLAY[t.kind];
   const sign = t.direction === "credit" ? "+" : "-";
   return {
     id: t.id,
