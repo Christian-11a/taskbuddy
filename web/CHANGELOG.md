@@ -32,6 +32,7 @@ order, newest first.
 
 | Date | Entry | Category |
 |---|---|---|
+| 2026-10-17 | Warranty removed: completed jobs release payment; Disputed filter; Failed payouts; read-only wallet history | Feature, Improvement, Fix, Backend integration |
 | 2026-10-15 | Faster console, sectioned dispute case view, collapsible lists | Improvement, Feature |
 | 2026-10-15 | Notification inbox, mobile sign-in fix, case chat, trust fixes | Feature, Fix, Improvement, Backend integration |
 | 2026-10-15 | Admin synced with the mobile app | Feature, Improvement, Backend integration |
@@ -57,6 +58,22 @@ order, newest first.
 | undated | Backend follow-ups (migrations 0014, 0017) | Backend integration |
 
 ---
+
+### 2026-10-17 · Warranty removed; payouts, disputes and credentials reworked
+
+**Category:** Feature · Improvement · Fix · Backend integration
+
+- **No warranty.** A completed job releases payment at once; the release is held
+  only while a complaint is open. The 72-hour countdown and its drawer line are gone.
+- **Disputed.** Bookings show a Disputed badge and can be filtered to disputed jobs.
+- **Failed payouts.** The Withdrawals page is replaced by a Failed payouts page for
+  Xendit failures.
+- **Wallet.** Issue Credit is removed; wallet history stays, read-only.
+- **Commission and revenue.** The Dashboard and Platform pages show the commission
+  headline, and revenue comes from released payments only.
+- **Credentials.** A review page for provider credentials.
+- **Disputes.** Chat messages and complaint photos attached to a case are shown.
+- **Search.** Search inputs have length limits.
 
 ### 2026-10-15 · Faster console, sectioned dispute case view, collapsible lists
 

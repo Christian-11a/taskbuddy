@@ -1,4 +1,8 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { CredentialsService } from './credentials.service';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
@@ -27,6 +31,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'delete',
       'eq',
       'neq',
+      'or',
       'order',
       'range',
     ]) {
@@ -63,6 +68,12 @@ const row = (overrides: Record<string, unknown> = {}) => ({
   document_path: 'p1/cert.jpg',
   ...overrides,
 });
+
+/** Manila date, computed the same way the service does. */
+const manilaDay = (offsetDays = 0) =>
+  new Date(Date.now() + 8 * 3600_000 + offsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 const build = (results: Record<string, QueryResult[]>) => {
   const { supabase, calls } = createSupabaseMock(results);
@@ -142,6 +153,78 @@ describe('CredentialsService', () => {
     );
   });
 
+  it('refuses to approve a credential whose expiry date has passed', async () => {
+    record.mockClear();
+    const { service, calls } = build({
+      provider_credentials: [
+        // The gated UPDATE matches nothing ...
+        { data: null, error: null },
+        // ... and the follow-up read finds the pending row, already expired.
+        { data: row({ expires_on: '2000-01-01' }), error: null },
+      ],
+    });
+    await expect(service.approve(admin, 'c1')).rejects.toThrow(
+      new BadRequestException(
+        'This credential expired on 2000-01-01. Ask the provider to upload a current one.',
+      ),
+    );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: 'or',
+        args: [`expires_on.is.null,expires_on.gte.${manilaDay()}`],
+      }),
+    );
+    expect(record).not.toHaveBeenCalled();
+  });
+
+  it('approves a credential that expires today', async () => {
+    const today = manilaDay();
+    const { service, calls } = build({
+      provider_credentials: [
+        {
+          data: row({ status: 'approved', expires_on: today }),
+          error: null,
+        },
+      ],
+      notifications: [{ data: null, error: null }],
+    });
+    const result = await service.approve(admin, 'c1');
+    expect(result.status).toBe('approved');
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        method: 'or',
+        args: [`expires_on.is.null,expires_on.gte.${today}`],
+      }),
+    );
+  });
+
+  it('approves a credential with no expiry date', async () => {
+    const { service } = build({
+      provider_credentials: [
+        { data: row({ status: 'approved' }), error: null },
+      ],
+      notifications: [{ data: null, error: null }],
+    });
+    const result = await service.approve(admin, 'c1');
+    expect(result.status).toBe('approved');
+  });
+
+  it('still allows rejecting a credential that has expired', async () => {
+    const { service } = build({
+      provider_credentials: [
+        {
+          data: row({ status: 'rejected', expires_on: '2000-01-01' }),
+          error: null,
+        },
+      ],
+      notifications: [{ data: null, error: null }],
+    });
+    const result = await service.reject(admin, 'c1', {
+      reason: 'Blurry scan',
+    });
+    expect(result.status).toBe('rejected');
+  });
+
   it('refuses a second decision on the same credential', async () => {
     const { service } = build({
       provider_credentials: [{ data: null, error: null }],
@@ -149,6 +232,34 @@ describe('CredentialsService', () => {
     await expect(
       service.reject(admin, 'c1', { reason: 'Unreadable photo' }),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('lists the admin queue with the provider name flattened from provider_profiles', async () => {
+    const { service, calls } = build({
+      provider_credentials: [
+        {
+          data: [
+            row({
+              provider_profiles: { profiles: { full_name: 'Ana Cruz' } },
+            }),
+          ],
+          error: null,
+          count: 1,
+        },
+      ],
+    });
+    const result = await service.list({});
+    const select = calls.find((c) => c.method === 'select')?.args[0] as string;
+    expect(select).toContain(
+      'provider_profiles!provider_credentials_provider_id_fkey(profiles(full_name))',
+    );
+    expect(select).not.toContain(
+      ' profiles!provider_credentials_provider_id_fkey(full_name)',
+    );
+    expect(result.total).toBe(1);
+    expect(result.credentials[0].profiles).toEqual({ full_name: 'Ana Cruz' });
+    expect(result.credentials[0]).not.toHaveProperty('provider_profiles');
+    expect(result.credentials[0]).not.toHaveProperty('document_path');
   });
 
   it('will not delete an approved credential', async () => {

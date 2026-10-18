@@ -12,10 +12,10 @@ vi.mock("@/lib/services", async (importOriginal) => {
     restoreSession: vi.fn(), getUsers: vi.fn(), getVerifications: vi.fn(),
     getDisputes: vi.fn(), getRecentActivity: vi.fn(), getDarkModePreference: vi.fn(),
     getMaintenanceStatus: vi.fn(), getDashboardStats: vi.fn(),
-    getRevenueSeries: vi.fn(), getBookingsSeries: vi.fn(),
+    getRevenueSeries: vi.fn(), getCommissionSeries: vi.fn(), getBookingsSeries: vi.fn(),
     getBookingsByCategory: vi.fn(), getTopProviders: vi.fn(),
     setUserStatus: vi.fn(), bulkSetUserStatus: vi.fn(),
-    getPendingWithdrawalCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
+    getFailedPayoutCount: vi.fn(), getPendingServiceRequestCount: vi.fn(),
     setMaintenanceStatus: vi.fn(),
     postApproveVerification: vi.fn(), postRejectVerification: vi.fn(),
     getPendingVerifications: vi.fn(),
@@ -64,16 +64,17 @@ describe("AppContext — moderation refresh results", () => {
     vi.mocked(services.getDarkModePreference).mockResolvedValue(null);
     vi.mocked(services.getMaintenanceStatus).mockResolvedValue({ enabled: false, message: null, updatedAt: null });
     vi.mocked(services.getRevenueSeries).mockResolvedValue([]);
+    vi.mocked(services.getCommissionSeries).mockResolvedValue([]);
     vi.mocked(services.getBookingsSeries).mockResolvedValue([]);
     vi.mocked(services.getBookingsByCategory).mockResolvedValue([]);
     vi.mocked(services.getTopProviders).mockResolvedValue([]);
-    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(0);
+    vi.mocked(services.getFailedPayoutCount).mockResolvedValue(0);
     vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(0);
   });
 
   describe("queue counts and follow-up reads", () => {
     beforeEach(() => {
-      vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(2);
+      vi.mocked(services.getFailedPayoutCount).mockResolvedValue(2);
       vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(5);
     });
 
@@ -101,14 +102,14 @@ describe("AppContext — moderation refresh results", () => {
 
     it("keeps the last good count when a re-read fails, and still updates the other queue", async () => {
       await mount();
-      vi.mocked(services.getPendingWithdrawalCount).mockRejectedValueOnce(new Error("Offline"));
+      vi.mocked(services.getFailedPayoutCount).mockRejectedValueOnce(new Error("Offline"));
       vi.mocked(services.getPendingServiceRequestCount).mockResolvedValueOnce(7);
       await act(async () => { await context.refreshCounts(); });
       expect(context.queueCounts).toMatchObject({ withdrawals: 2, "skill-requests": 7 });
     });
 
     it("leaves an unknown count unknown when every read keeps failing", async () => {
-      vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("Offline"));
+      vi.mocked(services.getFailedPayoutCount).mockRejectedValue(new Error("Offline"));
       await mount();
       expect(context.queueCounts.withdrawals).toBeNull();
       await act(async () => { await context.refreshCounts(); });
@@ -118,7 +119,7 @@ describe("AppContext — moderation refresh results", () => {
     it("ignores a count read that finishes after a newer full load started", async () => {
       await mount();
       const slow = deferred<number>();
-      vi.mocked(services.getPendingWithdrawalCount)
+      vi.mocked(services.getFailedPayoutCount)
         .mockReturnValueOnce(slow.promise)
         .mockResolvedValueOnce(4);
       let refreshing!: Promise<void>;
@@ -133,7 +134,7 @@ describe("AppContext — moderation refresh results", () => {
       await mount();
       const first = deferred<number>();
       const second = deferred<number>();
-      vi.mocked(services.getPendingWithdrawalCount)
+      vi.mocked(services.getFailedPayoutCount)
         .mockReturnValueOnce(first.promise)
         .mockReturnValueOnce(second.promise);
       let older!: Promise<void>;
@@ -226,23 +227,23 @@ describe("AppContext — moderation refresh results", () => {
       verification({ id: "v2", status: "APPROVED" }),
     ]);
     vi.mocked(services.getDisputes).mockResolvedValue([dispute({ id: "d1", status: "OPEN" }), dispute({ id: "d2", status: "RESOLVED" })]);
-    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(3);
+    vi.mocked(services.getFailedPayoutCount).mockResolvedValue(3);
     vi.mocked(services.getPendingServiceRequestCount).mockResolvedValue(2);
     await mountLoaded();
     expect(context.queueCounts).toEqual({ verifications: 1, disputes: 1, withdrawals: 3, "skill-requests": 2 });
   });
 
   it("keeps a queue's last good count and never reports 0 when its request fails", async () => {
-    vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("down"));
+    vi.mocked(services.getFailedPayoutCount).mockRejectedValue(new Error("down"));
     await mountLoaded();
     expect(context.queueCounts.withdrawals).toBeNull();
     expect(context.queueCounts["skill-requests"]).toBe(0);
 
-    vi.mocked(services.getPendingWithdrawalCount).mockResolvedValue(3);
+    vi.mocked(services.getFailedPayoutCount).mockResolvedValue(3);
     await act(async () => { await context.refreshData(); });
     expect(context.queueCounts.withdrawals).toBe(3);
 
-    vi.mocked(services.getPendingWithdrawalCount).mockRejectedValue(new Error("down again"));
+    vi.mocked(services.getFailedPayoutCount).mockRejectedValue(new Error("down again"));
     await act(async () => { await context.refreshData(); });
     expect(context.queueCounts.withdrawals).toBe(3);
   });
@@ -250,16 +251,16 @@ describe("AppContext — moderation refresh results", () => {
   it("a superseded load does not clear the newer load's counts flag or stamp lastUpdated", async () => {
     const oldCount = deferred<number>();
     const newCount = deferred<number>();
-    vi.mocked(services.getPendingWithdrawalCount)
+    vi.mocked(services.getFailedPayoutCount)
       .mockReturnValueOnce(oldCount.promise)
       .mockReturnValueOnce(newCount.promise);
     render(<AppProvider><Probe /></AppProvider>);
 
     // The first load is waiting on its withdrawal count.
-    await waitFor(() => expect(services.getPendingWithdrawalCount).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(services.getFailedPayoutCount).toHaveBeenCalledTimes(1));
     // Retry supersedes it; the newer load is also waiting on its own count.
     await act(async () => { context.retryLoad(); });
-    await waitFor(() => expect(services.getPendingWithdrawalCount).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(services.getFailedPayoutCount).toHaveBeenCalledTimes(2));
     expect(context.countsLoading).toBe(true);
 
     // The superseded request answers last. It must not finish the newer load.
@@ -300,7 +301,7 @@ describe("AppContext — moderation refresh results", () => {
       expect(services.getRecentActivity).toHaveBeenCalled();
       expect(services.getMaintenanceStatus).toHaveBeenCalled();
       expect(services.getDashboardStats).toHaveBeenCalled();
-      expect(services.getPendingWithdrawalCount).toHaveBeenCalled();
+      expect(services.getFailedPayoutCount).toHaveBeenCalled();
       expect(context.usersLoading).toBe(true);
     });
 

@@ -8,7 +8,7 @@ import { newWork, type QueueCounts, type QueueId } from "@/lib/attention";
 export const QUEUE_ALERT_TEXT: Record<QueueId, string> = {
   verifications: "New provider verification to review",
   disputes: "New complaint or dispute to review",
-  withdrawals: "New withdrawal request to settle",
+  withdrawals: "A provider payout failed and needs a retry",
   "skill-requests": "New service request to review",
 };
 

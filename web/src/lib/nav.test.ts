@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { ADMIN_NAV, NAV_GROUPS, pageMeta } from "./nav";
 
 describe("ADMIN_NAV", () => {
-  it("covers all 13 admin pages exactly once, in known groups", () => {
+  it("covers all 14 admin pages exactly once, in known groups", () => {
     const ids = ADMIN_NAV.map((n) => n.id);
-    expect(new Set(ids).size).toBe(13);
+    expect(new Set(ids).size).toBe(14);
     expect(ids).toEqual(
       expect.arrayContaining([
-        "dashboard", "verifications", "bookings", "disputes", "transactions", "withdrawals",
+        "dashboard", "verifications", "credentials", "bookings", "disputes", "transactions", "withdrawals",
         "skill-requests", "users", "activity-log", "audit-log", "reports", "platform", "settings",
       ]),
     );

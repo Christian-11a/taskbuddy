@@ -16,7 +16,8 @@ import { pageToPath } from "@/lib/routes";
 import type { ActivityEvent, DashboardStats, Page } from "@/lib/domain";
 import { cn } from "@/lib/utils";
 import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
-import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
+import { Delta, KpiCard } from "@/components/admin/KpiCard";
+import { currentMonthKey, monthValue, percentChange, previousMonth, toChartSeries } from "@/lib/services/monthSeries";
 import { EmptyState, PageHeader, Panel } from "@/components/admin/Panel";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -187,7 +188,7 @@ function ActivityFeed({ items, loading = false }: { items: ActivityEvent[]; load
 
 export function DashboardPage() {
   const {
-    adminProfile, dashboardStats, recentActivity, disputes, users, usersLoading, ensureUsers, revenueSeries, bookingsSeries,
+    adminProfile, dashboardStats, recentActivity, disputes, users, usersLoading, ensureUsers, revenueSeries, commissionSeries, bookingsSeries,
     analyticsUnavailable, analyticsInBrowser, analyticsLoading, disputesLoading, verificationsLoading, activityLoading,
     countsLoading, retryLoad, lastUpdated, queueCounts,
   } = useApp();
@@ -250,17 +251,26 @@ export function DashboardPage() {
     );
   }
 
-  // The series only has months that had bookings, so its last point may be an
-  // older month. Count it only if it really is this month.
-  const currentMonthLabel = now.toLocaleDateString("en-US", { month: "short" });
-  const lastPoint = bookingsSeries[bookingsSeries.length - 1];
+  // Series are keyed "YYYY-MM" for the UTC calendar month, zero-filled. "vs last month" compares with the real previous month.
+  const thisMonth = currentMonthKey(now);
+  const lastMonth = previousMonth(thisMonth);
   // While the analytics load, their figures are placeholders, whatever the last load left behind.
   const stats = analyticsLoading ? null : dashboardStats;
-  const bookingsThisMonth = lastPoint && lastPoint.month === currentMonthLabel ? lastPoint.value : 0;
+  const bookingsThisMonth = monthValue(bookingsSeries, thisMonth);
+  const bookingsLastMonth = monthValue(bookingsSeries, lastMonth);
+  const bookingsChange = percentChange(bookingsThisMonth, bookingsLastMonth);
+  const revenueThisMonth = monthValue(revenueSeries, thisMonth);
+  const revenueLastMonth = monthValue(revenueSeries, lastMonth);
+  const revenueChange = percentChange(revenueThisMonth, revenueLastMonth);
   const activeProviderShare = stats && stats.totalUsers > 0
     ? Math.round((stats.activeProviders / stats.totalUsers) * 1000) / 10
     : 0;
   const disputeRate = stats && stats.totalBookings > 0 ? (disputes.length / stats.totalBookings) * 100 : 0;
+  // Commission trend: this month against last. Null when last month had no commission: a percentage against zero would be meaningless.
+  const commissionAt = (key: string) => commissionSeries.find((p) => p.month === key)?.amount ?? 0;
+  const commissionThisMonth = commissionAt(thisMonth);
+  const commissionLastMonth = commissionAt(lastMonth);
+  const commissionChange = percentChange(commissionThisMonth, commissionLastMonth);
   const escrowHeld = extras?.escrowHeld ?? null;
   const dash = (v: number | null | undefined, fmt: (n: number) => string = String) => (v === null || v === undefined ? "—" : fmt(v));
 
@@ -270,7 +280,7 @@ export function DashboardPage() {
     { key: "disputes", page: "disputes", icon: AlertTriangle, count: openDisputes, loading: disputesLoading, one: "open dispute", many: "open disputes", tone: "danger" },
     // Same per-queue counts the bell and sidebar use. The summary's totals can be
     // a stand-in 0 when a request failed, so they are not read here.
-    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, loading: countsLoading, one: "payout request", many: "payout requests", tone: "warn" },
+    { key: "withdrawals", page: "withdrawals", icon: WalletCards, count: queueCounts.withdrawals, loading: countsLoading, one: "failed payout", many: "failed payouts", tone: "warn" },
     { key: "verifications", page: "verifications", icon: ShieldCheck, count: queueCounts.verifications, loading: verificationsLoading, one: "provider to verify", many: "providers to verify", tone: "warn" },
     { key: "skills", page: "skill-requests", icon: Wrench, count: queueCounts["skill-requests"], loading: countsLoading, one: "service request", many: "service requests", tone: "info" },
     { key: "escrow", page: "transactions", icon: CreditCard, count: extras?.escrowCount ?? null, loading: false, one: "escrow hold", many: "escrow holds", tone: "accent" },
@@ -300,7 +310,21 @@ export function DashboardPage() {
 
       {/* Headline metrics */}
       {stats ? (
-        <section aria-label="Key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section aria-label="Key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[85rem]:grid-cols-5">
+          <KpiCard
+            label="Total commission earned"
+            icon={<Percent />}
+            value={stats.totalCommission}
+            format={formatCurrency}
+            footer={
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
+                <span><span className="font-semibold text-foreground tabular">{formatCurrency(stats.monthlyCommission)}</span> this month</span>
+                {commissionLastMonth === 0
+                  ? <span className="text-subtle">No commission last month</span>
+                  : <Delta value={commissionChange} label="vs last month" />}
+              </span>
+            }
+          />
           <KpiCard
             label="Total users"
             icon={<Users />}
@@ -318,23 +342,33 @@ export function DashboardPage() {
             icon={<CalendarDays />}
             value={bookingsThisMonth}
             trend={bookingsSeries.map((p) => p.value)}
-            footer={<Delta value={monthOverMonth(bookingsSeries)} />}
+            footer={bookingsLastMonth === 0
+              ? <span className="text-[12px] text-subtle">No bookings last month</span>
+              : <Delta value={bookingsChange} label="vs last month" />}
           />
           <KpiCard
-            label="Provider payouts"
+            label="Released payments"
             icon={<CreditCard />}
             value={stats.monthlyRevenue}
             format={formatCurrency}
             trend={revenueSeries.map((p) => p.value)}
-            footer={<Delta value={monthOverMonth(revenueSeries)} />}
+            footer={
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1" title="Provider payout plus commission, released when the client confirms the job is done">
+                <span className="text-[12px] text-muted-foreground">this month</span>
+                {revenueLastMonth === 0
+                  ? <span className="text-[12px] text-subtle">No released payments last month</span>
+                  : <Delta value={revenueChange} label="vs last month" />}
+              </span>
+            }
           />
         </section>
       ) : (
-        <section aria-busy="true" aria-label="Loading key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <section aria-busy="true" aria-label="Loading key metrics" className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 min-[85rem]:grid-cols-5">
+          <KpiPlaceholder label="Total commission earned" icon={<Percent />} />
           <KpiPlaceholder label="Total users" icon={<Users />} />
           <KpiPlaceholder label="Registered providers" icon={<ShieldCheck />} />
           <KpiPlaceholder label="Bookings this month" icon={<CalendarDays />} />
-          <KpiPlaceholder label="Provider payouts" icon={<CreditCard />} />
+          <KpiPlaceholder label="Released payments" icon={<CreditCard />} />
         </section>
       )}
 
@@ -384,8 +418,8 @@ export function DashboardPage() {
       </div>
 
       <Panel
-        title="Payout trend"
-        description="Provider payouts released per month, after commission"
+        title="Released payments trend"
+        description="Provider payout plus commission, released per month when the client confirms the job is done"
         action={
           <Button asChild variant="ghost" size="sm">
             <Link href={pageToPath("reports")}>
@@ -396,10 +430,10 @@ export function DashboardPage() {
       >
         {analyticsLoading ? (
           <Skeleton className="w-full" style={{ height: 220 }} />
-        ) : revenueSeries.length > 0 ? (
-          <TrendChart data={revenueSeries} format={formatCurrency} yFormat={formatCurrencyCompact} height={220} />
+        ) : revenueSeries.some((p) => p.value > 0) ? (
+          <TrendChart data={toChartSeries(revenueSeries)} format={formatCurrency} yFormat={formatCurrencyCompact} height={220} />
         ) : (
-          <EmptyState icon={<CreditCard />} title="No payouts yet" description="Completed, paid jobs will build this chart." />
+          <EmptyState icon={<CreditCard />} title="No released payments yet" description="Jobs the client confirms done will build this chart." />
         )}
       </Panel>
     </div>

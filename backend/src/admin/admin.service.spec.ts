@@ -529,6 +529,25 @@ describe('AdminService', () => {
         service.listBookings({ search: 'Ramos', limit: 5, offset: 100 }),
       ).resolves.toStrictEqual({ bookings: [], total: 42, status_counts: [] });
     });
+
+    it('passes the disputed filter through as text to the bookings RPC', async () => {
+      const { supabase, rpc } = createSupabaseMock({});
+      rpc.mockResolvedValueOnce({
+        data: [{ rows: [], total: 0 }],
+        error: null,
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      await service.listBookings({ status: 'disputed' });
+
+      expect(rpc).toHaveBeenCalledWith('admin_list_bookings', {
+        p_search_term: null,
+        p_status: 'disputed',
+        p_category_id: null,
+        p_limit: 20,
+        p_offset: 0,
+      });
+    });
   });
 
   describe('analyticsSummary', () => {

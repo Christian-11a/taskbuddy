@@ -8,6 +8,7 @@
 export type Page =
   | "dashboard"
   | "verifications"
+  | "credentials"
   | "users"
   | "transactions"
   | "disputes"
@@ -112,6 +113,8 @@ export interface CaseEntry {
   author: { id: string; full_name: string; role: string } | null;
   message: { id: string; body: string; attachment_path: string | null } | null;
   attachment_url: string | null;
+  /** Signed URLs of the photos attached to this statement or appeal. */
+  photo_urls?: string[];
 }
 
 export interface Dispute {
@@ -141,6 +144,12 @@ export interface Dispute {
   /** The job's client and assigned provider ids, so chat senders can be told apart. Absent on older API responses. */
   clientId?: string | null;
   providerId?: string | null;
+  /** Signed URLs of the photos attached to the complaint itself. */
+  photoUrls?: string[];
+  /** Who raised the complaint (client or assigned provider). */
+  raisedById?: string | null;
+  /** The attached chat's message count (`chat.message_count`); null when the lookup failed. */
+  chatMessageCount?: number | null;
 }
 
 // ─── Bookings ─────────────────────────────────────────────────────────────────
@@ -158,12 +167,17 @@ export type BookingStatus =
   | "cancelled"
   | "expired";
 
+/** A booking's list badge: its status, or 'disputed' while a complaint is open (derived, not a job_status). */
+export type BookingDisplayStatus = BookingStatus | "disputed";
+
 export interface AdminBooking {
   id: string;
   customerName: string;
   providerName: string;
   service: string;
   status: BookingStatus;
+  /** `display_status ?? status`: 'disputed' while the job's complaint is open. */
+  displayStatus?: BookingDisplayStatus;
   /** The job's `posted_at` — the real schema has no scheduling/time-slot
    *  concept (BACKEND_SCHEMA.md §14), so this is "when posted", not "when
    *  scheduled for". */
@@ -187,6 +201,8 @@ export interface AdminBookingDetail {
   completedAt: string | null;
   /** Raw job status from the backend (job_status enum). */
   status: string;
+  /** 'disputed' while the job's complaint is open, else the status. */
+  displayStatus?: BookingDisplayStatus;
 }
 
 // ─── Platform maintenance mode (migration 0017) ───────────────────────────────
@@ -223,6 +239,8 @@ export interface WalletTransaction {
   amount: number;
   title: string;
   createdAt: string; // ISO date
+  /** The API's review_note: carries the Xendit marker on a withdrawal. Optional, so fixtures need not set it. */
+  reviewNote?: string | null;
 }
 
 export interface AdminWithdrawal {
@@ -327,6 +345,7 @@ export interface DashboardStats {
 }
 
 export interface MonthlyPoint {
+  /** Month key "YYYY-MM" (the year is kept; labels are derived for display). */
   month: string;
   value: number;
 }

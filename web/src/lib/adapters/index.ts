@@ -17,6 +17,7 @@ import type {
   Verification,
   WalletTransaction,
   WalletTxnKind,
+  WalletTxnStatus,
   TransferStatus,
 } from "@/lib/domain";
 
@@ -99,6 +100,9 @@ export const BOOKING_STATUS_DISPLAY: Record<BookingStatus, { label: string; badg
   expired:      { label: "Expired",     badgeClass: "badge-rejected" },
 };
 
+/** A job with an open complaint. Same danger badge as a disputed escrow on the Transactions page. */
+const DISPUTED_BOOKING_DISPLAY = { label: "Disputed", badgeClass: "badge-rejected" };
+
 /** Bookings an admin can still cancel — anything not yet in a terminal state. */
 export function isCancellableBooking(status: BookingStatus): boolean {
   return (
@@ -123,32 +127,57 @@ export const DISPUTE_RESOLUTION_LABEL: Record<DisputeResolution, string> = {
 };
 
 export const WALLET_KIND_DISPLAY: Record<WalletTxnKind, { label: string; badgeClass: string }> = {
-  topup:        { label: "Top-up",      badgeClass: "badge-completed" },
-  withdrawal:   { label: "Withdrawal",  badgeClass: "badge-processing" },
-  escrow_hold:  { label: "Escrow hold", badgeClass: "badge-pending" },
-  payout:       { label: "Payout",      badgeClass: "badge-active" },
-  refund:       { label: "Refund",      badgeClass: "badge-refunded" },
-  adjustment:   { label: "Adjustment",  badgeClass: "badge-cancelled" },
-  recovery_credit: { label: "Recovery credit", badgeClass: "badge-completed" },
-  connect_transfer: { label: "Sent to Stripe", badgeClass: "badge-processing" },
+  topup:        { label: "Client payment",       badgeClass: "badge-completed" },
+  withdrawal:   { label: "Payout to provider",   badgeClass: "badge-processing" },
+  escrow_hold:  { label: "Payment held",         badgeClass: "badge-pending" },
+  payout:       { label: "Earnings credited",    badgeClass: "badge-active" },
+  refund:       { label: "Refund to client",     badgeClass: "badge-refunded" },
+  adjustment:   { label: "Adjustment",           badgeClass: "badge-cancelled" },
+  recovery_credit: { label: "Recovery credit",   badgeClass: "badge-completed" },
+  connect_transfer: { label: "Sent to Stripe",   badgeClass: "badge-processing" },
 };
+
+export const WALLET_STATUS_DISPLAY: Record<WalletTxnStatus, { label: string; badgeClass: string }> = {
+  completed: { label: "Completed", badgeClass: "badge-completed" },
+  pending:   { label: "Pending",   badgeClass: "badge-pending" },
+  failed:    { label: "Failed",    badgeClass: "badge-rejected" },
+};
+
+/** How a payment was funded. 'wallet' is the legacy API name for today's online (Xendit) payment. */
+export const FUNDING_LABEL = { wallet: "Online payment", card: "Card (Stripe)" } as const;
+export type FundingLabel = (typeof FUNDING_LABEL)[keyof typeof FUNDING_LABEL];
+export function fundingLabel(method: "wallet" | "card"): FundingLabel {
+  return method === "card" ? FUNDING_LABEL.card : FUNDING_LABEL.wallet;
+}
+
+/** Non-card payouts are automatic and not tied to one job (payout records carry no job link yet). */
+export const NON_CARD_PAYOUT_NOTE = "Paid out with the provider's next automatic payout";
 
 /**
  * The Payout column on the Escrow tab. Only card-funded escrows are sent on to
- * Stripe (BACKEND_SCHEMA.md §29.5); every other payout stays in the provider's
- * wallet, which is what "Wallet" means here — not an error.
+ * Stripe (BACKEND_SCHEMA.md §29.5); other payouts are automatic (see payoutCell).
  */
 export const TRANSFER_STATUS_DISPLAY: Record<TransferStatus, { label: string; badgeClass: string }> = {
-  none:         { label: "Wallet",              badgeClass: "badge-pending" },
+  none:         { label: "Not sent",            badgeClass: "badge-pending" },
   pending:      { label: "Sending to Stripe",   badgeClass: "badge-processing" },
   transferred:  { label: "Sent to Stripe",      badgeClass: "badge-completed" },
   failed:       { label: "Transfer failed",     badgeClass: "badge-rejected" },
-  not_eligible: { label: "Not set up — wallet", badgeClass: "badge-pending" },
-  abandoned:    { label: "Kept in wallet",      badgeClass: "badge-rejected" },
+  not_eligible: { label: "Not set up", badgeClass: "badge-pending" },
+  abandoned:    { label: "Not sent",      badgeClass: "badge-rejected" },
 };
 
 /** Transfer states an admin may retry from (POST /admin/escrow/:id/retry-transfer). */
 export const RETRYABLE_TRANSFER: ReadonlySet<TransferStatus> = new Set(["failed", "abandoned", "not_eligible"]);
+
+/** What an admin is told after retrying a payout (see ConnectPayoutsService). */
+export const RETRY_OUTCOME_MESSAGE: Record<"transferred" | "not_eligible" | "failed" | "abandoned" | "retry" | "skipped", string> = {
+  transferred: "Payout sent to the provider.",
+  not_eligible: "The provider hasn't finished setting up payouts yet. Ask them to link a payout account, then retry.",
+  failed: "The payout was refused again. Try again later or ask the provider to check their payout account.",
+  abandoned: "The payout was refused. Ask the provider to check their payout account, then retry.",
+  retry: "The payment service didn't answer. The payout is queued and will be retried automatically.",
+  skipped: "Nothing to retry for this payout.",
+};
 
 // ─── Display row types (what components render) ───────────────────────────────
 
@@ -229,6 +258,9 @@ export interface DisputeRow {
   cancellationDeadline: string | null;
   clientId?: string | null;
   providerId?: string | null;
+  photoUrls?: string[];
+  raisedById?: string | null;
+  chatMessageCount?: number | null;
 }
 
 export interface TransactionRow {
@@ -244,13 +276,15 @@ export interface TransactionRow {
   status: string;
   statusClass: string;
   date: string;
-  funding: "Wallet" | "Card";
+  funding: FundingLabel;
   /** Empty until the escrow is released — nothing has been paid out yet. */
   payout: string;
   payoutClass: string;
   /** The Stripe transfer id, or why it failed — the Payout cell's tooltip. */
   payoutDetail: string | null;
   canRetryTransfer: boolean;
+  /** Tooltip for the empty Payout cell of a non-card job. */
+  payoutNote: string | null;
 }
 
 export interface WalletTxnRow {
@@ -264,6 +298,8 @@ export interface WalletTxnRow {
   direction: "credit" | "debit";
   title: string;
   createdAt: string;
+  statusLabel: string;
+  statusClass: string;
 }
 
 export interface BookingRow {
@@ -362,16 +398,19 @@ export function toTransactionRow(t: Transaction): TransactionRow {
     status: display.label,
     statusClass: display.badgeClass,
     date: formatDate(t.date),
-    funding: t.fundingMethod === "card" ? "Card" : "Wallet",
+    funding: fundingLabel(t.fundingMethod),
     ...payoutCell(t),
   };
 }
 
-function payoutCell(t: Transaction): Pick<TransactionRow, "payout" | "payoutClass" | "payoutDetail" | "canRetryTransfer"> {
-  // A wallet-funded escrow's payout is a wallet credit; there is no transfer to
-  // report until (and unless) it is card-funded and released.
+function payoutCell(t: Transaction): Pick<TransactionRow, "payout" | "payoutClass" | "payoutDetail" | "canRetryTransfer" | "payoutNote"> {
+  // Non-card (Xendit) payouts are automatic and payout records carry no job link,
+  // so no per-job state is shown. Change here if a link is ever added.
+  if (t.fundingMethod !== "card") {
+    return { payout: "", payoutClass: "", payoutDetail: null, canRetryTransfer: false, payoutNote: NON_CARD_PAYOUT_NOTE };
+  }
   if (t.status !== "COMPLETED" && t.transferStatus === "none") {
-    return { payout: "", payoutClass: "", payoutDetail: null, canRetryTransfer: false };
+    return { payout: "", payoutClass: "", payoutDetail: null, canRetryTransfer: false, payoutNote: null };
   }
   const display = TRANSFER_STATUS_DISPLAY[t.transferStatus];
   return {
@@ -379,6 +418,7 @@ function payoutCell(t: Transaction): Pick<TransactionRow, "payout" | "payoutClas
     payoutClass: display.badgeClass,
     payoutDetail: t.stripeTransferId ?? t.transferError,
     canRetryTransfer: RETRYABLE_TRANSFER.has(t.transferStatus),
+    payoutNote: null,
   };
 }
 
@@ -386,6 +426,9 @@ export function toDisputeRow(d: Dispute): DisputeRow {
   const display = DISPUTE_STATUS_DISPLAY[d.status];
   return {
     entries: d.entries,
+    photoUrls: d.photoUrls,
+    raisedById: d.raisedById,
+    chatMessageCount: d.chatMessageCount,
     hasPayment: d.hasPayment,
     id: d.id,
     jobId: d.jobId,
@@ -412,8 +455,17 @@ export function toDisputeRow(d: Dispute): DisputeRow {
   };
 }
 
+/**
+ * Client refunds are written as 'withdrawal' rows (pass_through_balances, migration 0058)
+ * titled "Refund sent". The wallet payload carries no profile role, so the title is the
+ * only signal; any other withdrawal stays a provider payout.
+ */
+export function isClientRefundWithdrawal(t: Pick<WalletTransaction, "kind" | "title">): boolean {
+  return t.kind === "withdrawal" && t.title === "Refund sent";
+}
+
 export function toWalletTxnRow(t: WalletTransaction): WalletTxnRow {
-  const display = WALLET_KIND_DISPLAY[t.kind];
+  const display = isClientRefundWithdrawal(t) ? WALLET_KIND_DISPLAY.refund : WALLET_KIND_DISPLAY[t.kind];
   const sign = t.direction === "credit" ? "+" : "-";
   return {
     id: t.id,
@@ -425,11 +477,13 @@ export function toWalletTxnRow(t: WalletTransaction): WalletTxnRow {
     direction: t.direction,
     title: t.title,
     createdAt: formatDate(t.createdAt),
+    statusLabel: WALLET_STATUS_DISPLAY[t.status].label,
+    statusClass: WALLET_STATUS_DISPLAY[t.status].badgeClass,
   };
 }
 
 export function toBookingRow(b: AdminBooking): BookingRow {
-  const display = BOOKING_STATUS_DISPLAY[b.status];
+  const display = b.displayStatus === "disputed" ? DISPUTED_BOOKING_DISPLAY : BOOKING_STATUS_DISPLAY[b.status];
   return {
     id: b.id,
     customer: b.customerName,
@@ -441,4 +495,88 @@ export function toBookingRow(b: AdminBooking): BookingRow {
     amount: formatCurrency(b.amount),
     cancellable: isCancellableBooking(b.status),
   };
+}
+
+/** A failed withdrawal that is a refused Xendit payout (finishPayout writes the "Xendit:" prefix). Older cancelled or rejected requests fail the check. */
+export function isXenditPayoutFailure(w: { status: string; reviewNote: string | null }): boolean {
+  return w.status === "failed" && (w.reviewNote ?? "").trimStart().startsWith("Xendit:");
+}
+
+export interface PayoutFailureSplit<W> {
+  /** Failed Xendit rows with no completed payout for that provider after them, newest first. */
+  unresolved: W[];
+  /** Failed Xendit rows a later completed payout covers, newest first, with that payout's date. */
+  resolved: { withdrawal: W; paidAt: string }[];
+  /** The newest unresolved failure per provider: who still has a refused payout. How much they are owed is their wallet balance, not this row's amount. */
+  providers: W[];
+}
+
+/**
+ * Splits failed Xendit payouts into still-owed and paid-later. A failure is
+ * resolved when the same provider has a completed withdrawal created after it
+ * (the next balance sweep sends the balance again as a new row). Pure, so the
+ * list, the total and the sidebar count all agree.
+ */
+export function splitPayoutFailures<W extends { id: string; profileId: string; amount: number; status: string; reviewNote: string | null; createdAt: string }>(
+  failed: W[],
+  completed: W[],
+): PayoutFailureSplit<W> {
+  const newestFirst = (a: W, b: W) => b.createdAt.localeCompare(a.createdAt);
+  const paid = completed.filter((c) => c.status === "completed");
+  const unresolved: W[] = [];
+  const resolved: { withdrawal: W; paidAt: string }[] = [];
+  for (const f of failed.filter(isXenditPayoutFailure).sort(newestFirst)) {
+    // Earliest completed payout after the failure is the one that settled it.
+    const later = paid
+      .filter((c) => c.profileId === f.profileId && c.createdAt > f.createdAt)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (later) resolved.push({ withdrawal: f, paidAt: later.createdAt });
+    else unresolved.push(f);
+  }
+  const latest = new Map<string, W>();
+  for (const f of unresolved) if (!latest.has(f.profileId)) latest.set(f.profileId, f); // unresolved is newest first
+  return { unresolved, resolved, providers: [...latest.values()] };
+}
+
+/**
+ * What the next automatic payout will send a profile. Mirrors the SQL function
+ * public.wallet_available_balance (migration 0028), which pass_through_balances
+ * (migration 0058) calls: completed credits, minus completed debits, minus
+ * pending debits. Failed rows and pending credits count for nothing.
+ */
+export function walletAvailableBalance(rows: { direction: string; status: string; amount: number }[]): number {
+  let sum = 0;
+  for (const t of rows) {
+    if (t.status === "completed" && t.direction === "credit") sum += t.amount;
+    else if (t.status === "completed" && t.direction === "debit") sum -= t.amount;
+    else if (t.status === "pending" && t.direction === "debit") sum -= t.amount;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+export interface OwedProvider {
+  profileId: string;
+  profileName: string;
+  /** The provider's wallet balance, i.e. what pass_through_balances will send next. */
+  owed: number;
+}
+
+/**
+ * Providers with an unresolved Xendit failure and a balance still to send.
+ * pass_through_balances skips a balance of 0 or less, so such a provider is
+ * owed nothing and is not counted (their failed row still lists on the page).
+ */
+export function owedProviders(
+  providers: { profileId: string; profileName: string }[],
+  balances: ReadonlyMap<string, number>,
+): OwedProvider[] {
+  return providers
+    .map((p) => ({ profileId: p.profileId, profileName: p.profileName, owed: balances.get(p.profileId) ?? 0 }))
+    .filter((p) => p.owed > 0);
+}
+
+/** The one rule behind the page header and the sidebar count: providers still owed after a refused Xendit payout, and the sum of their balances. */
+export function payoutHeadline(owed: { owed: number }[]): { count: number; total: number } {
+  const total = owed.reduce((n, o) => n + o.owed, 0);
+  return { count: owed.length, total: Math.round(total * 100) / 100 };
 }

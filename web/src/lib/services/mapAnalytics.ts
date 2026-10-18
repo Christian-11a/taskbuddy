@@ -7,11 +7,7 @@
 
 import type { AdminActivityApiRow, AnalyticsSummaryApiResponse } from "@/lib/api/types";
 import type { ActivityEvent, ActivityType, CategoryShare, MonthlyPoint, TopProvider } from "@/lib/domain";
-
-const MONTH_LABELS = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+import { currentMonthKey, fillMonths, SERIES_MONTHS } from "./monthSeries";
 
 /** completed / total bookings, 0–100, one decimal place. */
 export function mapCompletionRate(summary: AnalyticsSummaryApiResponse): number {
@@ -21,19 +17,20 @@ export function mapCompletionRate(summary: AnalyticsSummaryApiResponse): number 
   return Math.round((completed / total) * 1000) / 10;
 }
 
-/** Daily booking_trend entries summed into monthly buckets, sorted ascending. */
-export function mapBookingsSeries(summary: AnalyticsSummaryApiResponse): MonthlyPoint[] {
+/** Daily booking_trend entries summed into monthly buckets: the last
+ *  SERIES_MONTHS months ending this month (UTC), oldest first, 0 where
+ *  a month had no bookings. Months are keyed "YYYY-MM". */
+export function mapBookingsSeries(summary: AnalyticsSummaryApiResponse, now: Date = new Date()): MonthlyPoint[] {
   const byMonth = new Map<string, number>();
   for (const { date, count } of summary.booking_trend) {
     const key = date.slice(0, 7); // "YYYY-MM"
     byMonth.set(key, (byMonth.get(key) ?? 0) + count);
   }
-  return [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => {
-      const monthIndex = Number(key.slice(5, 7)) - 1;
-      return { month: MONTH_LABELS[monthIndex] ?? key, value };
-    });
+  return fillMonths(
+    [...byMonth].map(([month, amount]) => ({ month, amount })),
+    currentMonthKey(now),
+    SERIES_MONTHS,
+  ).map(({ month, amount }) => ({ month, value: amount }));
 }
 
 /** bookings_by_category counts converted to percentage shares (rounded —
@@ -55,12 +52,26 @@ export function mapTopProviders(summary: AnalyticsSummaryApiResponse): TopProvid
   }));
 }
 
-/** revenue_trend entries (already monthly) mapped to the chart's display shape. */
-export function mapRevenueSeries(summary: AnalyticsSummaryApiResponse): MonthlyPoint[] {
-  return summary.revenue_trend.map(({ month, amount }) => {
-    const monthIndex = Number(month.slice(5, 7)) - 1;
-    return { month: MONTH_LABELS[monthIndex] ?? month, value: amount };
-  });
+/**
+ * Released payments per month: what clients' confirmed jobs released from escrow.
+ * The backend reports the two halves separately — revenue_trend is the net the
+ * providers received, commission_trend is TaskBuddy's share — so a month's
+ * released payments is their sum.
+ */
+export function mapRevenueSeries(summary: AnalyticsSummaryApiResponse, now: Date = new Date()): MonthlyPoint[] {
+  return fillMonths(
+    [...summary.revenue_trend, ...(summary.commission_trend ?? [])],
+    currentMonthKey(now),
+    SERIES_MONTHS,
+  ).map(({ month, amount }) => ({ month, value: amount }));
+}
+
+/** Released commission per month, same window and zero-filling as mapRevenueSeries. */
+export function mapCommissionSeries(
+  summary: AnalyticsSummaryApiResponse,
+  now: Date = new Date(),
+): { month: string; amount: number }[] {
+  return fillMonths(summary.commission_trend ?? [], currentMonthKey(now), SERIES_MONTHS);
 }
 
 const activityTypeFor = (status: string): ActivityType => {

@@ -178,6 +178,20 @@ describe("UsersPage — suspend flow", () => {
     expect(screen.getByText("Jamie Kim")).toBeInTheDocument();
   });
 
+  it("caps the search box at 100 characters", () => {
+    mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),
+      users: [makeUser()],
+      setUserStatus,
+      bulkSetUserStatus,
+      sendPasswordReset,
+      refreshUsers,
+      usersLoading: false,
+    } as unknown as ReturnType<typeof useApp>);
+    renderWithToast(<UsersPage />);
+
+    expect(screen.getByPlaceholderText("Search by name, email…")).toHaveAttribute("maxLength", "100");
+  });
+
   it("filters to new users by join date", async () => {
     const recent = new Date(Date.now() - 2 * 86_400_000).toISOString();
     mockedUseApp.mockReturnValue({ ensureUsers: vi.fn(),

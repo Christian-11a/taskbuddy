@@ -6,7 +6,7 @@ import * as services from "@/lib/services";
 import { Pagination } from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/admin/Panel";
-import { SearchField } from "@/components/admin/queue";
+import { SearchField, searchErrorMessage } from "@/components/admin/queue";
 import { LoadFailedState, RefreshFailedBanner, SelectFilter, TableCard, TableEmpty } from "@/components/admin/table";
 import type { AuditAction } from "@/lib/domain";
 import { cn } from "@/lib/utils";
@@ -76,6 +76,8 @@ export function AuditLogPage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  /** The API rejected the search term (HTTP 400); shown under the search box. */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [actionFilter, setActionFilter] = useState("all");
@@ -97,6 +99,7 @@ export function AuditLogPage() {
       })
       .then((result) => {
         if (!cancelled) {
+          setSearchError(null);
           setActions(result.items);
           setTotal(result.total);
           setObservedActions((known) => [...new Set([...known, ...result.items.map((item) => item.action)])]);
@@ -105,9 +108,11 @@ export function AuditLogPage() {
           setLoading(false);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) {
-          setError(true);
+          const badSearch = searchErrorMessage(err);
+          if (badSearch) setSearchError(badSearch);
+          else setError(true);
           setLoading(false);
         }
       });
@@ -163,6 +168,8 @@ export function AuditLogPage() {
               }}
               placeholder="Search by admin, target, or reason…"
               label="Search the audit log"
+              maxLength={200}
+              error={searchError}
             />
             <SelectFilter
               label="Filter by action"

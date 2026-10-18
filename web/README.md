@@ -226,7 +226,6 @@ src/
     ├── domain.ts             # Backend-shaped domain types
     ├── attention.ts          # Queue counts, "unknown" handling, arrival detection
     ├── caseSignals.ts        # Dispute kind (complaint/appeal/cancellation) and urgency
-    ├── warranty.ts           # 72-hour warranty window from a job's completed_at
     ├── routes.ts             # Page id ↔ /admin/<page> URL + page titles
     ├── validation.ts         # Shared rules, mirroring backend DTO limits
     ├── services/             # THE DATA SEAM (admin)
@@ -283,9 +282,9 @@ the backend and convert its JSON tokens into httpOnly cookies):
 | Dashboard | `GET /admin/analytics/summary` (includes held escrow and job totals; browser fallback retained), `GET /admin/activity`, `GET /admin/skill-requests?status=pending&limit=1&offset=0` (exact queue total). Every page's sidebar badges and bell also use the withdrawals count, `GET /admin/withdrawals?status=pending`, loaded on the same refresh. The Service Requests badge uses the same exact total. Separate escrow/booking reads are used only if summary fields are absent. |
 | Verifications | `GET /admin/verifications` (`method` gives the "ID + selfie review" or "Stripe Identity" badge; Stripe Identity rows have no documents), `POST .../approve` · `/reject` (accepts a reason) |
 | Users | `GET /admin/users`, `POST .../suspend` (reason + optional duration) · `/reinstate` · `/send-password-reset` |
-| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts), `GET /admin/bookings/:id` (drawer warranty line from `completed_at`) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
-| Disputes | `GET /admin/disputes` (also `cancellation_state`, `cancellation_deadline` and `entries` for the case timeline), `POST .../resolve` (accepts a note), `GET /admin/bookings/:id` (job `completed_at` for the Payment protection warranty), `GET /admin/jobs/:jobId/conversation` (on demand) |
-| Bookings | `GET /admin/bookings` (page, total and search-filtered `status_counts` together), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer; `completed_at` gives the warranty line for completed jobs) |
+| Transactions | **Escrow:** `GET /admin/transactions`, `POST /admin/escrow/:id/retry-transfer` (card-funded payouts), `GET /admin/bookings/:id` (drawer release status from `completed_at`) · **Wallet:** `GET /admin/wallet-transactions?search=…&limit=…&offset=…` (fetched when the tab opens), `POST /admin/wallet-transactions/recovery-credit` |
+| Disputes | `GET /admin/disputes` (also `cancellation_state`, `cancellation_deadline` and `entries` for the case timeline), `POST .../resolve` (accepts a note), `GET /admin/bookings/:id` (job `completed_at` for the payment release status), `GET /admin/jobs/:jobId/conversation` (on demand) |
+| Bookings | `GET /admin/bookings` (page, total and search-filtered `status_counts` together), `POST .../cancel`, `GET /admin/bookings/:id` (detail drawer; `completed_at` gives the release status for completed jobs) |
 | Activity Log | `GET /admin/activity` |
 | Audit Log | `GET /admin/audit?search=…&action=…&limit=…&offset=…` (server-filtered pages and total) |
 | Reports | `GET /admin/analytics/summary` (same browser fallback as the Dashboard) |
@@ -543,8 +542,8 @@ Completed checks are recorded in [CHANGELOG.md](./CHANGELOG.md).
   edits and a broadcast, Maintenance Mode on/off, and a password change.
 - **Not yet exercised against the live backend** (admin sync with the mobile
   app, 2026-10-15): the new complaint actions; Release, Refund and Record decision
-  on cancellation reviews; arrival alerts over a real 30 s poll; and the warranty
-  line against real `completed_at` values. Local tests and the dev preview cover
+  on cancellation reviews; arrival alerts over a real 30 s poll; and the release
+  status against real `completed_at` values. Local tests and the dev preview cover
   these with sample data only.
 
 ## Build and tests

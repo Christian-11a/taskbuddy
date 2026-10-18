@@ -8,7 +8,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Pagination } from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/admin/Panel";
-import { SearchField } from "@/components/admin/queue";
+import { SearchField, searchErrorMessage } from "@/components/admin/queue";
 import { LoadFailedState, RefreshFailedBanner, TableCard, TableEmpty } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -34,6 +34,8 @@ export function ActivityLogPage() {
   const [loading, setLoading] = useState(true);
   /** The last load failed. Events stay on screen when there are any (see the banner). */
   const [error, setError] = useState(false);
+  /** The API rejected the search term (HTTP 400); shown under the search box. */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // Events that arrived since the previous load get a brief highlight.
   const seen = useRef<Set<string> | null>(null);
@@ -53,14 +55,19 @@ export function ActivityLogPage() {
         setRecentActivity(result.items);
         setTotal(result.total);
         setError(false);
+        setSearchError(null);
         setLoading(false);
       })
-      .catch(() => {
-        // Keep the last good events and total; the banner says they may be stale.
-        if (!cancelled) {
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const badSearch = searchErrorMessage(err);
+        if (badSearch) {
+          setSearchError(badSearch);
+        } else {
+          // Keep the last good events and total; the banner says they may be stale.
           setError(true);
-          setLoading(false);
         }
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -100,6 +107,8 @@ export function ActivityLogPage() {
             }}
             placeholder="Search by job title…"
             label="Search activity by job title"
+            maxLength={100}
+            error={searchError}
           />
         }
       >

@@ -9,7 +9,14 @@ import { ApiError } from "@/lib/api/client";
 vi.mock("@/lib/services", () => ({
   getCategories: vi.fn().mockResolvedValue([]),
   getAdmins: vi.fn().mockResolvedValue([]),
-  getCommission: vi.fn().mockResolvedValue({ rate: 0.15, updatedAt: "2026-10-01T00:00:00Z" }),
+  getCommission: vi.fn().mockResolvedValue({
+    rate: 0.15,
+    updatedAt: "2026-10-01T00:00:00Z",
+    totalEarned: 22.58,
+    earnedThisMonth: 7.58,
+    releasedJobs: 2,
+    pendingEstimate: 125.05,
+  }),
   getPlatformIdentity: vi.fn().mockResolvedValue(null),
   updatePlatformIdentity: vi.fn(),
   getJobCapacity: vi.fn().mockResolvedValue(null),
@@ -93,6 +100,28 @@ describe("broadcast announcement", () => {
     await fillAndSend(user, "Hello", "World");
     expect(await screen.findByText("Notifications are paused for maintenance.")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(TITLE)).toHaveValue("Hello");
+  });
+});
+
+describe("commission tab", () => {
+  it("leads with the earnings in order, then the rate", async () => {
+    render(<ToastProvider><PlatformPage /></ToastProvider>);
+
+    const earnings = await screen.findByRole("region", { name: "Commission earnings" });
+    const labels = within(earnings)
+      .getAllByText(/^(Total earned|Earned this month|Pending estimate|Released jobs)$/)
+      .map((el) => el.textContent);
+    expect(labels).toEqual(["Total earned", "Earned this month", "Pending estimate", "Released jobs"]);
+    // The KPI figures count up on mount, so each one is awaited rather than read at once.
+    expect(await within(earnings).findByText("₱22.58")).toBeInTheDocument();
+    expect(await within(earnings).findByText("₱7.58")).toBeInTheDocument();
+    expect(await within(earnings).findByText("₱125.05")).toBeInTheDocument();
+    expect(await within(earnings).findByText("2")).toBeInTheDocument();
+
+    // The rate panel comes after the earnings, not before them.
+    const ratePanel = screen.getByText("Platform commission");
+    expect(earnings.compareDocumentPosition(ratePanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("spinbutton")).toHaveValue(15);
   });
 });
 

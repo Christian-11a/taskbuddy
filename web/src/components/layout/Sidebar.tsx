@@ -34,16 +34,21 @@ export function Sidebar({ activePage, onNavigate, onLogout, collapsed, onToggleC
   const reduce = useReducedMotion();
 
   // A queue that failed to load (null) gets no badge rather than a misleading 0.
-  const badges: Partial<Record<Page, string | undefined>> = settings.activityBadge
-    ? {
-        verifications: displayCount(queueCounts.verifications),
-        disputes: displayCount(queueCounts.disputes),
-        withdrawals: displayCount(queueCounts.withdrawals),
-        "skill-requests": displayCount(queueCounts["skill-requests"]),
-      }
-    : {};
+  // Failed payouts keeps its count even when the activity badge setting is off.
+  // displayCount returns undefined for 0 and null, so no badge shows then.
+  const badges: Partial<Record<Page, string | undefined>> = {
+    ...(settings.activityBadge
+      ? {
+          verifications: displayCount(queueCounts.verifications),
+          disputes: displayCount(queueCounts.disputes),
+          "skill-requests": displayCount(queueCounts["skill-requests"]),
+        }
+      : {}),
+    withdrawals: displayCount(queueCounts.withdrawals),
+  };
 
   // Settings lives in the footer next to the account, as before.
+  // "Failed payouts" is always listed. Its badge shows only while failures are unresolved.
   const groups = NAV_GROUPS.map((g) => ({
     ...g,
     items: ADMIN_NAV.filter((n) => n.group === g.id && n.id !== "settings"),

@@ -315,7 +315,28 @@ describe("getBookings", () => {
     const bookings = await services.getBookings();
 
     expect(bookings).toEqual([
-      { id: "j1", customerName: "Alice", providerName: "Unassigned", service: "Plumbing", status: "open", scheduledDate: "2026-01-01", amount: 0 },
+      { id: "j1", customerName: "Alice", providerName: "Unassigned", service: "Plumbing", status: "open", displayStatus: "open", scheduledDate: "2026-01-01", amount: 0 },
+    ]);
+  });
+
+  it("derives displayStatus 'disputed' from an open dispute_state on admin rows", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          bookings: [
+            { id: "j2", status: "in_progress", posted_at: "2026-01-02", dispute_state: "open", service_categories: { name: "Plumbing" }, client: { id: "c1", full_name: "Alice" }, provider: null },
+            { id: "j3", status: "completed", posted_at: "2026-01-03", dispute_state: "resolved", service_categories: { name: "Plumbing" }, client: { id: "c1", full_name: "Alice" }, provider: null },
+          ],
+          total: 2,
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    const bookings = await services.getBookings();
+
+    expect(bookings.map((b) => [b.status, b.displayStatus])).toEqual([
+      ["in_progress", "disputed"],
+      ["completed", "completed"],
     ]);
   });
 });
@@ -487,80 +508,6 @@ describe("getVerifications", () => {
   });
 });
 
-describe("getTransactions", () => {
-  it("maps escrow states onto the page's display statuses", async () => {
-    const row = (id: string, status: string) => ({
-      id,
-      job_id: `job-${id}`,
-      amount: "1200.50",
-      status,
-      held_at: "2026-08-01",
-      jobs: { title: "Deep clean", service_categories: { name: "Cleaning" } },
-      client: { id: "c1", full_name: "Alice" },
-      provider: { id: "p1", full_name: "Bob" },
-    });
-    global.fetch = vi.fn(() =>
-      Promise.resolve(
-        jsonResponse({
-          transactions: [
-            row("t1", "held"),
-            row("t2", "released"),
-            row("t3", "disputed"),
-            row("t4", "refunded"),
-            row("t5", "cancelled"),
-          ],
-          total: 5,
-        }),
-      ),
-    ) as unknown as typeof fetch;
-
-    const transactions = await services.getTransactions();
-
-    expect(transactions.map((t) => t.status)).toEqual([
-      "IN_ESCROW",
-      "COMPLETED",
-      "DISPUTED",
-      "REFUNDED",
-      // No dedicated UI state for a cancelled hold.
-      "REFUNDED",
-    ]);
-    expect(transactions[0]).toMatchObject({
-      customerName: "Alice",
-      providerName: "Bob",
-      service: "Cleaning",
-      amount: 1200.5,
-    });
-  });
-
-  it("shares one in-flight request between overlapping callers", async () => {
-    // AppContext's initial load fires getTransactions() and getDisputes() in
-    // the same Promise.all, and getDisputes() needs this list too — without
-    // dedup that was two identical round trips per login.
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
-    );
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    const [a, b] = await Promise.all([services.getTransactions(), services.getTransactions()]);
-
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(a).toEqual(b);
-  });
-
-  it("fetches again once the in-flight request has settled", async () => {
-    // In-flight only, no TTL — a resolved dispute must not render from cache.
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(jsonResponse({ transactions: [], total: 0 })),
-    );
-    global.fetch = fetchMock as unknown as typeof fetch;
-
-    await services.getTransactions();
-    await services.getTransactions();
-
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-});
-
 describe("getWalletTransactions", () => {
   it("maps wallet ledger rows, keeping direction/kind/amount as numbers", async () => {
     global.fetch = vi.fn(() =>
@@ -595,6 +542,7 @@ describe("getWalletTransactions", () => {
         amount: 1000,
         title: "TaskBuddy wallet top-up",
         createdAt: "2026-08-09T16:47:00Z",
+        reviewNote: null,
       },
     ]);
   });
@@ -1059,6 +1007,28 @@ describe("getDashboardStats", () => {
     expect(stats.avgRating).toBe(4.2);
   });
 
+  it("reports released payments as provider payouts plus commission", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          totals: {
+            users: 1, clients: 0, providers: 1, bookings: 0, avg_rating: null,
+            total_revenue: 1500, monthly_revenue: 600, total_commission: 150.25, monthly_commission: 60,
+          },
+          bookings_by_status: {},
+          bookings_by_category: {},
+          booking_trend: [],
+          revenue_trend: [],
+          top_providers: [],
+        }),
+      ),
+    ) as unknown as typeof fetch;
+    const stats = await services.getDashboardStats();
+    expect(stats.totalRevenue).toBe(1650.25);
+    expect(stats.monthlyRevenue).toBe(660);
+    expect(stats.totalCommission).toBe(150.25);
+  });
+
   it("reports a zero avgRating when no provider has been rated", async () => {
     global.fetch = vi.fn(() =>
       Promise.resolve(
@@ -1292,11 +1262,38 @@ describe("fetchAllRows paging", () => {
 });
 
 describe("queue counts", () => {
-  it("counts pending withdrawals with a one-row request", async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ withdrawals: [], total: 7 })));
+  it("counts providers still owed after a refused Xendit payout (by wallet balance) plus card failures", async () => {
+    const row = (id: string, profile_id: string, status: string, review_note: string | null, created_at: string) => ({
+      id, profile_id, profile: { id: profile_id, full_name: profile_id }, amount: "100.00", title: "Payout", withdrawal_destination: null,
+      status, created_at, reviewed_at: null, reviewed_by: null, review_note, direction: "debit", kind: "withdrawal",
+    });
+    const failed = [
+      row("a", "p1", "failed", "Xendit: refused", "2026-10-01T00:00:00Z"),
+      row("b", "p1", "failed", "Xendit: refused again", "2026-10-03T00:00:00Z"),
+      row("c", "p2", "failed", "Xendit: bad account", "2026-10-02T00:00:00Z"),
+      row("d", "p3", "failed", "Rejected by admin", "2026-10-02T00:00:00Z"),
+      row("e", "p4", "failed", "xendit: lower", "2026-10-02T00:00:00Z"),
+    ];
+    const completed = [row("z", "p2", "completed", null, "2026-10-04T00:00:00Z")];
+    const wt = (id: string, profile_id: string, direction: string, status: string, amount: string) => ({
+      id, profile: { id: profile_id, full_name: profile_id }, direction, status, kind: "payout", amount, title: "t", created_at: "2026-10-01T00:00:00Z",
+    });
+    const fetchMock = vi.fn((url: string) => {
+      // p1 has 400 credited and a 100 pending debit, so 300 is owed. p4 has nothing left, so is not owed.
+      if (url.includes("/admin/wallet-transactions") && url.includes("direction=credit")) return Promise.resolve(jsonResponse({ transactions: [wt("c1", "p1", "credit", "completed", "400"), wt("c4", "p4", "credit", "completed", "80")], total: 2 }));
+      if (url.includes("/admin/wallet-transactions") && url.includes("status=completed")) return Promise.resolve(jsonResponse({ transactions: [wt("d4", "p4", "debit", "completed", "80")], total: 1 }));
+      if (url.includes("/admin/wallet-transactions")) return Promise.resolve(jsonResponse({ transactions: [wt("d1", "p1", "debit", "pending", "100")], total: 1 }));
+      if (url.includes("status=completed")) return Promise.resolve(jsonResponse({ withdrawals: completed, total: 1 }));
+      if (url.includes("status=failed")) return Promise.resolve(jsonResponse({ withdrawals: failed, total: 5 }));
+      return Promise.resolve(jsonResponse({ withdrawals: [], total: 0 }));
+    });
     global.fetch = fetchMock as unknown as typeof fetch;
-    await expect(services.getPendingWithdrawalCount()).resolves.toBe(7);
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/admin/withdrawals?status=pending&limit=1&offset=0"), expect.anything());
+    const split = await services.getPayoutFailures();
+    expect(split.unresolved.map((w) => w.id)).toEqual(["b", "a"]);
+    expect(split.resolved.map((r) => r.withdrawal.id)).toEqual(["c"]);
+    expect(split.owed).toEqual([{ profileId: "p1", profileName: "p1", owed: 300 }]);
+    // Xendit: p1 only (p2 was paid later, p4 has no balance left, p3 and "xendit: lower" have no Xendit prefix).
+    await expect(services.getFailedPayoutCount()).resolves.toBe(1);
   });
 
   it("counts pending service requests with a one-row request and the exact total", async () => {
@@ -1313,7 +1310,7 @@ describe("queue counts", () => {
   });
 });
 
-describe("cancellation and warranty fields", () => {
+describe("cancellation and completion fields", () => {
   const txnResponse = () => Promise.resolve(jsonResponse({ transactions: [], total: 0 }));
   const disputeRow = (extra: Record<string, unknown>) => ({
     id: "d-c1",
@@ -1458,7 +1455,8 @@ describe("analytics summary stand-in", () => {
       totalUsers: 2,
       activeProviders: 1,
       totalBookings: 1,
-      totalRevenue: 900,
+      // Released payments: the 900 paid to providers plus the 100 commission.
+      totalRevenue: 1000,
       totalCommission: 100,
       completionRate: 100,
       avgRating: 4.5,
@@ -1499,10 +1497,57 @@ describe("getJobConversation", () => {
         { id: "m2", sender_id: "p-1", sender_name: "Rico", body: "", attachment_path: null, attachment_url: null, read_at: null, created_at: "2026-10-04T10:05:00Z" },
       ],
     }))) as unknown as typeof fetch;
-    const messages = await services.getJobConversation("j-1");
+    const { messages } = await services.getJobConversation("j-1");
     expect(messages[0]).toMatchObject({ id: "m1", senderId: "c-1", senderName: "Ana", body: "Here is the leak", attachmentUrl: "https://signed.test/leak.jpg" });
     expect(messages[1]).toMatchObject({ id: "m2", senderId: "p-1", senderName: "Rico" });
     expect(messages[1].attachmentUrl).toBeNull();
+  });
+
+  it("returns the total and has_more, and sends the before cursor for an older page", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() => Promise.resolve(jsonResponse({
+      messages: [{ id: "m0", sender_id: "c-1", sender_name: "Ana", body: "Older", attachment_path: null, attachment_url: null, read_at: null, created_at: "2026-10-04T09:00:00Z" }],
+      total: 51,
+      has_more: true,
+    })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const page = await services.getJobConversation("j-1", { before: "11111111-2222-3333-4444-555555555555" });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/admin/jobs/j-1/conversation?before=11111111-2222-3333-4444-555555555555");
+    expect(page).toMatchObject({ total: 51, hasMore: true });
+    expect(page.messages.map((m) => m.id)).toEqual(["m0"]);
+  });
+
+  it("sends no cursor for the newest page", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(() => Promise.resolve(jsonResponse({ messages: [], total: 0, has_more: false })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const page = await services.getJobConversation("j-1");
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("before=");
+    expect(page).toEqual({ messages: [], total: 0, hasMore: false });
+  });
+});
+
+describe("commission overview (migration 0024)", () => {
+  it("maps the rate and the earnings figures the commission tab leads with", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          commission_rate: "0.15",
+          updated_at: "2026-10-01T00:00:00Z",
+          total_earned: 22.58,
+          earned_this_month: 7.58,
+          released_jobs: 2,
+          pending_estimate: 125.05,
+        }),
+      ),
+    ) as unknown as typeof fetch;
+
+    await expect(services.getCommission()).resolves.toEqual({
+      rate: 0.15,
+      updatedAt: "2026-10-01T00:00:00Z",
+      totalEarned: 22.58,
+      earnedThisMonth: 7.58,
+      releasedJobs: 2,
+      pendingEstimate: 125.05,
+    });
   });
 });
 
