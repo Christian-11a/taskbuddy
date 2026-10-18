@@ -62,11 +62,11 @@ it('releases exactly at 72 hours, only once, with commission and card transfer p
   assert.deepEqual(await payouts(job), [{ amount: 450 }]);
 });
 
-it('a timely complaint freezes money beyond the deadline until admin resolution', async () => {
+it('a complaint raised during work freezes money until admin resolution', async () => {
   const { job, escrow } = await heldJob();
-  await complete(job, '71 hours');
   await db.query('select raise_job_dispute($1, $2, $3, null)', [job, client, 'Work quality']);
-  await db.query("update jobs set completed_at = now() - interval '73 hours' where id = $1", [job]);
+  assert.equal((await db.query('select status from escrow_transactions where id = $1', [escrow])).rows[0].status, 'disputed');
+  await complete(job, '73 hours');
   assert.equal(await release(escrow), null);
   assert.deepEqual(await payouts(job), []);
   assert.equal((await release(escrow, 'disputed')).status, 'released');
@@ -76,32 +76,32 @@ it('a timely complaint freezes money beyond the deadline until admin resolution'
 
 it('an open complaint also blocks a stale held payment from automatic release', async () => {
   const { job, escrow } = await heldJob();
-  await complete(job);
   await db.query('select raise_job_dispute($1, $2, $3, null)', [job, provider, 'Review requested']);
+  await complete(job, '73 hours');
   // Simulate an old writer that restored held after the complaint was filed.
   await db.query("update escrow_transactions set status = 'held' where id = $1", [escrow]);
-  await db.query("update jobs set completed_at = now() - interval '73 hours' where id = $1", [job]);
   assert.equal(await release(escrow), null);
   assert.deepEqual(await payouts(job), []);
 });
 
-it('rejects complaints at the exact deadline and after payout', async () => {
+it('refuses complaints on a completed job, but accepts one while work is in progress (0066)', async () => {
   const { job, escrow } = await heldJob();
   await complete(job);
-  await assert.rejects(db.transaction(async (tx) => {
-    await tx.query("update jobs set completed_at = now() - interval '72 hours' where id = $1", [job]);
-    await tx.query('select raise_job_dispute($1, $2, $3, null)', [job, client, 'At deadline']);
-  }), /three-day/);
-  await db.query("update jobs set completed_at = now() - interval '73 hours' where id = $1", [job]);
-  await release(escrow);
-  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [job, provider, 'After payout']), /three-day/);
-  assert.deepEqual(await payouts(job), [{ amount: 450 }]);
+  for (const [actor, reason] of [[client, 'Just completed'], [provider, 'Also provider']]) {
+    await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [job, actor, reason]), /before the job is confirmed done/);
+  }
+  await complete(job, '73 hours');
+  await assert.rejects(db.query('select raise_job_dispute($1, $2, $3, null)', [job, client, 'Long after']), /before the job is confirmed done/);
+  assert.equal((await db.query('select status from escrow_transactions where id = $1', [escrow])).rows[0].status, 'held');
+  const open = await heldJob();
+  const { rows: [c] } = await db.query('select * from raise_job_dispute($1, $2, $3, null)', [open.job, client, 'Mid-work']);
+  assert.equal(c.status, 'open');
 });
 
-it('admin resolution can pay a disputed job before the warranty ends', async () => {
+it('admin resolution can pay a disputed job', async () => {
   const { job, escrow } = await heldJob();
-  await complete(job);
   await db.query('select raise_job_dispute($1, $2, $3, null)', [job, client, 'Review']);
+  await complete(job);
   assert.equal((await release(escrow, 'disputed')).status, 'released');
   assert.deepEqual(await payouts(job), [{ amount: 450 }]);
 });
