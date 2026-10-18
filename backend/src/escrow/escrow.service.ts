@@ -33,6 +33,11 @@ const QUEUED_NOTE = 'Sending via Xendit';
 const IN_FLIGHT_NOTE = 'Sending via Xendit (in flight)';
 /** Xendit accepted the payout; its final result is still to come. */
 const ACCEPTED_PREFIX = 'XENDIT-';
+/** Definite refusals for one payout account before retries stop. */
+const MAX_REFUSALS_PER_ACCOUNT = 3;
+/** Rows read per reconciliation page, and Xendit lookups allowed per tick. */
+const RECONCILE_PAGE = 50;
+const RECONCILE_MAX_LOOKUPS = 200;
 
 export interface EscrowRow {
   id: string;
@@ -244,12 +249,16 @@ export class EscrowService {
       amount: number | string;
       title: string;
     }[]) {
-      if (!(await this.claimPayout(row.id))) continue;
       const { data: account } = await this.supabase.admin
         .from('linked_payout_accounts')
-        .select('channel_code, account_name, account_number')
+        .select('channel_code, account_name, account_number, updated_at')
         .eq('profile_id', row.profile_id)
         .maybeSingle();
+      // An account Xendit keeps refusing is not retried until it changes;
+      // the payout stays queued (money reserved) and the provider was told.
+      if (account && (await this.accountKeepsFailing(row.profile_id, account)))
+        continue;
+      if (!(await this.claimPayout(row.id))) continue;
       try {
         if (!account?.channel_code)
           throw new XenditRequestError('No payout account linked', 400);
@@ -274,10 +283,11 @@ export class EscrowService {
           this.logger.error(`Payout ${row.id} refused: ${message}`);
           await this.failPayout(row.id, row.profile_id, `Xendit: ${message}`);
         } else {
-          // Unknown outcome: Xendit may have the payout. Resend later under
-          // the same reference rather than freeing the money.
+          // Unknown outcome (timeout, 5xx, rate limit, duplicate): Xendit may
+          // have the payout. Ask it; if it has none, resend later under the
+          // same reference rather than freeing the money.
           this.logger.warn(`Payout ${row.id} outcome unknown: ${message}`);
-          await this.setPayoutNote(row.id, IN_FLIGHT_NOTE, QUEUED_NOTE);
+          await this.settleUnknownPayout(row.id);
         }
       }
     }
@@ -291,7 +301,7 @@ export class EscrowService {
   async applyPayoutResult(update: XenditPayoutUpdate): Promise<void> {
     const { data: row, error } = await this.supabase.admin
       .from('wallet_transactions')
-      .select('id, profile_id, status')
+      .select('id, profile_id, status, review_note')
       .eq('id', update.referenceId)
       .eq('kind', 'withdrawal')
       .maybeSingle();
@@ -305,11 +315,20 @@ export class EscrowService {
       this.logger.warn(`Payout update for unknown row ${update.referenceId}`);
       return;
     }
+    // A row already tied to one Xendit payout ignores updates for another.
+    const note = (row.review_note as string | null) ?? '';
+    if (
+      note.startsWith(ACCEPTED_PREFIX) &&
+      note !== `${ACCEPTED_PREFIX}${update.payoutId}`
+    ) {
+      this.logger.warn(
+        `Payout ${row.id} update for ${update.payoutId} ignored; row holds ${note}`,
+      );
+      return;
+    }
     if (row.status !== 'pending') {
       if (row.status === 'completed' && update.status === 'REVERSED')
-        this.logger.error(
-          `Payout ${row.id} was reversed after completing; needs a manual check`,
-        );
+        await this.alertReversedPayout(row.id as string, update.payoutId);
       return;
     }
     if (PAYOUT_SUCCEEDED.has(update.status)) {
@@ -339,37 +358,116 @@ export class EscrowService {
 
   /**
    * Asks Xendit about payouts that are in flight (a sender may have crashed)
-   * or accepted (the callback may be lost). One that Xendit never received
-   * goes back in the queue, to be resent under the same reference.
+   * or accepted (the callback may be lost), oldest first, page by page, up
+   * to a cap of lookups per tick. One that Xendit never received goes back in
+   * the queue, to be resent under the same reference.
    */
   private async reconcilePayouts(): Promise<void> {
-    const { data: rows, error } = await this.supabase.admin
-      .from('wallet_transactions')
-      .select('id, review_note')
-      .eq('kind', 'withdrawal')
-      .eq('status', 'pending')
-      .or(
-        `review_note.eq."${IN_FLIGHT_NOTE}",review_note.like.${ACCEPTED_PREFIX}*`,
-      )
-      .limit(50);
-    if (error) {
-      this.logger.error(`Payouts not reconciled: ${error.message}`);
-      return;
-    }
-    for (const row of (rows ?? []) as { id: string; review_note: string }[]) {
-      try {
-        const found = await this.xendit.findPayoutByReference(row.id);
-        if (found) await this.applyPayoutResult(found);
-        else if (row.review_note === IN_FLIGHT_NOTE)
-          await this.setPayoutNote(row.id, IN_FLIGHT_NOTE, QUEUED_NOTE);
-        else
-          this.logger.warn(`Payout ${row.id} accepted but unknown to Xendit`);
-      } catch (err) {
-        this.logger.warn(
-          `Payout ${row.id} not reconciled: ${(err as Error).message}`,
-        );
+    let lookups = 0;
+    for (let offset = 0; lookups < RECONCILE_MAX_LOOKUPS;) {
+      const { data: rows, error } = await this.supabase.admin
+        .from('wallet_transactions')
+        .select('id, review_note')
+        .eq('kind', 'withdrawal')
+        .eq('status', 'pending')
+        .or(
+          `review_note.eq."${IN_FLIGHT_NOTE}",review_note.like.${ACCEPTED_PREFIX}*`,
+        )
+        .order('created_at', { ascending: true })
+        .range(offset, offset + RECONCILE_PAGE - 1);
+      if (error) {
+        this.logger.error(`Payouts not reconciled: ${error.message}`);
+        return;
       }
+      const page = (rows ?? []) as { id: string; review_note: string }[];
+      let stillOpen = 0;
+      for (const row of page) {
+        if (lookups >= RECONCILE_MAX_LOOKUPS) return;
+        lookups += 1;
+        try {
+          const found = await this.xendit.findPayoutByReference(row.id);
+          if (found) await this.applyPayoutResult(found);
+          else if (row.review_note === IN_FLIGHT_NOTE)
+            await this.setPayoutNote(row.id, IN_FLIGHT_NOTE, QUEUED_NOTE);
+          else {
+            this.logger.warn(`Payout ${row.id} accepted but unknown to Xendit`);
+            stillOpen += 1;
+          }
+          if (
+            found &&
+            !PAYOUT_SUCCEEDED.has(found.status) &&
+            !PAYOUT_FAILED.has(found.status)
+          )
+            stillOpen += 1;
+        } catch (err) {
+          stillOpen += 1;
+          this.logger.warn(
+            `Payout ${row.id} not reconciled: ${(err as Error).message}`,
+          );
+        }
+      }
+      if (page.length < RECONCILE_PAGE) return;
+      // Rows settled in this page left the filter; only skip those still open.
+      offset += stillOpen;
     }
+  }
+
+  /** After an unknown outcome: apply what Xendit has, or requeue the row. */
+  private async settleUnknownPayout(id: string): Promise<void> {
+    try {
+      const found = await this.xendit.findPayoutByReference(id);
+      if (found) {
+        await this.applyPayoutResult(found);
+        return;
+      }
+    } catch (err) {
+      this.logger.warn(`Payout ${id} lookup failed: ${(err as Error).message}`);
+    }
+    await this.setPayoutNote(id, IN_FLIGHT_NOTE, QUEUED_NOTE);
+  }
+
+  /**
+   * True when Xendit has definitely refused this account's payouts
+   * MAX_REFUSALS_PER_ACCOUNT times since the account was last changed.
+   */
+  private async accountKeepsFailing(
+    profileId: string,
+    account: { updated_at?: string | null },
+  ): Promise<boolean> {
+    let query = this.supabase.admin
+      .from('wallet_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('profile_id', profileId)
+      .eq('kind', 'withdrawal')
+      .eq('status', 'failed')
+      .like('review_note', 'Xendit:%');
+    if (account.updated_at) query = query.gte('created_at', account.updated_at);
+    const { count, error } = await query;
+    if (error) {
+      this.logger.error(`Payout refusals not counted: ${error.message}`);
+      return false;
+    }
+    return (count ?? 0) >= MAX_REFUSALS_PER_ACCOUNT;
+  }
+
+  /** A completed payout Xendit later reversed: admins must check it. */
+  private async alertReversedPayout(id: string, payoutId: string) {
+    this.logger.error(
+      `Payout ${id} (${payoutId}) was reversed after completing`,
+    );
+    const { error } = await this.supabase.admin.rpc('write_admin_alert', {
+      p_event_key: `payout_reversed:${id}`,
+      p_title: 'Payout reversed',
+      p_body:
+        'Xendit reversed a payout that was already marked sent. Check the provider and the payment records.',
+      p_data: {
+        target: 'withdrawals',
+        wallet_transaction_id: id,
+        payout_id: payoutId,
+      },
+    });
+    if (error)
+      this.logger.error(`Reversed payout ${id} not alerted: ${error.message}`);
   }
 
   /** Queued -> in flight, for this sender only. */
