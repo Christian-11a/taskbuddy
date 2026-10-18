@@ -10,7 +10,7 @@ export const LEGACY_CUTOFF = "2026-10-16";
 
 const LEGACY_CUTOFF_MS = Date.parse(`${LEGACY_CUTOFF}T00:00:00Z`);
 
-/** review_note the API writes on a queued provider payout (backend escrow.service, migration 0058). */
+/** review_note prefix of a queued or in-flight provider payout (backend escrow.service, migration 0058). */
 const XENDIT_QUEUED_NOTE = "Sending via Xendit";
 /** Prefix finishPayout writes on a refused Xendit payout. */
 const XENDIT_FAILURE_PREFIX = "Xendit:";
@@ -20,13 +20,13 @@ const XENDIT_REFERENCE_MARK = "XENDIT-";
 const PROTOTYPE_WALLET_RETIRED_TITLE = "Prototype wallet retired";
 
 /**
- * True when a withdrawal's review_note shows Xendit handled it: a queued
- * payout, a completed payout's XENDIT- id, or a refused payout's "Xendit:"
+ * True when a withdrawal's review_note shows Xendit handled it: a queued or
+ * in-flight payout, a completed payout's XENDIT- id, or a refused payout's "Xendit:"
  * reason. Simulated 'SIM-…' notes carry no marker, so they count as no marker.
  */
 export function hasXenditMarker(reviewNote: string | null | undefined): boolean {
   const note = (reviewNote ?? "").trim();
-  return note === XENDIT_QUEUED_NOTE || note.includes(XENDIT_REFERENCE_MARK) || note.startsWith(XENDIT_FAILURE_PREFIX);
+  return note.startsWith(XENDIT_QUEUED_NOTE) || note.includes(XENDIT_REFERENCE_MARK) || note.startsWith(XENDIT_FAILURE_PREFIX);
 }
 
 /**

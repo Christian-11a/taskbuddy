@@ -45,6 +45,49 @@ export interface XenditPayoutResult {
   status: string;
 }
 
+/** A payout's state, from a payout callback or a lookup by reference. */
+export interface XenditPayoutUpdate {
+  payoutId: string;
+  /** Our ledger row id, sent as `reference_id`. */
+  referenceId: string;
+  /** ACCEPTED, REQUESTED, SUCCEEDED, FAILED, CANCELLED, REVERSED or EXPIRED. */
+  status: string;
+  failureCode: string | null;
+}
+
+/** Final payout statuses: anything else is still on its way. */
+export const PAYOUT_SUCCEEDED = new Set(['SUCCEEDED']);
+export const PAYOUT_FAILED = new Set([
+  'FAILED',
+  'CANCELLED',
+  'REVERSED',
+  'EXPIRED',
+]);
+
+/**
+ * A Xendit API error with its HTTP status, so a caller can tell a definite
+ * refusal from an outcome it cannot know (timeout, 5xx, rate limit).
+ */
+export class XenditRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+
+  /** Xendit looked at the request and refused it: retrying cannot succeed. */
+  get definite(): boolean {
+    return (
+      this.status >= 400 &&
+      this.status < 500 &&
+      this.status !== 408 &&
+      this.status !== 409 &&
+      this.status !== 429
+    );
+  }
+}
+
 /**
  * Xendit, in **test mode** (keys starting `xnd_development_`): this prototype
  * takes GCash, Maya, GrabPay, card and online-banking payments through
@@ -156,11 +199,63 @@ export class XenditService {
       { 'idempotency-key': input.referenceId },
     );
     if (!ok || !data.id) {
-      throw new Error(
+      throw new XenditRequestError(
         `Xendit payout failed (${status}): ${data.message ?? 'no detail'}`,
+        status,
       );
     }
     return { id: data.id, status: data.status };
+  }
+
+  /**
+   * The payout Xendit holds for one of our references, or null when it has
+   * none (the request never reached it). Throws when Xendit cannot be asked.
+   */
+  async findPayoutByReference(
+    referenceId: string,
+  ): Promise<XenditPayoutUpdate | null> {
+    this.assertTestMode();
+    const response = await fetch(
+      `${API}/v2/payouts?reference_id=${encodeURIComponent(referenceId)}`,
+      {
+        headers: {
+          authorization: `Basic ${Buffer.from(`${this.secretKey}:`).toString('base64')}`,
+        },
+      },
+    );
+    const data = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new XenditRequestError(
+        `Xendit payout lookup failed (${response.status})`,
+        response.status,
+      );
+    }
+    const rows = (Array.isArray(data) ? data : []) as unknown[];
+    const found = rows
+      .map((row) => this.payoutUpdate(row))
+      .filter((row): row is XenditPayoutUpdate => row !== null);
+    return found.find((row) => row.referenceId === referenceId) ?? null;
+  }
+
+  /**
+   * The payout in a payout callback body (`{ event, data: {...} }`) or in a
+   * lookup row, or null for anything else.
+   */
+  payoutUpdate(body: unknown): XenditPayoutUpdate | null {
+    const outer = body as { data?: unknown } | null;
+    const b = outer?.data ?? outer;
+    if (
+      typeof b?.id !== 'string' ||
+      typeof b.reference_id !== 'string' ||
+      typeof b.status !== 'string'
+    )
+      return null;
+    return {
+      payoutId: b.id,
+      referenceId: b.reference_id,
+      status: b.status.toUpperCase(),
+      failureCode: typeof b.failure_code === 'string' ? b.failure_code : null,
+    };
   }
 
   /** Checks the `x-callback-token` header against the dashboard's token. */
