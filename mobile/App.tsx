@@ -98,12 +98,12 @@ import ViewSwitch from './src/components/ui/ViewSwitch';
 import { clearRetainedState } from './src/hooks/useRetainedState';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-import { HOScreen, SPScreen } from './src/types/navigation';
+import { HOScreen, SPScreen, type VerifyParams } from './src/types/navigation';
 
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
-import { certificateStateFrom, firstNameFrom, tourSteps, type CertificateState, type FinishAction } from './src/lib/tourContent';
+import { certificateStateFromMe, firstNameFrom, tourSteps, type CertificateState, type FinishAction } from './src/lib/tourContent';
 import {
   firstRunKind, homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
   welcomeHoldsPushes, type TourFlow,
@@ -233,6 +233,8 @@ function AppFlow() {
   const [spScreen, setSPScreen] = useState<SPScreen>('Dashboard');
   const [spUrgentJob, setSPUrgentJob] = useState(false);
   const [spJobId, setSPJobId] = useState<string | null>(null);
+  // Where Get verified opens (the ID step, or a service's certificate step); set by whoever navigates to it.
+  const [spVerifyParams, setSPVerifyParams] = useState<VerifyParams | null>(null);
   const [spStack, setSPStack] = useState<SPStackEntry[]>([]); // non-tab screens navigated away from
   const [spJobsView, setSPJobsView] = useState<JobsView>('list'); // My Work: list or calendar
 
@@ -288,7 +290,7 @@ function AppFlow() {
   };
 
   // ── SP helpers ────────────────────────────────────────────────────────────
-  const spNavigate = (screen: SPScreen, jobId?: string) => {
+  const spNavigate = (screen: SPScreen, jobId?: string, params?: VerifyParams) => {
     // Calendar is a view of My Work, not a tab of its own.
     if (screen === 'Calendar') {
       setSPJobsView('calendar');
@@ -305,6 +307,7 @@ function AppFlow() {
     }
     setSPStack((prev) => [...prev, { screen: spScreen, id: spJobId, urgent: spUrgentJob }]);
     if (jobId !== undefined) setSPJobId(jobId);
+    if (screen === 'Verification') setSPVerifyParams(params ?? null);
     if (screen === 'Urgent Job') setSPUrgentJob(true);
     setSPScreen(screen);
   };
@@ -592,8 +595,9 @@ function AppFlow() {
     if (role === 'homeowner') return () => hoNavigate('Create Job');
     if (role !== 'provider') return null;
     if (missingProfileSteps(profile, providerProfile).length > 0) return () => spNavigate('Edit Profile');
-    if (!isVerified) return () => spNavigate('Verification');
-    if ((await loadCertificateState()) === 'none') return () => spNavigate('Credentials');
+    const me = await loadVerificationMe();
+    if (!(me?.verified ?? isVerified) && me?.identity !== 'approved') return () => spNavigate('Verification');
+    if ((await loadCertificateState()) === 'none') return () => spNavigate('Verification', undefined, certificateStep);
     if ((await loadHasPayoutAccount()) === false) return () => spNavigate('Payout Account');
     return null;
   };
@@ -604,7 +608,7 @@ function AppFlow() {
     if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
     if (action === 'setupProfile' && role === 'provider') spNavigate('Edit Profile');
-    if (action === 'uploadCertificate' && role === 'provider') spNavigate('Credentials');
+    if (action === 'uploadCertificate' && role === 'provider') spNavigate('Verification', undefined, certificateStep);
     if (action === 'linkPayout' && role === 'provider') spNavigate('Payout Account');
   };
 
@@ -646,20 +650,31 @@ function AppFlow() {
   const loadHasPayoutAccount = async () => {
     try { return !!(await api.payoutAccount()); } catch { return null; }
   };
-  const loadCertificateState = async (): Promise<CertificateState> => {
-    try { return certificateStateFrom(await api.myCredentials()); } catch { return 'unknown'; }
+  const loadVerificationMe = async () => {
+    try { return await api.myVerification(); } catch { return null; }
   };
+  // The certificate state: `GET /verifications/me` when it carries one, otherwise the credentials list.
+  const loadCertificateState = async (): Promise<CertificateState> => {
+    const [me, credentials] = await Promise.all([loadVerificationMe(), api.myCredentials().catch(() => null)]);
+    if (me?.certificate === undefined && !credentials) return 'unknown';
+    return certificateStateFromMe(me, credentials);
+  };
+  // "Upload your certificate" opens Get verified at the certificate step for the provider's own service.
+  const certificateStep: VerifyParams = { startAt: 'certificate', categoryId: providerProfile?.category_id };
   const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null);
   const [certificate, setCertificate] = useState<CertificateState>('approved');
+  // The finish card's ID tick: the two-part `verified` flag when the API has it; null until read (then isVerified).
+  const [finishVerified, setFinishVerified] = useState<boolean | null>(null);
   const finishingAsProvider = tourFlow.phase === 'finishing' && isAuthenticated && role === 'provider';
   useEffect(() => {
     if (!finishingAsProvider) return;
     let cancelled = false;
     (async () => {
-      const [payout, cert] = await Promise.all([loadHasPayoutAccount(), loadCertificateState()]);
+      const [payout, cert, me] = await Promise.all([loadHasPayoutAccount(), loadCertificateState(), loadVerificationMe()]);
       if (cancelled) return;
       setHasPayoutAccount(payout);
       setCertificate(cert);
+      setFinishVerified(me?.verified ?? null);
     })();
     return () => { cancelled = true; };
     // loadHasPayoutAccount and loadCertificateState are rebuilt on every render; only the phase matters.
@@ -670,7 +685,7 @@ function AppFlow() {
   const tourFinish = tourFlow.phase === 'finishing' && isAuthenticated && role ? (
     <TourFinishCard
       role={role}
-      verified={isVerified}
+      verified={finishVerified ?? isVerified}
       hasAddress={!missingProfileSteps(profile, providerProfile).includes('address')}
       hasBio={!missingProfileSteps(profile, providerProfile).includes('bio')}
       certificate={certificate}
@@ -1098,6 +1113,8 @@ function AppFlow() {
             await refreshProfile();
             spBack();
           }}
+          startAt={spVerifyParams?.startAt}
+          categoryId={spVerifyParams?.categoryId}
         />
       </ScreenFrame>
     );

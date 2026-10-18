@@ -1289,3 +1289,20 @@ it('a hire the server refuses with a 409 at the provider limit opens a capacity 
   fireEvent.press(screen.getByRole('button', { name: 'OK' }));
   await waitFor(() => expect(screen.queryByText('This provider is unavailable')).toBeNull());
 });
+
+it('a hire refused with 409 provider_not_certified opens the one-button dialog with the plain message', async () => {
+  (api.createHireCheckoutSession as jest.Mock).mockRejectedValue(
+    Object.assign(new Error('This provider has no valid certificate for Cleaning and cannot be hired for this job'), { status: 409, code: 'provider_not_certified' }),
+  );
+  await renderScreen();
+  fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
+  fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
+  fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+  await act(async () => {
+    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+  });
+
+  expect(await screen.findByText("This provider can't be hired for this service yet.")).toBeTruthy();
+  fireEvent.press(screen.getByRole('button', { name: 'OK' }));
+  await waitFor(() => expect(screen.queryByText("This provider can't be hired for this service yet.")).toBeNull());
+});

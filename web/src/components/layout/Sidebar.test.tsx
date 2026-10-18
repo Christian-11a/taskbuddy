@@ -46,10 +46,11 @@ beforeEach(() => {
   mockState.settings = { activityBadge: true };
 });
 
-describe("Sidebar credentials link", () => {
-  it("links to the credentials page", () => {
+describe("Sidebar navigation", () => {
+  it("has no separate Credentials link (certificates are reviewed in Verifications)", () => {
     renderSidebar();
-    expect(navLink("Credentials")).toHaveAttribute("href", "/admin/credentials");
+    expect(screen.queryByRole("link", { name: /^Credentials/ })).not.toBeInTheDocument();
+    expect(navLink("Verifications")).toHaveAttribute("href", "/admin/verifications");
   });
 });
 

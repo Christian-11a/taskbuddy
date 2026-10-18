@@ -102,7 +102,7 @@ describe('TourFinishCard — the provider', () => {
     const { onAction } = renderCard({ role: 'provider', verified: false, firstName: 'Ana', ...none });
 
     expect(screen.getByText("You're all set, Ana")).toBeTruthy();
-    for (const label of ['Add your address', 'Add a short bio', 'Get verified', 'Upload your certificate', 'Link a payout account']) {
+    for (const label of ['Add your address', 'Add a short bio', 'Verify your ID', 'Upload your certificate', 'Link a payout account']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
     expect(screen.queryByRole('button', { name: 'Post your first job' })).toBeNull();

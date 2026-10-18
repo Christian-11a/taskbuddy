@@ -26,17 +26,40 @@
  *
  * The verdict arrives by webhook, not in a response, so after the browser
  * closes the screen polls GET /verifications/me for a short while.
+ *
+ * Certificate (new API only, i.e. `/verifications/me` carries identity /
+ * certificate / verified): a provider is verified only with BOTH the ID and an
+ * approved certificate for their service, so the flow gains a fourth step
+ * between the selfie and the review (five progress steps). The step reuses
+ * CertificateUploadForm, which creates the credential through the existing
+ * credentials API when the provider taps "Upload certificate" (it is sent
+ * then, not at the final review). A certificate that is already approved or
+ * under review can be skipped. With the old API shape nothing changes.
+ *
+ * Deep entry: `startAt="certificate"` (+ optional `categoryId`) opens straight
+ * on the certificate upload for that service, for the proposal gate's
+ * `certificate_required` answer.
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Image,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
+import CertificateUploadForm, {
+  CERTIFICATE_FIELD_ORDER,
+  type CertificateUploadFormHandle,
+} from '../../../src/components/CertificateUploadForm';
+import {
+  CertificateExpiryNotice,
+  CertificateStatusRows,
+  certificateActionLabel,
+} from '../../../src/components/CertificateNotices';
+import { portfolioServices } from './SPPortfolioScreen';
 import Tap from '../../../src/components/ui/Tap';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import CheckRow from '../../../src/components/ui/CheckRow';
@@ -58,12 +81,14 @@ import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { IdCard, Lock, ScanFace, ShieldCheck } from 'lucide-react-native';
-import { api, ApiError } from '../../../src/lib/api';
+import { api, ApiError, type CertificateState, type Credential } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { shortDate } from '../../../src/lib/format';
 import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
+import { certificateGuidance, hasNewShape, verificationSummary } from '../../../src/lib/verificationStatus';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { missingProfileSteps, profileReadyToVerify, type MissingProfileStep } from '../../../src/lib/verifyReady';
 import {
@@ -79,6 +104,7 @@ import {
   wizardProgress,
   type IdPhase,
   type VerifyDocumentType,
+  type VerifyView,
 } from '../../../src/lib/verifyFlow';
 
 /** Stripe's decision comes by webhook; poll for it, but not forever. */
@@ -91,6 +117,13 @@ const PREP_STEPS = [
   { title: 'Photo of your ID', detail: 'A clear, full photo of your ID' },
   { title: 'Selfie', detail: 'To match you with your ID' },
   { title: 'Review and send', detail: 'Then a short secure check with Stripe' },
+];
+
+/** The same list with the certificate step, for the new API. */
+const PREP_STEPS_WITH_CERTIFICATE = [
+  ...PREP_STEPS.slice(0, 3),
+  { title: 'Certificate for your service', detail: 'A TESDA, PRC or trade certificate' },
+  PREP_STEPS[3],
 ];
 
 /** Tips shown before the ID photo is taken. */
@@ -140,9 +173,13 @@ interface SPVerificationScreenProps {
    * returns to the dashboard.
    */
   onVerified?: () => Promise<void>;
+  /** Open straight on the certificate upload (the proposal gate's `certificate_required`). */
+  startAt?: 'certificate';
+  /** With `startAt`: the service the certificate is for. Defaults to the provider's primary service. */
+  categoryId?: number;
 }
 
-export default function SPVerificationScreen({ onBack, onEditProfile, onVerified }: SPVerificationScreenProps) {
+export default function SPVerificationScreen({ onBack, onEditProfile, onVerified, startAt, categoryId }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile, an address or
@@ -196,6 +233,15 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const [continuing, setContinuing] = useState(false);
   /** Set when Stripe was unavailable and the documents went to the admin queue. */
   const [fellBackToManual, setFellBackToManual] = useState(false);
+  /** The certificate upload on its own screen (status screen action, renewal or deep entry). */
+  const [certOnly, setCertOnly] = useState(startAt === 'certificate');
+  const [certCategory, setCertCategory] = useState<number | null>(categoryId ?? null);
+  /** A certificate was sent from the wizard's certificate step. */
+  const [certSent, setCertSent] = useState(false);
+  const [certBusy, setCertBusy] = useState(false);
+  const formRef = useRef<CertificateUploadFormHandle>(null);
+  const scroll = useScrollToFirstError(CERTIFICATE_FIELD_ORDER);
+  const scrollRef = scroll.scrollRef;
 
   const {
     data: verification,
@@ -205,10 +251,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []), [], 'verification-me');
 
+  // The two-part state is only there on the new API; the old one keeps today's screens.
+  const newShape = hasNewShape(verification);
+  const summary = verificationSummary(verification);
+  const credentials = useAsyncData(
+    useCallback(() => (newShape ? api.myCredentials() : Promise.resolve([] as Credential[])), [newShape]),
+    [newShape],
+  );
+
   // After a submission the old status stays loaded until the reload has run.
   // Keep the loader up until then, so that old status never shows again.
   const sawLoading = useRef(false);
-  const scrollRef = useRef<ScrollView>(null);
   const consentY = useRef(0);
   useEffect(() => {
     if (!awaitingReload) return;
@@ -349,6 +402,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
       setStep(1);
       setIdPhase('choose');
       setConsented(false);
+      setCertSent(false);
       setAwaitingReload(true);
       reload();
     } catch (e) {
@@ -360,16 +414,45 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   };
 
   /** Which view is on screen; the rules live in src/lib/verifyFlow.ts. */
-  const view = pickVerifyView({
+  // New API: the ID status comes from `identity`; an approved ID without the certificate is not "approved".
+  const idStatus: 'pending' | 'approved' | 'rejected' | null = newShape
+    ? summary.verified || summary.identity === 'approved'
+      ? 'approved'
+      : summary.identity === 'none' ? null : summary.identity
+    : verification?.status ?? null;
+  const baseView = pickVerifyView({
     loading,
-    status: verification?.status ?? null,
+    status: idStatus,
     submitting,
     started,
     settling: awaitingReload,
     failed: verificationError !== null,
   });
+  const screenView: VerifyView | 'status' = baseView === 'approved' && newShape && !summary.verified ? 'status' : baseView;
+  const view: VerifyView | 'status' | 'certificate' =
+    certOnly && ['intro', 'status', 'pending', 'rejected', 'approved'].includes(screenView) ? 'certificate' : screenView;
   // A rejected provider who has not yet tapped Try again still needs the wizard's photo hint.
-  const isRejected = verification?.status === 'rejected';
+  const isRejected = idStatus === 'rejected';
+
+  // The service a certificate is for: the one asked for, else the provider's primary service.
+  const services = portfolioServices(providerProfile);
+  const targetCategory = certCategory ?? providerProfile?.category_id ?? verification?.services?.find((item) => item.primary)?.category_id ?? null;
+  const targetService = verification?.services?.find((item) => item.category_id === targetCategory);
+  const targetName = targetService?.name ?? services.find((item) => item.id === targetCategory)?.name ?? null;
+  const targetState: CertificateState = targetService?.certificate ?? summary.certificate;
+  const serviceNames: Record<number, string | undefined> = {};
+  for (const item of services) serviceNames[item.id] = item.name;
+  for (const item of verification?.services ?? []) if (item.name) serviceNames[item.category_id] = item.name;
+  for (const item of credentials.data ?? []) {
+    if (item.service_categories) serviceNames[item.category_id] ??= item.service_categories.name;
+  }
+  /** Already approved or under review: the wizard's certificate step can be skipped. */
+  const certificateCovered = certSent || targetState === 'approved' || targetState === 'pending';
+  const reviewStep = newShape ? 4 : 3;
+  const openCertificate = (category: number | null = null) => {
+    setCertCategory(category);
+    setCertOnly(true);
+  };
 
   /**
    * One screen back inside the wizard: selfie to ID photo, ID photo to ID
@@ -377,6 +460,10 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
    */
   const goBack = () => {
     if (submitting) return;
+    if (view === 'certificate') {
+      setCertOnly(false);
+      return;
+    }
     if (view !== 'wizard') {
       onBack();
       return;
@@ -422,11 +509,14 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
       ? (profileIncomplete ? PROFILE_REASON : null)
       : view === 'wizard' && onChoosingId
         ? (profileIncomplete ? PROFILE_REASON : !documentType ? 'Choose an ID to continue' : null)
-        : view === 'wizard' && step === 3
+        : view === 'wizard' && step === reviewStep
           ? (!consented ? CONSENT_REASON : profileIncomplete ? PROFILE_REASON : null)
           : null;
 
-  const headerTitle = view === 'pending' || view === 'rejected' ? 'Verification' : 'Get verified';
+  const headerTitle =
+    view === 'certificate'
+      ? 'Upload certificate'
+      : view === 'pending' || view === 'rejected' || view === 'status' ? 'Verification' : 'Get verified';
 
   return (
     <View style={styles.screen}>
@@ -435,7 +525,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
           title={headerTitle}
           onBack={goBack}
           backLabel={
-            view !== 'wizard'
+            view === 'certificate'
+              ? 'Back to your status'
+              : view !== 'wizard'
               ? 'Leave verification'
               : onChoosingId
                 ? 'Back to the start'
@@ -446,9 +538,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
       )}
 
       {/* Progress: only while the wizard is on screen. */}
-      {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase)} />}
+      {view === 'wizard' && <PostProgress {...wizardProgress(step, idPhase, newShape)} />}
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScrollView ref={scrollRef} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
         {view === 'loading' && <ContentSkeleton variant="detail" />}
         {/* Not knowing the status is not a new application: say so, and offer no start. */}
         {view === 'error' && (
@@ -471,6 +563,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                 <Text style={styles.checkAgain}>Check again</Text>
               </Tap>
             </StatusCard>
+            {newShape && <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />}
             <Text style={styles.sectionTitle} accessibilityRole="header">Progress</Text>
             <PendingTimeline rows={pendingRows({ method: verification.method, fellBackToManual })} />
           </>
@@ -484,8 +577,53 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               title="Your documents were rejected."
               body={rejectionNote(verification.rejection_reason) ?? undefined}
             />
+            {newShape && <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />}
             <Text style={styles.sectionTitle} accessibilityRole="header">How to fix it</Text>
             <CheckList items={HOW_TO_FIX} />
+          </>
+        )}
+
+        {/* New API: ID approved but not verified yet, so the certificate is what is left. */}
+        {view === 'status' && (
+          <>
+            <StatusCard
+              tone={summary.certificate === 'pending' ? 'attention' : summary.certificate === 'none' ? 'action' : 'closed'}
+              overline="Verification"
+              title={summary.headline}
+              body={summary.detail}
+            >
+              {summary.certificate === 'pending' && (
+                <Tap onPress={() => { reload(); credentials.reload(); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Check again">
+                  <Text style={styles.checkAgain}>Check again</Text>
+                </Tap>
+              )}
+            </StatusCard>
+            <CertificateExpiryNotice credentials={credentials.data} serviceNames={serviceNames} onRenew={openCertificate} />
+            <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />
+          </>
+        )}
+
+        {view === 'certificate' && (
+          <>
+            <Text style={styles.stepTitle} accessibilityRole="header">
+              {targetName ? `Your ${targetName} certificate` : 'Your certificate'}
+            </Text>
+            <CertificateUploadForm
+              ref={formRef}
+              scroll={scroll}
+              categoryId={targetCategory}
+              serviceName={targetName}
+              lockService
+              guidance={certificateGuidance(targetName)}
+              onBusyChange={setCertBusy}
+              onSubmitted={() => {
+                setCertOnly(false);
+                setCertCategory(null);
+                setAwaitingReload(true);
+                reload();
+                credentials.reload();
+              }}
+            />
           </>
         )}
 
@@ -509,6 +647,9 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               icon={ShieldCheck}
               text="Your documents are stored privately and are only visible to TaskBuddy admins reviewing your account."
             />
+            {newShape && (
+              <CertificateExpiryNotice credentials={credentials.data} serviceNames={serviceNames} onRenew={openCertificate} />
+            )}
             {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
           </View>
         )}
@@ -522,7 +663,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               Clients only see and hire verified providers. It takes about 3 minutes.
             </Text>
             {profileIncomplete && profileNoticeView}
-            <PrepCard steps={PREP_STEPS} profileItems={profileChecks(profile, providerProfile)} />
+            <PrepCard steps={newShape ? PREP_STEPS_WITH_CERTIFICATE : PREP_STEPS} profileItems={profileChecks(profile, providerProfile)} />
             <Tap
               style={styles.protectLink}
               onPress={() => setProtectOpen(true)}
@@ -617,8 +758,40 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               </>
             )}
 
-            {/* ── Step 3 · Review and send ───────────────────────── */}
-            {step === 3 && (
+            {/* ── Step 3 · Certificate for your service (new API only) ── */}
+            {newShape && step === 3 && (
+              <>
+                <Text style={styles.stepTitle} accessibilityRole="header">
+                  {targetName ? `Your ${targetName} certificate` : 'Your certificate'}
+                </Text>
+                {certificateCovered ? (
+                  <StatusCard
+                    tone={targetState === 'approved' ? 'done' : 'attention'}
+                    overline="Certificate"
+                    title={targetState === 'approved' ? 'Your certificate is approved' : 'Your certificate is under review'}
+                    body="Nothing to upload here. You can continue."
+                  />
+                ) : (
+                  <CertificateUploadForm
+                    ref={formRef}
+                    scroll={scroll}
+                    categoryId={targetCategory}
+                    serviceName={targetName}
+                    lockService
+                    guidance={certificateGuidance(targetName)}
+                    onBusyChange={setCertBusy}
+                    onSubmitted={() => {
+                      setCertSent(true);
+                      credentials.reload();
+                      setStep(reviewStep);
+                    }}
+                  />
+                )}
+              </>
+            )}
+
+            {/* ── Last step · Review and send ────────────────────── */}
+            {step === reviewStep && (
               <>
                 <Text style={styles.stepTitle} accessibilityRole="header">
                   Ready to send
@@ -644,6 +817,11 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                     />
                   )}
                 </View>
+                {newShape && (
+                  <Text style={styles.stepHint} testID="verify-review-certificate">
+                    {`Certificate${targetName ? ` for ${targetName}` : ''}: ${certSent ? 'sent for review' : targetState === 'approved' ? 'approved' : 'under review'}`}
+                  </Text>
+                )}
                 <View onLayout={(event) => { consentY.current = event.nativeEvent.layout.y; }}>
                   <CheckRow
                     label={CONSENT_TEXT}
@@ -669,7 +847,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
           </>
         )}
         <View style={{ height: 24 }} />
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* Step errors and the reason a button is off sit just above the bar, where the eye is. */}
       {view === 'wizard' && !!error && (
@@ -743,7 +921,36 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
         />
       )}
 
-      {view === 'wizard' && step === 3 && (
+      {view === 'wizard' && newShape && step === 3 && (
+        certificateCovered ? (
+          <BottomActionBar primaryLabel="Continue" onPrimary={() => setStep(reviewStep)} />
+        ) : (
+          <BottomActionBar
+            primaryLabel={certBusy ? 'Uploading…' : 'Upload certificate'}
+            onPrimary={() => void formRef.current?.submit()}
+            busy={certBusy}
+            primaryDisabled={certBusy}
+          />
+        )
+      )}
+
+      {view === 'certificate' && (
+        <BottomActionBar
+          primaryLabel={certBusy ? 'Uploading…' : 'Upload certificate'}
+          onPrimary={() => void formRef.current?.submit()}
+          busy={certBusy}
+          primaryDisabled={certBusy}
+        />
+      )}
+
+      {view === 'status' && !!certificateActionLabel(summary.certificate) && (
+        <BottomActionBar
+          primaryLabel={certificateActionLabel(summary.certificate)!}
+          onPrimary={() => openCertificate()}
+        />
+      )}
+
+      {view === 'wizard' && step === reviewStep && (
         <BottomActionBar
           primaryLabel="Continue to secure check"
           onPrimary={() => void startVerification()}

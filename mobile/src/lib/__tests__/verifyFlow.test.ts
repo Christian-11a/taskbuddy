@@ -132,6 +132,12 @@ describe('wizardProgress', () => {
     expect(wizardProgress(2, 'check')).toEqual({ step: 3, total: 4, label: 'Selfie' });
     expect(wizardProgress(3, 'check')).toEqual({ step: 4, total: 4, label: 'Review' });
   });
+
+  it('is five long with the certificate step', () => {
+    expect(wizardProgress(2, 'check', true)).toEqual({ step: 3, total: 5, label: 'Selfie' });
+    expect(wizardProgress(3, 'check', true)).toEqual({ step: 4, total: 5, label: 'Certificate' });
+    expect(wizardProgress(4, 'check', true)).toEqual({ step: 5, total: 5, label: 'Review' });
+  });
 });
 
 describe('addressSaved', () => {

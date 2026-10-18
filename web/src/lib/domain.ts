@@ -8,7 +8,6 @@
 export type Page =
   | "dashboard"
   | "verifications"
-  | "credentials"
   | "users"
   | "transactions"
   | "disputes"
@@ -53,7 +52,7 @@ export interface AdminUser {
   verification?: ProviderVerificationState | null;
 }
 
-export type ProviderVerificationState = "VERIFIED" | "PENDING" | "REJECTED" | "UNVERIFIED";
+export type ProviderVerificationState = "VERIFIED" | "IDENTITY_ONLY" | "PENDING" | "REJECTED" | "UNVERIFIED";
 
 // ─── Verifications ────────────────────────────────────────────────────────────
 

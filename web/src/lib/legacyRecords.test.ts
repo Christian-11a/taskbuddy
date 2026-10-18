@@ -60,6 +60,7 @@ describe("isLegacyWalletRow", () => {
   it("hides a withdrawal with no Xendit marker, including a simulated SIM reference", () => {
     expect(isLegacyWalletRow(wallet({ kind: "withdrawal", reviewNote: null }))).toBe(true);
     expect(isLegacyWalletRow(wallet({ kind: "withdrawal", reviewNote: "SIM-AB12CD34EF" }))).toBe(true);
+    expect(isLegacyWalletRow(wallet({ kind: "withdrawal", title: "Payout sent", reviewNote: "SIM-AB12CD34EF" }))).toBe(true);
   });
 
   it.each(["Sending via Xendit", "XENDIT-abc", "Xendit: refused"])("keeps a withdrawal with the marker %j", (note) => {
@@ -69,6 +70,19 @@ describe("isLegacyWalletRow", () => {
   it("does not read the marker on non-withdrawal kinds", () => {
     expect(isLegacyWalletRow(wallet({ kind: "payout", reviewNote: null }))).toBe(false);
     expect(isLegacyWalletRow(wallet({ kind: "refund", reviewNote: null }))).toBe(false);
+  });
+});
+
+describe("test-mode refund sweeps", () => {
+  const refund = (over = {}) => wallet({ kind: "withdrawal", title: "Refund sent", reviewNote: "SIM-AB12CD34EF", ...over });
+  it("shows a SIM refund after the cutoff", () => {
+    expect(isLegacyWalletRow(refund())).toBe(false);
+  });
+  it("hides a SIM refund before the cutoff", () => {
+    expect(isLegacyWalletRow(refund({ createdAt: "2026-10-15T23:59:00Z" }))).toBe(true);
+  });
+  it("still hides a non-SIM withdrawal with no marker", () => {
+    expect(isLegacyWalletRow(refund({ reviewNote: "Ref 8812" }))).toBe(true);
   });
 });
 

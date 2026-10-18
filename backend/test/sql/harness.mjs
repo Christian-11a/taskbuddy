@@ -87,3 +87,7 @@ export async function migratedDatabase() {
     alter table public.jobs disable trigger guard_provider_booking_capacity;`);
   return db;
 }
+
+/** Approved, non-expiring credential: with identity_verified it makes a provider verified (0068). Params: provider id, category id. */
+export const APPROVED_CREDENTIAL_SQL =
+  "insert into provider_credentials(provider_id,category_id,credential_type,title,issuer,document_path,status) values ($1::uuid,$2::smallint,'tesda_nc','NC II','TESDA',$1::uuid::text||'/'||gen_random_uuid()::text||'.png','approved')";

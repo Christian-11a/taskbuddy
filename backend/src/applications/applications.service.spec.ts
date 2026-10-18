@@ -15,7 +15,10 @@ type QueryResult = {
 };
 
 /** Same chainable stand-in as escrow.service.spec.ts — results consumed per `.from()`. */
-function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
+function createSupabaseMock(
+  resultsByTable: Record<string, QueryResult[]>,
+  approvedCategories: number[] = [1],
+) {
   const calls: { table: string; method: string; args: unknown[] }[] = [];
   const from = jest.fn((table: string) => {
     const result = resultsByTable[table]?.shift() ?? {
@@ -48,7 +51,16 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
     ) => Promise.resolve(result).then(resolve, reject);
     return builder;
   });
-  return { supabase: { admin: { from } } as unknown as SupabaseService, calls };
+  const rpc = jest.fn(() =>
+    Promise.resolve({
+      data: approvedCategories.map((category_id) => ({ category_id })),
+      error: null,
+    }),
+  );
+  return {
+    supabase: { admin: { from, rpc } } as unknown as SupabaseService,
+    calls,
+  };
 }
 
 function createEscrowMock(
@@ -81,7 +93,13 @@ const pendingApplication = {
   job_id: 'j1',
   provider_id: 'p1',
   status: 'pending',
-  jobs: { id: 'j1', title: 'Fix sink', status: 'open', client_id: 'c1' },
+  jobs: {
+    id: 'j1',
+    title: 'Fix sink',
+    status: 'open',
+    client_id: 'c1',
+    category_id: 1,
+  },
 };
 
 /** The `assertHireable` read of a provider who may be hired. */
@@ -111,6 +129,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'open',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -153,6 +172,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'recommending',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -193,6 +213,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'assigned',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -217,6 +238,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'open',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -235,22 +257,26 @@ describe('ApplicationsService', () => {
 
     it('refuses an unverified provider with a code the app can act on', async () => {
       // Verification is a gate, not a badge (BACKEND_SCHEMA.md §17).
-      const { supabase, calls } = createSupabaseMock({
-        jobs: [
-          {
-            data: {
-              id: 'j1',
-              title: 'Fix sink',
-              status: 'open',
-              client_id: 'c1',
+      const { supabase, calls } = createSupabaseMock(
+        {
+          jobs: [
+            {
+              data: {
+                id: 'j1',
+                title: 'Fix sink',
+                status: 'open',
+                client_id: 'c1',
+                category_id: 1,
+              },
+              error: null,
             },
-            error: null,
-          },
-        ],
-        provider_profiles: [
-          { data: { profile_id: 'p1', is_verified: false }, error: null },
-        ],
-      });
+          ],
+          provider_profiles: [
+            { data: { profile_id: 'p1', is_verified: false }, error: null },
+          ],
+        },
+        [],
+      );
       const service = new ApplicationsService(
         supabase,
         createEscrowMock().escrow,
@@ -267,6 +293,46 @@ describe('ApplicationsService', () => {
       expect(writesTo(calls, 'job_applications', 'insert')).toEqual([]);
     });
 
+    it('refuses a secondary service without its own certificate, naming the service', async () => {
+      const { supabase } = createSupabaseMock(
+        {
+          jobs: [
+            {
+              data: {
+                id: 'j1',
+                title: 'Fix sink',
+                status: 'open',
+                client_id: 'c1',
+                category_id: 2,
+              },
+              error: null,
+            },
+          ],
+          provider_profiles: [
+            { data: { profile_id: 'p1' }, error: null },
+            { data: { identity_verified: true }, error: null },
+          ],
+          service_categories: [{ data: { name: 'Electrical' }, error: null }],
+        },
+        [1],
+      );
+      const service = new ApplicationsService(
+        supabase,
+        createEscrowMock().escrow,
+      );
+
+      const err: unknown = await service
+        .apply(provider, 'j1', {})
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getResponse()).toMatchObject({
+        code: 'certificate_required',
+        message: expect.stringContaining(
+          'certificate for Electrical',
+        ) as string,
+      });
+    });
+
     it('refuses a verified provider with no payout account', async () => {
       const { supabase, calls } = createSupabaseMock({
         jobs: [
@@ -276,6 +342,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'open',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -309,6 +376,7 @@ describe('ApplicationsService', () => {
               title: 'Fix sink',
               status: 'open',
               client_id: 'c1',
+              category_id: 1,
             },
             error: null,
           },
@@ -577,10 +645,12 @@ describe('ApplicationsService', () => {
 
     it('refuses to hire a provider who is not verified, before holding any money', async () => {
       const { escrow, hold } = createEscrowMock();
-      const { supabase } = createSupabaseMock({
-        provider_profiles: [{ data: { is_verified: false }, error: null }],
-        job_applications: [{ data: pendingApplication, error: null }],
-      });
+      const { supabase } = createSupabaseMock(
+        {
+          job_applications: [{ data: pendingApplication, error: null }],
+        },
+        [],
+      );
       const service = new ApplicationsService(supabase, escrow);
 
       const err: unknown = await service

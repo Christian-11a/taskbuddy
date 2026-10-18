@@ -6,7 +6,7 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, migrationFiles, readMigration } from './harness.mjs';
+import { migratedDatabase, migrationFiles, readMigration, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 
 const CLIENT = '11111111-1111-1111-1111-111111111111';
 const PROVIDER = '22222222-2222-2222-2222-222222222222';
@@ -84,10 +84,11 @@ beforeEach(async () => {
   }
   for (const id of [PROVIDER, RIVAL]) {
     await q(
-      `insert into provider_profiles (profile_id, category_id, bio, is_verified)
+      `insert into provider_profiles (profile_id, category_id, bio, identity_verified)
        values ($1, 1, 'Licensed plumber, ten years around Quezon City.', true)`,
       [id],
     );
+    await q(APPROVED_CREDENTIAL_SQL, [id, 1]);
   }
 });
 

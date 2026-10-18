@@ -40,6 +40,8 @@ import {
   SignAdminAttachmentsDto,
 } from './dto/admin.dto';
 import {
+  DecideVerificationCaseDto,
+  ListVerificationCasesQueryDto,
   ListVerificationsQueryDto,
   RejectVerificationDto,
 } from '../verifications/dto/verifications.dto';
@@ -340,6 +342,21 @@ export class AdminController {
   @Get('verifications')
   listVerifications(@Query() query: ListVerificationsQueryDto) {
     return this.verificationsService.list(query);
+  }
+
+  /** One case per provider: ID + selfie + certificate (0068). */
+  @Get('verification-cases')
+  listVerificationCases(@Query() query: ListVerificationCasesQueryDto) {
+    return this.verificationsService.listCases(query);
+  }
+
+  /** One decision per case, applied atomically (0068). */
+  @Post('verification-cases/decision')
+  decideVerificationCase(
+    @CurrentUser() admin: Profile,
+    @Body() dto: DecideVerificationCaseDto,
+  ) {
+    return this.verificationsService.decideCase(admin, dto);
   }
 
   @Get('verifications/:id')

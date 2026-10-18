@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration } from './harness.mjs';
+import { migratedDatabase, readMigration, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 let db, primaryRequest;
 const client = '11111111-1111-1111-1111-111111111111';
 const provider = '22222222-2222-2222-2222-222222222222';
@@ -21,9 +21,11 @@ before(async () => {
     provider,
   ]);
   await query(
-    "insert into provider_profiles(profile_id,category_id,bio,years_experience,is_verified,is_available,service_radius_km) values($1,1,'Experienced provider offering reliable home services',5,true,true,50)",
+    "insert into provider_profiles(profile_id,category_id,bio,years_experience,identity_verified,is_available,service_radius_km) values($1,1,'Experienced provider offering reliable home services',5,true,true,50)",
     [provider],
   );
+  for (const category of [1, 2, 3])
+    await query(APPROVED_CREDENTIAL_SQL, [provider, category]);
 });
 after(async () => {
   await db.close();

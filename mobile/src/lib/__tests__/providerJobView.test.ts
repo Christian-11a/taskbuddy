@@ -1,5 +1,5 @@
 import type { Dispute, Job, JobTask } from '../api';
-import { providerJobView, type ProviderApplication, type ProviderJobViewInput } from '../providerJobView';
+import { proposeBlockFor, providerJobView, type ProviderApplication, type ProviderJobViewInput } from '../providerJobView';
 
 const NOW = new Date('2026-10-09T10:00:00.000Z');
 const ME = { id: 'me' };
@@ -125,7 +125,7 @@ describe('providerJobView: a job I have not applied to', () => {
       tone: 'attention',
       overline: 'VERIFY FIRST',
       title: 'Get verified to apply',
-      body: 'Verify your identity before applying to jobs.',
+      body: 'Verify your ID to send proposals.',
     });
     expect(result.step).toBeNull();
     expect(result.main).toEqual({ kind: 'getVerified' });
@@ -558,5 +558,26 @@ describe('providerJobView while disputed', () => {
     const v = view({ status: 'confirmed', assigned_provider_id: ME.id });
     expect(v.link).toEqual({ kind: 'declineBooking' });
     expect(v.banner).toBeUndefined();
+  });
+});
+
+describe('proposeBlockFor and the certificate card', () => {
+  const me = (identity: string, services: { category_id: number; certificate: string }[]) =>
+    ({ status: 'approved', identity, certificate: 'none', verified: false, services } as never);
+
+  it('lets a secondary-only provider propose on that service, not on the primary', () => {
+    const v = me('approved', [{ category_id: 1, certificate: 'none' }, { category_id: 2, certificate: 'approved' }]);
+    expect(proposeBlockFor(v, false, 2)).toBeNull();
+    expect(proposeBlockFor(v, false, 1)).toBe('certificate');
+  });
+  it('names the ID when it is missing, and falls back to isVerified when the lookup failed', () => {
+    expect(proposeBlockFor(me('none', [{ category_id: 2, certificate: 'approved' }]), false, 2)).toBe('identity');
+    expect(proposeBlockFor(null, true, 2)).toBeNull();
+    expect(proposeBlockFor(null, false, 2)).toBe('identity');
+  });
+  it('shows the certificate card with the service named and a main action for that category', () => {
+    const result = view({ status: 'open', category_id: 2 }, { proposeBlock: 'certificate', serviceName: 'Cleaning' });
+    expect(result.card.body).toBe('Upload your Cleaning certificate to send proposals for this job.');
+    expect(result.main).toEqual({ kind: 'getVerified', categoryId: 2 });
   });
 });

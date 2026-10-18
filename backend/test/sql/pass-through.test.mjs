@@ -5,7 +5,7 @@
  */
 import { it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 
 const CLIENT = '11111111-1111-1111-1111-111111111111';
 const PROVIDER = '22222222-2222-2222-2222-222222222222';
@@ -104,8 +104,9 @@ it('refuses a channel code that does not match the method', async () => {
 });
 
 it('keeps the admin commission: only the amount after commission is paid out (0056, 0060)', async () => {
-  await q(`insert into provider_profiles (profile_id, category_id, bio, is_verified)
+  await q(`insert into provider_profiles (profile_id, category_id, bio, identity_verified)
            values ($1, 1, 'Licensed plumber for ten years.', true)`, [PROVIDER]);
+  await q(APPROVED_CREDENTIAL_SQL, [PROVIDER, 1]);
   await q(
     `insert into linked_payout_accounts (profile_id, method, channel_code, account_name, account_number)
      values ($1, 'gcash', 'PH_GCASH', 'Boy Plumber', '09171234567')`,

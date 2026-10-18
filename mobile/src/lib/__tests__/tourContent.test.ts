@@ -1,4 +1,5 @@
-import { certificateStateFrom, finishCard, firstNameFrom, introButtons, introCards, tourSteps } from '../tourContent';
+import {
+  certificateStateFromMe, certificateStateFrom, finishCard, firstNameFrom, introButtons, introCards, tourSteps } from '../tourContent';
 
 describe('firstNameFrom', () => {
   it.each([
@@ -161,7 +162,7 @@ describe('finishCard', () => {
     expect(card.checklist).toEqual([
       { label: 'Add your address', state: 'next' },
       { label: 'Add a short bio', state: 'later' },
-      { label: 'Get verified', state: 'later' },
+      { label: 'Verify your ID', state: 'later' },
       { label: 'Upload your certificate', state: 'later' },
       { label: 'Link a payout account', state: 'later' },
     ]);
@@ -215,5 +216,19 @@ describe('finishCard', () => {
 
     expect([client.primary.action, client.secondary?.action]).not.toContain('getVerified');
     expect([provider.primary.action, provider.secondary?.action]).not.toContain('postJob');
+  });
+});
+
+describe('certificateStateFromMe', () => {
+  it('reads the verification status when it has a certificate', () => {
+    expect(certificateStateFromMe({ certificate: 'approved' }, [])).toBe('approved');
+    expect(certificateStateFromMe({ certificate: 'pending' }, [{ status: 'approved' }])).toBe('pending');
+    expect(certificateStateFromMe({ certificate: 'expired' }, [{ status: 'approved' }])).toBe('none');
+    expect(certificateStateFromMe({ certificate: 'rejected' }, [])).toBe('none');
+  });
+  it('falls back to the credentials list on the old API', () => {
+    expect(certificateStateFromMe({}, [{ status: 'approved' }])).toBe('approved');
+    expect(certificateStateFromMe(null, [{ status: 'pending' }])).toBe('pending');
+    expect(certificateStateFromMe(null, null)).toBe('none');
   });
 });

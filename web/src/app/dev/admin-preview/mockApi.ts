@@ -21,6 +21,52 @@ const skillRequests = [
   { id: "s3", provider_id: "u2", provider: { full_name: "Mark Santos" }, type: "add_secondary", category_id: 3, category: { id: 3, name: "Handyman" }, reason: "General repairs alongside plumbing.", status: "approved", review_note: "Welcome aboard.", created_at: daysAgo(12) },
 ];
 
+/** An offline picture for a document: an inline SVG, so no request leaves the page. */
+const docImage = (label: string, fill: string) =>
+  `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="320"><rect width="480" height="320" fill="${fill}"/><rect x="24" y="24" width="432" height="272" rx="12" fill="#fff" opacity=".7"/><text x="240" y="170" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#334155">${label}</text></svg>`,
+  )}`;
+
+const caseCredential = (id: string, providerId: string, service: string, title: string, expiresInDays: number, over: Record<string, unknown> = {}) => ({
+  id, provider_id: providerId, category_id: 1, credential_type: "tesda_nc", title, issuer: "TESDA", credential_number: `NC-${id.toUpperCase()}`,
+  issued_on: "2024-03-01", expires_on: new Date(Date.now() + expiresInDays * 86_400_000).toISOString().slice(0, 10), created_at: daysAgo(1),
+  service_categories: { id: 1, name: service }, document_url: docImage(title, "#e0f2fe"), ...over,
+});
+
+/** Decided identity checks and certificates, for the Verifications history tab. */
+const decidedVerifications: Record<string, unknown>[] = [
+  { id: "dv1", provider_id: "p-ana", full_name: "Ana Cruz", email: "ana@example.com", status: "approved", submitted_at: daysAgo(9), reviewed_at: daysAgo(8), rejection_reason: null, document_type: "philsys", method: "manual", documents: [] },
+  { id: "dv2", provider_id: "p-ben", full_name: "Ben Ramos", email: "ben@example.com", status: "rejected", submitted_at: daysAgo(6), reviewed_at: daysAgo(5), rejection_reason: "The selfie does not match the ID photo.", document_type: "drivers_license", method: "manual", documents: [] },
+  { id: "dv3", provider_id: "p-cora", full_name: "Cora Diaz", email: "cora@example.com", status: "approved", submitted_at: daysAgo(3), reviewed_at: daysAgo(3), rejection_reason: null, method: "stripe_identity", documents: [] },
+];
+const decidedCredentials: Record<string, unknown>[] = [
+  { ...caseCredential("dc1", "p-ana", "Plumbing", "Plumbing NC II", 500), status: "approved", rejection_reason: null, reviewed_at: daysAgo(8), profiles: { full_name: "Ana Cruz" } },
+  { ...caseCredential("dc2", "p-ben", "Cleaning", "Housekeeping NC II", -30), status: "rejected", rejection_reason: "The certificate has expired.", reviewed_at: daysAgo(5), profiles: { full_name: "Ben Ramos" } },
+  // Approved earlier, expiry since passed: the real API lists it under status=approved with status "expired".
+  { ...caseCredential("dc3", "p-cora", "Cleaning", "Housekeeping NC II (old)", -20), status: "expired", rejection_reason: null, reviewed_at: daysAgo(40), profiles: { full_name: "Cora Diaz" } },
+];
+
+/** Verification cases: a new provider, a Stripe-approved identity, a renewal and an expired certificate. */
+const verificationCases: Record<string, unknown>[] = [
+  {
+    case_id: "vc1", case_type: "New provider", provider_id: "p-liza", full_name: "Liza Mercado", email: "liza@example.com", identity: "pending",
+    verification: { id: "vc1", provider_id: "p-liza", full_name: "Liza Mercado", email: "liza@example.com", status: "pending", submitted_at: daysAgo(0, 4), reviewed_at: null, rejection_reason: null, document_type: "philsys", method: "manual", documents: [docImage("ID photo", "#fef9c3"), docImage("Selfie", "#fce7f3")] },
+    credential: caseCredential("cr1", "p-liza", "Plumbing", "Plumbing NC II", 400),
+  },
+  {
+    case_id: "cr2", case_type: "New provider", provider_id: "p-rico", full_name: "Rico Bautista", email: "rico@example.com", identity: "approved",
+    verification: null, credential: caseCredential("cr2", "p-rico", "Handyman", "Carpentry NC II", 300),
+  },
+  {
+    case_id: "cr3", case_type: "Certificate renewal: Pedicure", provider_id: "p-maria", full_name: "Maria Garcia", email: "maria@example.com", identity: "approved",
+    verification: null, credential: caseCredential("cr3", "p-maria", "Pedicure", "Beauty Care NC II (renewed)", 700),
+  },
+  {
+    case_id: "cr4", case_type: "New service certificate: Cleaning", provider_id: "p-mark", full_name: "Mark Santos", email: "mark@example.com", identity: "approved",
+    verification: null, credential: caseCredential("cr4", "p-mark", "Cleaning", "Housekeeping NC II", -12),
+  },
+];
+
 /**
  * The parties on the sample dispute case with a photo (job j1057, "Aircon cleaning" in mockApp).
  * mockApp gives that case these same ids, so the chat roles resolve from ids the way the API's do.
@@ -209,6 +255,24 @@ const routes: [RegExp, string, Handler][] = [
     const q = u.searchParams.get("search");
     const rows = activity.filter((a) => matches(q, a.jobs.title));
     return { items: paged(rows, u), total: rows.length };
+  }],
+  [/^\/admin\/verifications$/, "GET", (u) => {
+    const status = u.searchParams.get("status");
+    const rows = decidedVerifications.filter((v) => !status || v.status === status);
+    return { verifications: paged(rows, u), total: rows.length };
+  }],
+  [/^\/admin\/credentials$/, "GET", (u) => {
+    const status = u.searchParams.get("status");
+    const rows = decidedCredentials.filter((c) => !status || c.status === status || (status === "approved" && c.status === "expired"));
+    return { credentials: paged(rows, u), total: rows.length };
+  }],
+  [/^\/admin\/verification-cases$/, "GET", (u) => ({ cases: paged(verificationCases, u), total: verificationCases.length })],
+  [/^\/admin\/verification-cases\/decision$/, "POST", (_u, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as { verification_id?: string; credential_id?: string; decision: "approve" | "reject" };
+    const index = verificationCases.findIndex((c) => c.case_id === (body.verification_id ?? body.credential_id));
+    if (index !== -1) verificationCases.splice(index, 1);
+    const result = body.decision === "approve" ? "approved" : "rejected";
+    return { provider_id: "p-sample", identity: body.verification_id ? result : "unchanged", certificate: body.credential_id ? result : "unchanged", identity_verified: body.decision === "approve", verified: body.decision === "approve" };
   }],
   [/^\/admin\/audit$/, "GET", () => ({ actions: audit })],
   [/^\/admin\/categories$/, "GET", () => cats.map((name, i) => ({ id: i + 1, name, is_active: i !== 4 }))],

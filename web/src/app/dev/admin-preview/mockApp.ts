@@ -221,7 +221,8 @@ export const MOCK_APP: AppState = {
     { name: "Liza Mercado", jobs: 12, rating: 4.5 },
   ],
   queueCounts: {
-    verifications: verifications.filter((v) => v.status === "pending").length,
+    // One case per provider, the same four cases the preview API serves.
+    verifications: 4,
     disputes: disputes.filter((d) => d.isOpen).length,
     withdrawals: 2,
     "skill-requests": 2,

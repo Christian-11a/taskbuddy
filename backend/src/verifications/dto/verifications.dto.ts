@@ -1,9 +1,11 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
+  IsUUID,
   IsString,
   MaxLength,
 } from 'class-validator';
@@ -88,4 +90,41 @@ export class RejectVerificationDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+export class ListVerificationCasesQueryDto {
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  limit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Type(() => Number)
+  offset?: number;
+}
+
+/** POST /admin/verification-cases/decision (migration 0068). */
+export class DecideVerificationCaseDto {
+  @IsOptional()
+  @IsUUID()
+  verification_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  credential_id?: string;
+
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  /** Reject only: which parts failed. Unlisted pending parts are approved. */
+  @IsOptional()
+  @IsArray()
+  @IsIn(['id', 'selfie', 'certificate'], { each: true })
+  failed_parts?: ('id' | 'selfie' | 'certificate')[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
 }

@@ -126,6 +126,8 @@ describe("row adapters", () => {
       verificationClass: "badge-pending",
     });
     expect(toUserRow({ ...base, verification: "VERIFIED" }).verification).toBe("Verified");
+    // Identity alone is not "Verified": the certificate is the missing half.
+    expect(toUserRow({ ...base, verification: "IDENTITY_ONLY" }).verification).toBe("Identity approved · certificate needed");
     expect(toUserRow({ ...base, role: "client", verification: null }).verification).toBe("—");
   });
 
@@ -290,6 +292,16 @@ describe("row adapters", () => {
     expect(row.kindLabel).toBe("Refund to client");
     expect(row.amount).toBe("-₱300");
     expect(toWalletTxnRow({ ...t, title: "Payout sent" }).kindLabel).toBe("Payout to provider");
+  });
+
+  it("labels a post-cutoff SIM refund as test mode", () => {
+    const t: WalletTransaction = {
+      id: "wt-sim", profileName: "Client Lee", direction: "debit", kind: "withdrawal",
+      status: "completed", amount: 300, title: "Refund sent", createdAt: "2026-10-18T10:00:00.000Z",
+      reviewNote: "SIM-AB12CD34EF",
+    };
+    expect(toWalletTxnRow(t).kindLabel).toBe("Refund recorded (test mode)");
+    expect(toWalletTxnRow({ ...t, reviewNote: "XENDIT-1" }).kindLabel).toBe("Refund to client");
   });
 
   it("labels earnings, refunds and pending/failed records", () => {

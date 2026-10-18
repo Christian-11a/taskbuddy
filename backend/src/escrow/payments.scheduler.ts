@@ -35,6 +35,7 @@ export class PaymentsScheduler {
     if (this.running) return;
     this.running = true;
     try {
+      await this.credentialExpiry();
       const { data: expired, error } = await this.supabase.admin.rpc(
         'expire_job_cancellations',
       );
@@ -73,6 +74,33 @@ export class PaymentsScheduler {
       this.logger.error(`Payments tick failed: ${(err as Error).message}`);
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * Certificate expiry (0068): 30-day warnings (once per credential), then
+   * recompute is_verified for everyone and notify those who lost it. Cheap and
+   * idempotent, so it rides this tick; its own failure never stops payments.
+   */
+  async credentialExpiry() {
+    try {
+      const { data, error } = await this.supabase.admin.rpc(
+        'credential_expiry_tick',
+      );
+      if (error) throw new Error(error.message);
+      const result = data as {
+        warned?: number;
+        expired?: number;
+        changed?: number;
+      } | null;
+      if (result?.warned || result?.expired || result?.changed)
+        this.logger.log(
+          `Credential expiry: ${result.warned ?? 0} warned, ${result.expired ?? 0} expired, ${result.changed ?? 0} provider(s) changed`,
+        );
+    } catch (err) {
+      this.logger.error(
+        `Credential expiry tick failed: ${(err as Error).message}`,
+      );
     }
   }
 

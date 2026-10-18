@@ -12,6 +12,7 @@
 import type { Dispute, Job, JobTask } from './api';
 import type { ProgressStep } from '../components/ui/ProgressStepper';
 import type { StatusCardTone } from '../components/ui/StatusCard';
+import { canWorkService, verificationSummary, type VerificationMe } from './verificationStatus';
 import { withDisputeBanner } from './jobDetailView';
 import { peso, timeOfDay } from './format';
 import { dayHeading } from './jobCalendar';
@@ -29,7 +30,9 @@ export type Action =
   | { kind: 'postAgain'; categoryId: number }    // → onNavigate('Create Job', String(categoryId)) (category pre-selected)
   | { kind: 'cancelJob' }                        // → existing cancel modal → api.cancelJob
   // provider
-  | { kind: 'sendProposal' } | { kind: 'getVerified' } | { kind: 'withdrawProposal' }
+  | { kind: 'sendProposal' } | { kind: 'withdrawProposal' }
+  // Get verified: no `categoryId` = the ID check; with one = that service's certificate step.
+  | { kind: 'getVerified'; categoryId?: number }
   | { kind: 'findJobs' } | { kind: 'startJob' } | { kind: 'declineBooking' } | { kind: 'viewWallet' };
 
 export type JobView = {
@@ -59,8 +62,32 @@ export type ProviderJobViewInput = {
   /** The checklist, already sorted by position. */
   tasks: JobTask[];
   isVerified: boolean;
+  /**
+   * What stops this provider proposing on this job's service: their ID, or that service's certificate.
+   * Omitted = decided from `isVerified` alone (an older API: no ID means the ID is missing).
+   */
+  proposeBlock?: ProposeBlock;
+  /** The job's service, named in the certificate message. */
+  serviceName?: string | null;
   now: Date;
 };
+
+export type ProposeBlock = 'identity' | 'certificate' | null;
+
+/**
+ * Whether the provider may propose on a job's service, and if not, what is missing.
+ * `verification` is `GET /verifications/me` (null when it could not be read: the cached `isVerified` decides).
+ */
+export function proposeBlockFor(
+  verification: VerificationMe,
+  isVerified: boolean,
+  categoryId: number | null | undefined,
+): ProposeBlock {
+  if (!verification) return isVerified ? null : 'identity';
+  if (canWorkService(verification, categoryId)) return null;
+  const { identity } = verificationSummary(verification);
+  return identity === 'approved' ? 'certificate' : 'identity';
+}
 
 const OPEN_STATUSES: readonly string[] = ['open', 'recommending'];
 const BOOKED_STATUSES: readonly string[] = ['assigned', 'confirmed'];
@@ -73,16 +100,24 @@ const VIEW_WALLET: Action = { kind: 'viewWallet' };
 const VIEW_CASE: Action = { kind: 'viewCase' };
 const REPORT: Action = { kind: 'reportProblem' };
 
-export function providerJobView({ job, me, myApplication, dispute, tasks, isVerified }: ProviderJobViewInput): JobView {
+export function providerJobView({
+  job, me, myApplication, dispute, tasks, isVerified, proposeBlock, serviceName,
+}: ProviderJobViewInput): JobView {
   const mine = !!me && job.assigned_provider_id === me.id;
+  const block: ProposeBlock = proposeBlock !== undefined ? proposeBlock : isVerified ? null : 'identity';
   const view = mine
     ? hiredView(job, dispute, tasks)
-    : unhiredView(job, myApplication, isVerified);
+    : unhiredView(job, myApplication, block, serviceName);
   return mine ? withDisputeBanner(view, job) : view;
 }
 
 /** A job I was not hired for: I may apply, I applied, or it is closed to me. */
-function unhiredView(job: Job, application: ProviderApplication | null | undefined, isVerified: boolean): JobView {
+function unhiredView(
+  job: Job,
+  application: ProviderApplication | null | undefined,
+  block: ProposeBlock,
+  serviceName: string | null | undefined,
+): JobView {
   const open = OPEN_STATUSES.includes(job.status);
   if (application) {
     switch (application.status) {
@@ -101,7 +136,7 @@ function unhiredView(job: Job, application: ProviderApplication | null | undefin
         return closedTaken();
     }
   }
-  if (open) return isVerified ? newJob(job) : verifyFirst();
+  if (open) return block === null ? newJob(job) : block === 'certificate' ? certificateFirst(job, serviceName) : verifyFirst();
   if (job.status === 'expired') return expiredNotHired();
   if (job.status === 'cancelled') return cancelledNotHired();
   return closedTaken();
@@ -163,9 +198,23 @@ function newJob(job: Job): JobView {
 
 function verifyFirst(): JobView {
   return jobView(
-    card('attention', 'VERIFY FIRST', 'Get verified to apply', 'Verify your identity before applying to jobs.'),
+    card('attention', 'VERIFY FIRST', 'Get verified to apply', 'Verify your ID to send proposals.'),
     null,
     { kind: 'getVerified' },
+  );
+}
+
+function certificateFirst(job: Job, serviceName: string | null | undefined): JobView {
+  const name = (serviceName ?? '').trim();
+  return jobView(
+    card(
+      'attention',
+      'CERTIFICATE NEEDED',
+      'Certificate needed for this service',
+      `Upload your ${name ? `${name} ` : ''}certificate to send proposals for this job.`,
+    ),
+    null,
+    { kind: 'getVerified', categoryId: job.category_id },
   );
 }
 

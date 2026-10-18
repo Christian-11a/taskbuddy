@@ -463,7 +463,29 @@ export interface SignedUpload {
   token: string;
 }
 
-export interface Verification {
+/** Where a certificate stands for one service (migration 0068). */
+export type CertificateState = 'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+export type IdentityState = 'none' | 'pending' | 'approved' | 'rejected';
+
+/** One service a provider offers (the primary one and approved extras), with its certificate. */
+export interface VerifiedService {
+  category_id: number;
+  name: string | null;
+  primary: boolean;
+  certificate: CertificateState;
+}
+
+/** The two-part state `GET /verifications/me` adds. All optional: an older API omits them. */
+export interface VerificationState {
+  identity?: IdentityState;
+  /** The primary service's certificate. */
+  certificate?: CertificateState;
+  /** True only when identity and the primary certificate are both approved. */
+  verified?: boolean;
+  services?: VerifiedService[];
+}
+
+export interface Verification extends VerificationState {
   id: string;
   provider_id: string;
   status: 'pending' | 'approved' | 'rejected';

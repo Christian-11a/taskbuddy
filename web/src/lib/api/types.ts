@@ -442,10 +442,27 @@ export interface AdminSkillRequestApiRow {
   provider?: { full_name: string | null } | null;
 }
 
-// ─── Provider credentials (GET /admin/credentials) ───────────────────────────
+// ─── Verification cases (GET /admin/verification-cases, migration 0068) ─────
 
 export type AdminCredentialType = "tesda_nc" | "prc_license" | "trade_certificate" | "other";
 
+/** The pending certificate on a case. The document link is signed and lasts an hour. */
+export interface AdminCaseCredentialApi {
+  id: string;
+  provider_id: string;
+  category_id: number;
+  credential_type: AdminCredentialType;
+  title: string;
+  issuer: string;
+  credential_number: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  created_at: string;
+  document_url: string | null;
+  service_categories?: { id: number; name: string } | null;
+}
+
+/** A decided certificate (GET /admin/credentials?status=approved|rejected). */
 export interface AdminCredentialApiRow {
   id: string;
   provider_id: string;
@@ -456,12 +473,10 @@ export interface AdminCredentialApiRow {
   credential_number: string | null;
   issued_on: string | null;
   expires_on: string | null;
-  /** An approved credential past its expiry date reads "expired". */
   status: "pending" | "approved" | "rejected" | "expired";
   rejection_reason: string | null;
   reviewed_at: string | null;
   created_at: string;
-  /** Signed download link, valid for one hour; null if signing failed. */
   document_url: string | null;
   service_categories?: { id: number; name: string } | null;
   profiles?: { full_name: string | null } | null;
@@ -470,4 +485,31 @@ export interface AdminCredentialApiRow {
 export interface AdminCredentialListResponse {
   credentials: AdminCredentialApiRow[];
   total: number;
+}
+
+export interface AdminVerificationCaseApi {
+  case_id: string;
+  /** "New provider", "Certificate renewal: <service>" or "New service certificate: <service>". */
+  case_type: string;
+  provider_id: string;
+  full_name: string | null;
+  email: string | null;
+  identity: "pending" | "approved" | "none";
+  verification: AdminVerificationApiRow | null;
+  credential: AdminCaseCredentialApi | null;
+}
+
+export interface ListVerificationCasesApiResponse {
+  cases: AdminVerificationCaseApi[];
+  total: number;
+}
+
+export type CasePart = "id" | "selfie" | "certificate";
+
+export interface DecideVerificationCaseApiResponse {
+  provider_id: string;
+  identity: "approved" | "rejected" | "unchanged";
+  certificate: "approved" | "rejected" | "unchanged";
+  identity_verified: boolean;
+  verified: boolean;
 }

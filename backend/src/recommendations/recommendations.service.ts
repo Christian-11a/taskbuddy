@@ -139,13 +139,30 @@ export class RecommendationsService {
       .map((row, i) => ({ row, score: scores[i] }))
       .sort((a, b) => b.score - a.score);
 
+    // Scoring is asynchronous: a certificate may have expired or been rejected
+    // since the pool was read. Re-check eligibility (the same live
+    // provider_approved_categories rule behind the pool) right before choosing
+    // who is invited, and skip anyone no longer eligible.
+    const { data: fresh, error: freshError } = await this.supabase.admin.rpc(
+      'fn_job_provider_features',
+      { p_job_id: jobId },
+    );
+    if (freshError) throw new BadRequestException(freshError.message);
+    const stillEligible = new Set(
+      ((fresh ?? []) as FeatureRow[]).map((r) => r.provider_id),
+    );
+    const invitees = ranked
+      .filter(({ row }) => stillEligible.has(row.provider_id))
+      .slice(0, TOP_N);
+    const inviteeIds = new Set(invitees.map(({ row }) => row.provider_id));
+
     const now = new Date().toISOString();
     const candidates = ranked.map(({ row, score }, i) => ({
       run_id: run.id,
       provider_id: row.provider_id,
       rank: i + 1,
       score: Number(score.toFixed(5)),
-      notified_at: i < TOP_N ? now : null,
+      notified_at: inviteeIds.has(row.provider_id) ? now : null,
       skills_match: row.skills_match,
       distance_km: row.distance_km,
       provider_avg_rating: row.provider_avg_rating,
@@ -167,7 +184,6 @@ export class RecommendationsService {
       .insert(candidates);
     if (candidatesError) throw new BadRequestException(candidatesError.message);
 
-    const invitees = ranked.slice(0, TOP_N);
     let notified = 0;
     if (invitees.length > 0) {
       const { error: notificationError } = await this.supabase.admin

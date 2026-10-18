@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration } from './harness.mjs';
+import { migratedDatabase, readMigration, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 let db;
 const client = '11111111-1111-1111-1111-111111111111';
 const provider = '22222222-2222-2222-2222-222222222222';
@@ -13,7 +13,8 @@ before(async () => {
   for (const [id, role] of [[client, 'client'], [provider, 'provider'], [admin, 'admin'], [outsider, 'client']]) {
     await query('insert into auth.users(id, raw_user_meta_data) values ($1, $2)', [id, JSON.stringify({ role, full_name: role })]);
   }
-  await query('insert into provider_profiles(profile_id, category_id, is_verified) values ($1, 1, true)', [provider]);
+  await query('insert into provider_profiles(profile_id, category_id, identity_verified) values ($1, 1, true)', [provider]);
+  await query(APPROVED_CREDENTIAL_SQL, [provider, 1]);
 });
 after(async () => { await db.close(); });
 async function job(status = 'confirmed', funded = true) {

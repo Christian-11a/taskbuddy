@@ -11,6 +11,7 @@ import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     getJob: jest.fn(),
+    myVerification: jest.fn(),
     jobDispute: jest.fn().mockResolvedValue(null),
     myApplications: jest.fn(),
     applyToJob: jest.fn(),
@@ -999,5 +1000,77 @@ describe('SPJobDetailScreen — date or time change requests', () => {
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText('Fix the sink');
     expect(screen.queryByText('Change date or time')).toBeNull();
+  });
+});
+
+describe('SPJobDetailScreen — proposing per service', () => {
+  const SERVICE = 7;
+  const me = (over: object) => ({
+    status: 'approved', identity: 'approved', certificate: 'none', verified: false,
+    services: [
+      { category_id: 1, name: 'Plumbing', primary: true, certificate: 'none' },
+      { category_id: SERVICE, name: 'Cleaning', primary: false, certificate: 'approved' },
+    ],
+    ...over,
+  });
+  const open = () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, category_id: SERVICE, service_categories: { name: 'Cleaning' } });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
+  };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: false, refreshProfile: jest.fn() });
+  });
+
+  it('lets a provider with only a secondary-service certificate send a proposal (primary not required)', async () => {
+    open();
+    (api.myVerification as jest.Mock).mockResolvedValue(me({}));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Send proposal')).toBeTruthy();
+  });
+
+  it('asks for the service certificate when the ID is approved but that service has none, and opens the certificate step', async () => {
+    open();
+    (api.myVerification as jest.Mock).mockResolvedValue(me({
+      services: [{ category_id: 1, name: 'Plumbing', primary: true, certificate: 'approved' }],
+    }));
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+    expect(await screen.findByText('Upload your Cleaning certificate to send proposals for this job.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Upload certificate'));
+    expect(onNavigate).toHaveBeenCalledWith('Verification', undefined, { startAt: 'certificate', categoryId: SERVICE });
+  });
+
+  it('asks to verify the ID first when the ID is missing', async () => {
+    open();
+    (api.myVerification as jest.Mock).mockResolvedValue(me({ status: 'none', identity: 'none' }));
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+    expect(await screen.findByText('Verify your ID to send proposals.')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('Verify to apply'));
+    expect(onNavigate).toHaveBeenCalledWith('Verification');
+  });
+
+  it('shows the server message and Upload certificate when the server answers 403 certificate_required', async () => {
+    open();
+    (api.myVerification as jest.Mock).mockResolvedValue(me({}));
+    const { ApiError } = jest.requireMock('../../../../src/lib/api');
+    (api.applyToJob as jest.Mock).mockRejectedValue(
+      new ApiError('You need a valid Cleaning certificate to send proposals for this job', 403, 'certificate_required'),
+    );
+    const onNavigate = jest.fn();
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={onNavigate} />);
+
+    fireEvent.press(await screen.findByLabelText('Send proposal'));
+    fireEvent.changeText(screen.getByTestId('proposal-message'), 'I can start tomorrow morning.');
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('proposal-send'));
+    });
+
+    expect(screen.getByText('You need a valid Cleaning certificate to send proposals for this job')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('proposal-upload-certificate'));
+    expect(onNavigate).toHaveBeenCalledWith('Verification', undefined, { startAt: 'certificate', categoryId: SERVICE });
   });
 });
