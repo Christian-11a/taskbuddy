@@ -8,7 +8,13 @@ import { SupabaseService } from '../supabase/supabase.service';
 import { ListTransactionsQueryDto } from './dto/escrow.dto';
 import { moneyError } from './escrow-errors';
 import { ConnectPayoutsService } from '../payments/connect/connect-payouts.service';
-import { XenditService } from '../payments/xendit.service';
+import {
+  PAYOUT_FAILED,
+  PAYOUT_SUCCEEDED,
+  XenditRequestError,
+  XenditService,
+  type XenditPayoutUpdate,
+} from '../payments/xendit.service';
 
 /**
  * How long a completed job's payment is held before it is released. Zero since
@@ -23,6 +29,10 @@ export type EscrowStatus =
 
 /** review_note on a payout pass_through_balances queued for Xendit (0058). */
 const QUEUED_NOTE = 'Sending via Xendit';
+/** A queued payout one sender has claimed and is sending right now. */
+const IN_FLIGHT_NOTE = 'Sending via Xendit (in flight)';
+/** Xendit accepted the payout; its final result is still to come. */
+const ACCEPTED_PREFIX = 'XENDIT-';
 
 export interface EscrowRow {
   id: string;
@@ -197,12 +207,23 @@ export class EscrowService {
 
   /**
    * Sends the provider payouts pass_through_balances queued (migration 0058)
-   * through Xendit's sandbox Payouts API. Idempotent on the ledger row id, so
-   * a retry cannot pay twice. A refused payout is marked failed, which frees
-   * the money for the next attempt. Never throws.
+   * through Xendit's sandbox Payouts API. Never throws.
+   *
+   * A payout is paid once, whatever fails:
+   * - each row is claimed (queued -> in flight) before it is sent, so two
+   *   senders (the tick and a request path) cannot both send it;
+   * - the ledger row id is the Xendit reference and idempotency key, so a
+   *   resend of the same row cannot pay twice;
+   * - accepted is not paid: the row stays pending (money still reserved)
+   *   until the payout callback or a lookup gives the final result;
+   * - only a definite refusal marks it failed (which frees the money for a
+   *   new payout). A timeout, 5xx or rate limit puts it back in the queue
+   *   to be resent under the same reference.
+   * The tick (no profileId) also reconciles in-flight and accepted rows.
    */
   async sendQueuedPayouts(profileId?: string): Promise<number> {
     if (!this.xendit.configured) return 0;
+    if (!profileId) await this.reconcilePayouts();
     let query = this.supabase.admin
       .from('wallet_transactions')
       .select('id, profile_id, amount, title')
@@ -223,13 +244,15 @@ export class EscrowService {
       amount: number | string;
       title: string;
     }[]) {
+      if (!(await this.claimPayout(row.id))) continue;
       const { data: account } = await this.supabase.admin
         .from('linked_payout_accounts')
         .select('channel_code, account_name, account_number')
         .eq('profile_id', row.profile_id)
         .maybeSingle();
       try {
-        if (!account?.channel_code) throw new Error('No payout account linked');
+        if (!account?.channel_code)
+          throw new XenditRequestError('No payout account linked', 400);
         const payout = await this.xendit.sendPayout({
           referenceId: row.id,
           channelCode: account.channel_code,
@@ -238,29 +261,177 @@ export class EscrowService {
           amount: Number(row.amount),
           description: 'TaskBuddy payout',
         });
-        await this.finishPayout(row.id, 'completed', `XENDIT-${payout.id}`);
+        await this.applyPayoutResult({
+          payoutId: payout.id,
+          referenceId: row.id,
+          status: (payout.status ?? 'ACCEPTED').toUpperCase(),
+          failureCode: null,
+        });
         sent += 1;
       } catch (err) {
         const message = (err as Error).message.slice(0, 200);
-        this.logger.error(`Payout ${row.id} failed: ${message}`);
-        await this.finishPayout(row.id, 'failed', `Xendit: ${message}`);
+        if (err instanceof XenditRequestError && err.definite) {
+          this.logger.error(`Payout ${row.id} refused: ${message}`);
+          await this.failPayout(row.id, row.profile_id, `Xendit: ${message}`);
+        } else {
+          // Unknown outcome: Xendit may have the payout. Resend later under
+          // the same reference rather than freeing the money.
+          this.logger.warn(`Payout ${row.id} outcome unknown: ${message}`);
+          await this.setPayoutNote(row.id, IN_FLIGHT_NOTE, QUEUED_NOTE);
+        }
       }
     }
     return sent;
   }
 
+  /**
+   * Applies a payout's state from Xendit (callback or lookup) to its ledger
+   * row. Only a pending row changes, so a repeated or late update is a no-op.
+   */
+  async applyPayoutResult(update: XenditPayoutUpdate): Promise<void> {
+    const { data: row, error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .select('id, profile_id, status')
+      .eq('id', update.referenceId)
+      .eq('kind', 'withdrawal')
+      .maybeSingle();
+    if (error) {
+      this.logger.error(
+        `Payout ${update.referenceId} not read: ${error.message}`,
+      );
+      return;
+    }
+    if (!row) {
+      this.logger.warn(`Payout update for unknown row ${update.referenceId}`);
+      return;
+    }
+    if (row.status !== 'pending') {
+      if (row.status === 'completed' && update.status === 'REVERSED')
+        this.logger.error(
+          `Payout ${row.id} was reversed after completing; needs a manual check`,
+        );
+      return;
+    }
+    if (PAYOUT_SUCCEEDED.has(update.status)) {
+      await this.finishPayout(
+        row.id,
+        'completed',
+        `${ACCEPTED_PREFIX}${update.payoutId}`,
+      );
+    } else if (PAYOUT_FAILED.has(update.status)) {
+      await this.failPayout(
+        row.id,
+        row.profile_id as string,
+        `Xendit: ${update.failureCode ?? update.status}`,
+      );
+    } else {
+      const { error: noteError } = await this.supabase.admin
+        .from('wallet_transactions')
+        .update({ review_note: `${ACCEPTED_PREFIX}${update.payoutId}` })
+        .eq('id', row.id)
+        .eq('status', 'pending');
+      if (noteError)
+        this.logger.error(
+          `Payout ${row.id} not marked accepted: ${noteError.message}`,
+        );
+    }
+  }
+
+  /**
+   * Asks Xendit about payouts that are in flight (a sender may have crashed)
+   * or accepted (the callback may be lost). One that Xendit never received
+   * goes back in the queue, to be resent under the same reference.
+   */
+  private async reconcilePayouts(): Promise<void> {
+    const { data: rows, error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .select('id, review_note')
+      .eq('kind', 'withdrawal')
+      .eq('status', 'pending')
+      .or(
+        `review_note.eq."${IN_FLIGHT_NOTE}",review_note.like.${ACCEPTED_PREFIX}*`,
+      )
+      .limit(50);
+    if (error) {
+      this.logger.error(`Payouts not reconciled: ${error.message}`);
+      return;
+    }
+    for (const row of (rows ?? []) as { id: string; review_note: string }[]) {
+      try {
+        const found = await this.xendit.findPayoutByReference(row.id);
+        if (found) await this.applyPayoutResult(found);
+        else if (row.review_note === IN_FLIGHT_NOTE)
+          await this.setPayoutNote(row.id, IN_FLIGHT_NOTE, QUEUED_NOTE);
+        else
+          this.logger.warn(`Payout ${row.id} accepted but unknown to Xendit`);
+      } catch (err) {
+        this.logger.warn(
+          `Payout ${row.id} not reconciled: ${(err as Error).message}`,
+        );
+      }
+    }
+  }
+
+  /** Queued -> in flight, for this sender only. */
+  private async claimPayout(id: string): Promise<boolean> {
+    const { data, error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .update({ review_note: IN_FLIGHT_NOTE })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .eq('review_note', QUEUED_NOTE)
+      .select('id')
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Payout ${id} not claimed: ${error.message}`);
+      return false;
+    }
+    return data !== null;
+  }
+
+  private async setPayoutNote(id: string, from: string, to: string) {
+    const { error } = await this.supabase.admin
+      .from('wallet_transactions')
+      .update({ review_note: to })
+      .eq('id', id)
+      .eq('status', 'pending')
+      .eq('review_note', from);
+    if (error)
+      this.logger.error(`Payout ${id} note not reset: ${error.message}`);
+  }
+
+  /** Marks a payout failed (freeing its money) and tells the provider once. */
+  private async failPayout(id: string, profileId: string, note: string) {
+    const failed = await this.finishPayout(id, 'failed', note);
+    if (!failed) return;
+    const { error } = await this.supabase.admin.from('notifications').insert({
+      recipient_id: profileId,
+      type: 'wallet_update',
+      title: 'Payout not sent',
+      body: 'We could not send a payout to your payout account. Check that its details are correct; we will try again automatically.',
+      data: {},
+    });
+    if (error)
+      this.logger.error(`Payout ${id} failure not notified: ${error.message}`);
+  }
+
+  /** Returns whether this call changed the row. */
   private async finishPayout(
     id: string,
     status: 'completed' | 'failed',
     note: string,
-  ) {
-    const { error } = await this.supabase.admin
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase.admin
       .from('wallet_transactions')
       .update({ status, review_note: note })
       .eq('id', id)
-      .eq('status', 'pending');
-    if (error)
+      .eq('status', 'pending')
+      .select('id');
+    if (error) {
       this.logger.error(`Payout ${id} not marked ${status}: ${error.message}`);
+      return false;
+    }
+    return (data ?? []).length > 0;
   }
 
   /**

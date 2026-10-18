@@ -26,6 +26,7 @@ import {
   CreatePriceChangeCheckoutDto,
 } from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
+import { EscrowService } from '../escrow/escrow.service';
 import { XenditService } from './xendit.service';
 import { Roles } from '../auth/roles.decorator';
 import {
@@ -45,6 +46,7 @@ export class PaymentsController {
     private readonly stripe: StripeService,
     private readonly hireFunding: HireFundingService,
     private readonly xendit: XenditService,
+    private readonly escrow: EscrowService,
   ) {}
 
   /** Publishable key, so the app doesn't have to ship a build per environment. */
@@ -156,6 +158,26 @@ export class PaymentsController {
     }
     const paid = this.xendit.paidInvoice(req.body);
     if (paid) await this.hireFunding.completeFromXendit(paid);
+    return { received: true };
+  }
+
+  /**
+   * Xendit's payout callback (test mode): the final result of a provider
+   * payout. Same token check as the invoice callback. Configure it in the
+   * Xendit dashboard as the Payouts callback URL.
+   */
+  @Post('xendit/payout-webhook')
+  @HttpCode(200)
+  @SkipThrottle()
+  async xenditPayoutWebhook(
+    @Req() req: Request,
+    @Headers('x-callback-token') token: string | undefined,
+  ) {
+    if (!this.xendit.verifyCallback(token)) {
+      throw new BadRequestException('Invalid Xendit callback token');
+    }
+    const update = this.xendit.payoutUpdate(req.body);
+    if (update) await this.escrow.applyPayoutResult(update);
     return { received: true };
   }
 
