@@ -139,6 +139,16 @@ export class ClaimGoogleSessionDto {
   @IsString()
   @Length(16, 128)
   handoff_id!: string;
+
+  /** Minted by the callback and sent only on the redirect back (0071). */
+  @IsString()
+  @Length(32, 128)
+  handoff_secret!: string;
+
+  /** The value whose sha256 the app sent as `handoff_challenge` (0071). */
+  @IsString()
+  @Length(32, 128)
+  verifier!: string;
 }
 
 export class CompleteGoogleProfileDto {

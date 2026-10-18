@@ -38,7 +38,11 @@ const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
  */
 const HANDOFF_TTL_MS = 5 * 60 * 1000;
 
-/** Stored form of a handoff id — see storeHandoff(). */
+/** A hex sha256, as the app sends `sha256(verifier)` at authorize (0071). */
+const isHandoffChallenge = (value: unknown): value is string =>
+  typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+
+/** Stored form of a handoff id or secret — see storeHandoff(). */
 const hashHandoffCode = (code: string) =>
   crypto.createHash('sha256').update(code).digest('hex');
 
@@ -493,11 +497,22 @@ export class AuthService implements OnModuleInit {
    *   against the allowlist here because the callback will later append live
    *   session tokens to it.
    */
-  buildGoogleAuthUrl(appRedirect: string, handoffId?: string): string {
+  buildGoogleAuthUrl(
+    appRedirect: string,
+    handoffId?: string,
+    handoffChallenge?: string,
+  ): string {
     const { clientId, callbackUrl, stateSecret } = this.googleConfig();
 
     if (!isAllowedAppRedirect(appRedirect)) {
       throw new BadRequestException('app_redirect is not an allowed target');
+    }
+    // A handoff must be bound to the app that started it (0071). A build that
+    // sends an id without a challenge predates that and cannot finish safely.
+    if (handoffId && !isHandoffChallenge(handoffChallenge)) {
+      throw new BadRequestException(
+        'Please update the TaskBuddy app to sign in with Google.',
+      );
     }
 
     const rawNonce = crypto.randomUUID();
@@ -514,7 +529,7 @@ export class AuthService implements OnModuleInit {
     const payload = JSON.stringify({
       rawNonce,
       appRedirect,
-      ...(handoffId ? { handoffId } : {}),
+      ...(handoffId ? { handoffId, handoffChallenge } : {}),
       exp: Date.now() + 10 * 60 * 1000, // 10 min window
     });
     const sig = crypto
@@ -536,46 +551,54 @@ export class AuthService implements OnModuleInit {
 
   /**
    * Parks a freshly minted session under `sha256(handoffId)` for the app to
-   * claim (§19, migration 0033).
+   * claim (§19, migrations 0033 and 0071), bound to the app's challenge and to
+   * a secret minted here and returned only on the redirect to this browser.
    *
-   * Only the hash is stored: the id itself is a bearer credential for five
+   * Only hashes are stored: the id and secret are bearer credentials for five
    * minutes, and a dump of this table must not be a pile of usable logins.
-   * Storing is best-effort — if it fails the deep link still carries the id,
-   * the claim 404s, and the app reports a failed sign-in rather than hanging.
+   * Insert-only: an id that is already parked is never overwritten, so one
+   * sign-in cannot replace another's session.
    */
   private async storeHandoff(
     handoffId: string,
+    challenge: string,
     session: {
       access_token: string;
       refresh_token: string;
       expires_at?: number;
     },
-  ): Promise<void> {
-    const { error } = await this.supabase.admin.from('oauth_handoffs').upsert(
-      {
-        code_hash: hashHandoffCode(handoffId),
-        session,
-        expires_at: new Date(Date.now() + HANDOFF_TTL_MS).toISOString(),
-      },
-      { onConflict: 'code_hash' },
-    );
+  ): Promise<string> {
+    const secret = crypto.randomBytes(32).toString('base64url');
+    const { error } = await this.supabase.admin.from('oauth_handoffs').insert({
+      code_hash: hashHandoffCode(handoffId),
+      challenge,
+      secret_hash: hashHandoffCode(secret),
+      session,
+      expires_at: new Date(Date.now() + HANDOFF_TTL_MS).toISOString(),
+    });
     if (error) {
       this.logger.warn(`Could not store OAuth handoff: ${error.message}`);
+      throw new ServiceUnavailableException(
+        'Could not finish signing you in. Please try again.',
+      );
     }
+    return secret;
   }
 
   /**
-   * Exchanges a handoff id for the session it was parked with, once.
+   * Exchanges a handoff for the session it was parked with, once.
    *
-   * The delete *is* the claim: a row that comes back was ours to give, and it
-   * is gone before the caller sees it, so a replayed id gets nothing. An
-   * expired row is treated as absent and swept with the rest.
-   *
-   * Deliberately unauthenticated — the id is the credential — and deliberately
-   * unable to tell "wrong code" from "already used" or "expired", so it cannot
-   * be probed for which codes existed.
+   * Needs all three: the id, the secret from the redirect, and the verifier
+   * behind the challenge sent at authorize (0071). The delete *is* the claim
+   * and matches only when all three agree, so a replayed or forged claim gets
+   * nothing. It cannot tell a wrong part from "already used" or "expired", so
+   * it cannot be probed.
    */
-  async claimGoogleHandoff(handoffId: string) {
+  async claimGoogleHandoff(
+    handoffId: string,
+    handoffSecret: string,
+    verifier: string,
+  ) {
     // Opportunistic sweep of sign-ins nobody ever came back for. At this
     // volume it costs one indexed delete and needs no scheduler.
     await this.supabase.admin
@@ -587,6 +610,8 @@ export class AuthService implements OnModuleInit {
       .from('oauth_handoffs')
       .delete()
       .eq('code_hash', hashHandoffCode(handoffId))
+      .eq('secret_hash', hashHandoffCode(handoffSecret))
+      .eq('challenge', hashHandoffCode(verifier))
       .select('session, expires_at')
       .maybeSingle();
 
@@ -676,12 +701,14 @@ export class AuthService implements OnModuleInit {
       throw new BadRequestException('Invalid state signature');
     }
 
-    const { rawNonce, appRedirect, handoffId, exp } = JSON.parse(payload) as {
-      rawNonce: string;
-      appRedirect: string;
-      handoffId?: string;
-      exp: number;
-    };
+    const { rawNonce, appRedirect, handoffId, handoffChallenge, exp } =
+      JSON.parse(payload) as {
+        rawNonce: string;
+        appRedirect: string;
+        handoffId?: string;
+        handoffChallenge?: string;
+        exp: number;
+      };
     if (Date.now() > exp) throw new BadRequestException('State expired');
     // Defence in depth: the signature already proves we issued this redirect,
     // but re-checking means a leaked GOOGLE_STATE_SECRET still can't be turned
@@ -750,9 +777,20 @@ export class AuthService implements OnModuleInit {
     // Park the session for the app to claim over HTTPS. The deep link then
     // only has to carry the id, and the app can retry the claim until it
     // works — see storeHandoff().
-    if (handoffId) await this.storeHandoff(handoffId, session);
+    let handoffSecret: string | undefined;
+    if (handoffId) {
+      if (!isHandoffChallenge(handoffChallenge))
+        throw new BadRequestException(
+          'Please update the TaskBuddy app to sign in with Google.',
+        );
+      handoffSecret = await this.storeHandoff(
+        handoffId,
+        handoffChallenge,
+        session,
+      );
+    }
 
-    return { appRedirect, handoffId, session };
+    return { appRedirect, handoffId, handoffSecret, session };
   }
 
   /**
