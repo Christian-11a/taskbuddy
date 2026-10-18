@@ -13,11 +13,12 @@ let db;
 const q = async (sql, params = []) => (await db.query(sql, params)).rows;
 const balance = async (id) =>
   Number((await q('select wallet_available_balance($1) as b', [id]))[0].b);
-const credit = (id, amount) =>
+// Old enough by default that 0073's grace period for fresh payments is over.
+const credit = (id, amount, ageMinutes = 30) =>
   q(
-    `insert into wallet_transactions (profile_id, direction, kind, status, amount, title)
-     values ($1, 'credit', 'topup', 'completed', $2, 'Payment')`,
-    [id, amount],
+    `insert into wallet_transactions (profile_id, direction, kind, status, amount, title, created_at)
+     values ($1, 'credit', 'topup', 'completed', $2, 'Payment', now() - make_interval(mins => $3))`,
+    [id, amount, ageMinutes],
   );
 
 beforeEach(async () => {
@@ -41,6 +42,21 @@ it('refunds a client balance to the original payment method', async () => {
   );
   assert.equal(row.withdrawal_destination, 'Original payment method');
   assert.match(row.review_note, /^SIM-/);
+});
+
+it('leaves a fresh client payment for its hold instead of refunding it (0073)', async () => {
+  const before = await balance(CLIENT);
+  await credit(CLIENT, 800, 1);
+  assert.equal((await q('select pass_through_balances($1) as n', [CLIENT]))[0].n, 0);
+  assert.equal(await balance(CLIENT), before + 800);
+  // Past the grace period an unused payment goes back as before.
+  await q(
+    `update wallet_transactions set created_at = now() - interval '20 minutes'
+      where profile_id = $1 and direction = 'credit' and amount = 800`,
+    [CLIENT],
+  );
+  assert.equal((await q('select pass_through_balances($1) as n', [CLIENT]))[0].n, 1);
+  assert.equal(await balance(CLIENT), before);
 });
 
 it('holds a provider payout until an account is linked, then sends it there', async () => {

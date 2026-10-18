@@ -103,3 +103,31 @@ it('accepts a schedule change and updates the job',async()=>{
  await q(`select job_change_decide($1,$2,'accepted')`,[request[0].id,provider]);
  assert.equal(new Date((await q(`select scheduled_at from jobs where id=$1`,[id]))[0].scheduled_at).toISOString(),when);
 });
+it('refuses to hold a price difference the client no longer has (0073)',async()=>{
+ const id=await job(1,'assigned');
+ await q(`insert into escrow_transactions(job_id,client_id,provider_id,amount,status) values($1,$2,$3,1000,'held')`,[id,client,provider]);
+ const r=await q(`select id from job_change_propose($1,$2,'price',null,1200,'More materials needed')`,[id,provider]);
+ await q(`select * from job_change_decide($1,$2,'accepted')`,[r[0].id,client]);
+ // No credit for the difference (e.g. a sweep already refunded it).
+ await refusal(`select job_change_apply_payment($1,200)`,[r[0].id],'TB402');
+ assert.equal(Number((await q(`select amount from escrow_transactions where job_id=$1`,[id]))[0].amount),1000);
+ assert.equal(Number((await q(`select wallet_available_balance($1) as b`,[client]))[0].b),0);
+});
+it('re-holds a cancelled hire for a different provider at the current price (0073)',async()=>{
+ const other='44444444-4444-4444-4444-444444444444';
+ await q(`insert into auth.users(id,email,raw_user_meta_data) values($1,'p2@test.com',$2)`,[other,JSON.stringify({role:'provider',full_name:'p2'})]);
+ const id=await job(1);
+ await q(`insert into wallet_transactions(profile_id,direction,kind,status,amount,title) values($1,'credit','topup','completed',1000,'Payment')`,[client]);
+ await q(`select escrow_place_hold($1,$2)`,[id,provider]);
+ // The first hire falls through: the hold is cancelled and refunded.
+ const [e]=await q(`select id from escrow_transactions where job_id=$1`,[id]);
+ await q(`select escrow_settle($1,'held','cancelled',0,'Refund — hire failed')`,[e.id]);
+ await q(`update jobs set budget=1100 where id=$1`,[id]);
+ await q(`insert into wallet_transactions(profile_id,direction,kind,status,amount,title) values($1,'credit','topup','completed',1100,'Payment')`,[client]);
+ const held=(await q(`select escrow_place_hold($1,$2) as r`,[id,other]))[0].r;
+ assert.equal(held.placed,true);
+ const [row]=await q(`select provider_id,amount,status from escrow_transactions where job_id=$1`,[id]);
+ assert.deepEqual({provider:row.provider_id,amount:Number(row.amount),status:row.status},{provider:other,amount:1100,status:'held'});
+ // A live hold still belongs to its provider.
+ await refusal(`select escrow_place_hold($1,$2)`,[id,provider],'TB409');
+});
