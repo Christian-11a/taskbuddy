@@ -1,5 +1,5 @@
 /** Local-only receiving ledger. Never imported by the production API. */
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, promoteAdmins } from './harness.mjs';
 export const PROVIDER = '22222222-2222-2222-2222-222222222222';
 export const ADMIN = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 export const DESTINATION = 'SIM-RECEIVER-001';
@@ -9,6 +9,7 @@ export async function createSimulator() {
     await db.query(`insert into auth.users (id,email,raw_user_meta_data) values ($1,$2,$3)`,
       [id, `${id}@simulation.test`, JSON.stringify({role, full_name: 'SIMULATED account'})]);
   }
+  await promoteAdmins(db);
   await db.query(`insert into wallet_transactions (profile_id,direction,kind,status,amount,title)
     values ($1,'credit','topup','completed',1000,'SIMULATED funding — no real charge')`, [PROVIDER]);
   await db.exec(`create schema payout_demo;

@@ -5,7 +5,7 @@
  */
 import { before, after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration } from './harness.mjs';
+import { migratedDatabase, readMigration, promoteAdmins } from './harness.mjs';
 
 let db;
 let seq = 0;
@@ -24,6 +24,7 @@ before(async () => {
     CLIENT,
     JSON.stringify({ role: 'client', full_name: 'Client' }),
   ]);
+  await promoteAdmins(db);
 });
 after(async () => {
   await db.close();

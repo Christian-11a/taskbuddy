@@ -91,3 +91,14 @@ export async function migratedDatabase() {
 /** Approved, non-expiring credential: with identity_verified it makes a provider verified (0068). Params: provider id, category id. */
 export const APPROVED_CREDENTIAL_SQL =
   "insert into provider_credentials(provider_id,category_id,credential_type,title,issuer,document_path,status) values ($1::uuid,$2::smallint,'tesda_nc','NC II','TESDA',$1::uuid::text||'/'||gen_random_uuid()::text||'.png','approved')";
+
+/**
+ * Promotes fixture users whose sign-up metadata asked for 'admin'. Since 0070
+ * sign-up can only choose client or provider; production admins are promoted
+ * by the service role (POST /admin/admins), which this mirrors.
+ */
+export async function promoteAdmins(db) {
+  await db.query(`update public.profiles p set role = 'admin'
+    from auth.users u
+    where u.id = p.id and u.raw_user_meta_data ->> 'role' = 'admin'`);
+}

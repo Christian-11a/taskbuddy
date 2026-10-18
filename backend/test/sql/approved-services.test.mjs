@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
+import { migratedDatabase, readMigration, APPROVED_CREDENTIAL_SQL, promoteAdmins } from './harness.mjs';
 let db, primaryRequest;
 const client = '11111111-1111-1111-1111-111111111111';
 const provider = '22222222-2222-2222-2222-222222222222';
@@ -17,6 +17,7 @@ before(async () => {
       id,
       JSON.stringify({ role, full_name: role }),
     ]);
+  await promoteAdmins(db);
   await query('update profiles set latitude=14.6, longitude=121 where id=$1', [
     provider,
   ]);

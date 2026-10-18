@@ -1,6 +1,6 @@
 import { beforeEach, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
+import { migratedDatabase, APPROVED_CREDENTIAL_SQL, promoteAdmins } from './harness.mjs';
 let db;
 const client='11111111-1111-1111-1111-111111111111';
 const provider='22222222-2222-2222-2222-222222222222';
@@ -13,6 +13,7 @@ beforeEach(async()=>{
  await q(`alter table jobs enable trigger guard_provider_booking_capacity`);
  for(const [id,role] of [[client,'client'],[provider,'provider'],[admin,'admin']])
   await q(`insert into auth.users(id,email,raw_user_meta_data) values($1,$2,$3)`,[id,`${role}@test.com`,JSON.stringify({role,full_name:role})]);
+ await promoteAdmins(db);
  await q(`insert into provider_profiles(profile_id,category_id,bio,identity_verified) values($1,1,'Careful Lipa plumbing and repair service.',true)`,[provider]);
  await q(APPROVED_CREDENTIAL_SQL,[provider,1]);
 });
