@@ -147,6 +147,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0067_lock_commission_rate.sql` | `escrow_transactions.commission_rate` is stored at hire and used at release; the database computes the fee from it. Held escrows are backfilled with the current rate. |
    | `0068` | Reserved for the certificate-required verification PR. |
    | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
+   | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
 
    On the linked project, 0001–0052 are recorded in the migration history.
    Later migrations were applied but not all are recorded there (0060 and
