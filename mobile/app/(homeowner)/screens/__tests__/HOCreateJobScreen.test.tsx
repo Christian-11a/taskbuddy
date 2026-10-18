@@ -414,6 +414,32 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     expect(screen.queryByPlaceholderText('0.00')).toBeNull();
   });
 
+  it('changing urgency after choosing a tier clears the tier, and Next waits for the new prices', async () => {
+    await openBudgetStep();
+    fireEvent.press(await screen.findByTestId('price-option-standard'));
+    expect(screen.getByTestId('price-option-standard').props.accessibilityState?.selected).toBe(true);
+
+    let resolveNext!: (value: { options: typeof PRICE_OPTIONS }) => void;
+    (api.estimatePrice as jest.Mock).mockReturnValueOnce(new Promise((resolve) => { resolveNext = resolve; }));
+    fireEvent.press(screen.getByText('Urgent'));
+
+    // The old prices and the tier picked from them are gone while the new estimate loads.
+    expect(screen.queryByTestId('price-option-standard')).toBeNull();
+    expect(screen.queryByText('₱1,500.00')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.queryByTestId('create-job-review')).toBeNull();
+
+    await act(async () => resolveNext({ options: PRICE_OPTIONS }));
+
+    expect(await screen.findByTestId('price-option-standard')).toBeTruthy();
+    expect(screen.getByTestId('price-option-standard').props.accessibilityState?.selected).toBeFalsy();
+    expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
+    fireEvent.press(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Please pick a price for this job.')).toBeTruthy();
+    expect(screen.queryByTestId('create-job-review')).toBeNull();
+  });
+
   it('refuses an address shorter than 5 characters, before it is checked with the geocoder', async () => {
     (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
     render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
@@ -521,29 +547,89 @@ describe('HOCreateJobScreen — back and exit', () => {
     expect(onBack).not.toHaveBeenCalled();
   });
 
-  it('after the first step the footer has Next alone: the header arrow is the one way back', async () => {
-    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
-    await screen.findByText('Location confirmed');
-    fireEvent.press(screen.getByText('Next'));
-    await screen.findByText('Fix leaking faucet');
+  it('step 1 has Next alone, full width: no footer Back', async () => {
+    render(<HOCreateJobScreen onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Plumbing');
 
-    expect(screen.queryByText('Back')).toBeNull();
     expect(screen.queryByLabelText('Back to the previous step')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Previous step' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Next' })).toBeTruthy();
   });
 
-  it('the header arrow goes back a step too, and is announced as going back', async () => {
+  it('from step 2 the footer Back goes back a step and does not leave the form', async () => {
     const onBack = jest.fn();
     render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
     await screen.findByText('Location confirmed');
     fireEvent.press(screen.getByText('Next'));
     await screen.findByText('Fix leaking faucet');
 
-    fireEvent.press(screen.getByRole('button', { name: 'Previous step' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Back to the previous step' }));
 
     expect(screen.getByText('Where is the job?')).toBeTruthy();
     expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('the header X is labelled Close on every step and never steps back', async () => {
+    const onBack = jest.fn();
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+
+    expect(screen.queryByRole('button', { name: 'Previous step' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+
+    expect(screen.getByText('Discard this job?')).toBeTruthy();
+    expect(screen.getByText('Fix leaking faucet')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('the header X on step 2 with progress asks to discard; Discard leaves', async () => {
+    const onBack = jest.fn();
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={onBack} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByText('Fix leaking faucet');
+
+    fireEvent.press(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByText('Discard this job?')).toBeTruthy();
+    expect(onBack).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByLabelText('Discard'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('Next with an empty description scrolls the form to it and does not advance', async () => {
+    const scrollTo = jest.spyOn(ScrollView.prototype, 'scrollTo');
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(await screen.findByText('Fix leaking faucet'));
+    fireEvent.changeText(screen.getByPlaceholderText('Describe the job in detail...'), '');
+    scrollTo.mockClear();
+    focus.mockClear();
+
+    fireEvent.press(screen.getByText('Next'));
+
+    expect(await screen.findByText(/Description must be at least/)).toBeTruthy();
+    expect(scrollTo).toHaveBeenCalled();
+    expect(focus).toHaveBeenCalled();
+    expect(screen.getByText('What needs doing?')).toBeTruthy();
+    scrollTo.mockRestore();
+    focus.mockRestore();
+  });
+
+  it('Next with an empty address focuses the address field', async () => {
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    fireEvent.changeText(screen.getByTestId('create-job-address'), '');
+    focus.mockClear();
+
+    fireEvent.press(screen.getByText('Next'));
+
+    expect(focus.mock.instances[0]).toMatchObject({ props: { testID: 'create-job-address' } });
+    focus.mockRestore();
   });
 
   it('on the first step, back asks before discarding a job with a service chosen', async () => {
@@ -597,18 +683,18 @@ describe('HOCreateJobScreen — back and exit', () => {
     expect(screen.queryByText('Discard this job?')).toBeNull();
   });
 
-  it('Exit job form on the first step behaves like back there: asks with progress, leaves without', async () => {
+  it('Close on the first step asks with progress and leaves without', async () => {
     const onBack = jest.fn();
     const { unmount } = render(<HOCreateJobScreen onBack={onBack} onSuccess={jest.fn()} />);
     await screen.findByText('Plumbing');
-    fireEvent.press(screen.getByLabelText('Exit job form'));
+    fireEvent.press(screen.getByLabelText('Close'));
     expect(onBack).toHaveBeenCalledTimes(1);
     unmount();
 
     const withProgress = jest.fn();
     render(<HOCreateJobScreen onBack={withProgress} onSuccess={jest.fn()} />);
     fireEvent.press(await screen.findByText('Plumbing'));
-    fireEvent.press(screen.getByLabelText('Exit job form'));
+    fireEvent.press(screen.getByLabelText('Close'));
 
     expect(screen.getByText('Discard this job?')).toBeTruthy();
     expect(withProgress).not.toHaveBeenCalled();

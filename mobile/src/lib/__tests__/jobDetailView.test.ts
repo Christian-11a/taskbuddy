@@ -450,7 +450,7 @@ describe('homeownerJobView: cancelled', () => {
         tone: 'closed',
         overline: 'CANCELLED',
         title: 'Job cancelled',
-        body: 'Your ₱1,500.00 was returned to your wallet.',
+        body: 'Your refund is being processed. It goes back to your payment method.',
       },
       step: 'cancelled',
       main: { kind: 'postAgain', categoryId: 7 },
@@ -475,13 +475,21 @@ describe('homeownerJobView: cancelled', () => {
       job: hired,
       dispute: dispute({ status: 'resolved', resolution: 'refunded_to_client', resolved_at: at(2026, 9, 8) }),
     });
-    expect(view.card.body).toBe('Your ₱1,500.00 was returned to your wallet.');
+    expect(view.card.body).toBe('Your ₱1,500.00 was refunded to your payment method.');
     expect(view.link).toEqual({ kind: 'viewCase' });
   });
 
-  it('hired, cancelled, no budget: the refund line does not name an amount', () => {
+  it('hired, cancelled, refunded to the client with no budget: names no amount', () => {
+    const view = viewFor({
+      job: { ...hired, budget: null },
+      dispute: dispute({ status: 'resolved', resolution: 'refunded_to_client', resolved_at: at(2026, 9, 8) }),
+    });
+    expect(view.card.body).toBe('Your payment was refunded to your payment method.');
+  });
+
+  it('hired, cancelled, no budget and no complaint: the refund line does not name an amount', () => {
     const view = viewFor({ job: { ...hired, budget: null } });
-    expect(view.card.body).toBe('Your payment was returned to your wallet.');
+    expect(view.card.body).toBe('Your refund is being processed. It goes back to your payment method.');
   });
 
   it('hired, cancelled, complaint reviewed by an admin: no claim about the money, and the case has the outcome', () => {
@@ -502,20 +510,20 @@ describe('homeownerJobView: cancelled', () => {
     expect(view.card.body).toBe('Your payment was settled by an admin review. Open the case for the outcome.');
   });
 
-  it('a resolved complaint with no resolution recorded keeps the refund line', () => {
+  it('a resolved complaint with no resolution recorded says the refund is being processed', () => {
     const view = viewFor({
       job: hired,
       dispute: dispute({ status: 'resolved', resolution: null, resolved_at: at(2026, 9, 8) }),
     });
-    expect(view.card.body).toBe('Your ₱1,500.00 was returned to your wallet.');
+    expect(view.card.body).toBe('Your refund is being processed. It goes back to your payment method.');
   });
 
-  it('a complaint closed without a resolution keeps the refund line', () => {
+  it('a complaint closed without a resolution says the refund is being processed', () => {
     const view = viewFor({
       job: hired,
       dispute: dispute({ status: 'cancelled', resolution: null, resolved_at: at(2026, 9, 8) }),
     });
-    expect(view.card.body).toBe('Your ₱1,500.00 was returned to your wallet.');
+    expect(view.card.body).toBe('Your refund is being processed. It goes back to your payment method.');
   });
 
   it('a released complaint on a job with no budget says only that the payment went to the provider', () => {
@@ -671,10 +679,20 @@ describe('homeownerJobView while disputed', () => {
     expect(v.banner).toEqual({ text: 'A complaint is open. An admin is reviewing it.', action: { kind: 'viewCase' } });
   });
 
+  it('turns the status card amber with a COMPLAINT OPEN overline and keeps its title', () => {
+    const j = job({ status: 'in_progress', assigned_provider_id: 'p', display_status: 'disputed' });
+    const v = homeownerJobView({ ...base, job: j });
+    expect(v.card.tone).toBe('attention');
+    expect(v.card.overline).toBe('COMPLAINT OPEN');
+    expect(v.card.title).toBe('The provider finished all tasks');
+  });
+
   it('keeps the usual actions and no banner when not disputed', () => {
     const j = job({ status: 'in_progress', assigned_provider_id: 'p' });
     const v = homeownerJobView({ ...base, job: j });
     expect(v.main?.kind).toBe('confirmDone');
     expect(v.banner).toBeUndefined();
+    expect(v.card.tone).toBe('action');
+    expect(v.card.overline).toBe('YOUR TURN');
   });
 });

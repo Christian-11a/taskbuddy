@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPChatScreen from '../SPChatScreen';
 import { api } from '../../../../src/lib/api';
 
@@ -11,6 +11,7 @@ jest.mock('../../../../src/lib/api', () => ({
     streamMessages: jest.fn(),
     markConversationRead: jest.fn(),
     getJob: jest.fn(),
+    sendMessage: jest.fn(),
   },
   mergeMessageById: (list: { id: string }[]) => list,
 }));
@@ -60,4 +61,34 @@ it('a conversation that fails to open shows Try again, which opens it', async ()
   expect(await screen.findByText('Ana Cruz')).toBeTruthy();
   expect(api.openConversation).toHaveBeenCalledTimes(2);
   expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+});
+
+it('a failed text send keeps the typed text and shows the error, which clears when typing resumes', async () => {
+  (api.sendMessage as jest.Mock).mockRejectedValueOnce(new Error('Message blocked by server'));
+  render(<SPChatScreen jobId="job-2" onBack={jest.fn()} onViewJob={jest.fn()} />);
+  await screen.findByText('Ana Cruz');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Still here');
+  fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+
+  const line = await screen.findByText('Message blocked by server');
+  expect(line.props.accessibilityLiveRegion).toBe('polite');
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+  expect(screen.getByPlaceholderText('Message…').props.value).toBe('Still here');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Still here!');
+  await waitFor(() => expect(screen.queryByText('Message blocked by server')).toBeNull());
+});
+
+it('a failed text send with no usable message shows the fallback and keeps the text', async () => {
+  (api.sendMessage as jest.Mock).mockRejectedValueOnce('offline');
+  render(<SPChatScreen jobId="job-2" onBack={jest.fn()} onViewJob={jest.fn()} />);
+  await screen.findByText('Ana Cruz');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Retry me');
+  fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+
+  expect(await screen.findByText('Message not sent. Check your connection and try again.')).toBeTruthy();
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+  expect(screen.getByPlaceholderText('Message…').props.value).toBe('Retry me');
 });

@@ -27,6 +27,9 @@ const callbacks = {
   onOpenDispute: jest.fn(),
   onOpenServices: jest.fn(),
 };
+function openMenu() {
+  fireEvent.press(screen.getByRole('button', { name: 'More actions' }));
+}
 const row = {
   id: 'n1',
   type: 'message',
@@ -50,6 +53,7 @@ const older = {
 type TestRow = Omit<typeof row, 'read_at' | 'data'> & {
   read_at: string | null;
   data: Record<string, string> | null;
+  target?: { screen: string };
 };
 
 function setNotifications(notifications: TestRow[], unreadCount = notifications.filter((n) => !n.read_at).length) {
@@ -96,36 +100,91 @@ it('opens My Services for a provider request decision', async () => {
   });
   expect(callbacks.onOpenServices).toHaveBeenCalled();
 });
+it('opens verification for a verification_update row whose target is the verification screen', async () => {
+  const onOpenVerification = jest.fn();
+  setNotifications([
+    {
+      ...row,
+      id: 'n5',
+      type: 'verification_update',
+      title: 'Verification approved',
+      body: 'Your ID has been verified. Your profile now shows a verified badge.',
+      data: {},
+      target: { screen: 'verification' },
+    },
+  ]);
+  render(<SPNotificationsScreen {...callbacks} onOpenVerification={onOpenVerification} />);
+  await act(async () => {
+    fireEvent.press(screen.getByText('Verification approved'));
+  });
+  expect(onOpenVerification).toHaveBeenCalledTimes(1);
+  expect(callbacks.onOpenJob).not.toHaveBeenCalled();
+  expect(callbacks.onOpenChat).not.toHaveBeenCalled();
+  expect(callbacks.onOpenServices).not.toHaveBeenCalled();
+});
 it('shows provider read failures instead of leaving an unhandled rejection', async () => {
   (api.markAllNotificationsRead as jest.Mock).mockRejectedValue(
     new Error('Write failed'),
   );
   render(<SPNotificationsScreen {...callbacks} />);
+  openMenu();
   await act(async () => {
-    fireEvent.press(screen.getByText('Mark all read'));
+    fireEvent.press(screen.getByRole('button', { name: 'Mark all read' }));
   });
   expect(showToast).toHaveBeenCalledWith('Write failed', 'error');
 });
 
 describe('notification list layout', () => {
   it.each([HONotificationsScreen, SPNotificationsScreen])(
-    'splits the rows into Today and Earlier',
+    'splits the rows into Today, This week and Earlier',
     (Screen) => {
-      setNotifications([row, older]);
+      const old = { ...older, id: 'n9', title: 'Month-old offer', created_at: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString() };
+      setNotifications([row, older, old]);
       render(<Screen {...callbacks} />);
       expect(screen.getByText('Today')).toBeTruthy();
+      expect(screen.getByText('This week')).toBeTruthy();
       expect(screen.getByText('Earlier')).toBeTruthy();
       expect(screen.getByText('Old offer')).toBeTruthy();
+      expect(screen.getByText('Month-old offer')).toBeTruthy();
     },
   );
 
   it.each([HONotificationsScreen, SPNotificationsScreen])(
-    'shows the unread count beside Mark all read',
+    'leaves out a group that has no rows',
     (Screen) => {
+      setNotifications([row]);
+      render(<Screen {...callbacks} />);
+      expect(screen.getByText('Today')).toBeTruthy();
+      expect(screen.queryByText('This week')).toBeNull();
+      expect(screen.queryByText('Earlier')).toBeNull();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'keeps the unread count and moves Mark all read into the header menu',
+    async (Screen) => {
       setNotifications([row, older]);
       render(<Screen {...callbacks} />);
       expect(screen.getByText('1 unread')).toBeTruthy();
-      expect(screen.getByText('Mark all read')).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+      openMenu();
+      await act(async () => {
+        fireEvent.press(screen.getByRole('button', { name: 'Mark all read' }));
+      });
+      expect(api.markAllNotificationsRead).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+    },
+  );
+
+  it.each([HONotificationsScreen, SPNotificationsScreen])(
+    'the menu offers only Clear all once everything is read',
+    (Screen) => {
+      setNotifications([older]);
+      render(<Screen {...callbacks} />);
+      openMenu();
+      expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+      fireEvent.press(screen.getByRole('button', { name: 'Clear all notifications' }));
+      expect(screen.getByText('Clear all notifications?')).toBeTruthy();
     },
   );
 
@@ -346,7 +405,7 @@ describe('notification select and delete', () => {
 
       expect(screen.getByText('1 selected')).toBeTruthy();
       expect(callbacks.onOpenChat).not.toHaveBeenCalled();
-      expect(screen.queryByRole('button', { name: 'Mark all read' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
       fireEvent.press(screen.getByRole('checkbox', { name: 'Second message' }));
       expect(screen.getByText('2 selected')).toBeTruthy();
       fireEvent.press(screen.getByRole('checkbox', { name: 'New message' }));
@@ -398,12 +457,12 @@ describe('notification select and delete', () => {
 
       fireEvent.press(screen.getByRole('button', { name: 'Cancel selection' }));
       expect(screen.queryByText(/selected$/)).toBeNull();
-      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
 
       longPress('New message');
       fireEvent.press(screen.getByRole('checkbox', { name: 'New message' }));
       expect(screen.queryByText(/selected$/)).toBeNull();
-      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
     },
   );
 
@@ -426,7 +485,7 @@ describe('notification select and delete', () => {
       expect(api.deleteNotification).toHaveBeenCalledWith('n1');
       expect(api.deleteNotification).toHaveBeenCalledWith('n3');
       expect(showToast).toHaveBeenCalledWith('Deleted 2 notifications', 'success');
-      expect(screen.getByRole('button', { name: 'Mark all read' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'More actions' })).toBeTruthy();
     },
   );
 

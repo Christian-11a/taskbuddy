@@ -64,6 +64,7 @@ import HOEditProfileScreen from './app/(homeowner)/screens/HOEditProfileScreen';
 import HOSettingsScreen from './app/(homeowner)/screens/HOSettingsScreen';
 import HODisputeFilingScreen from './app/(homeowner)/screens/HODisputeFilingScreen';
 import HODisputeStatusScreen from './app/(homeowner)/screens/HODisputeStatusScreen';
+import HOPaymentsScreen from './app/(homeowner)/screens/HOPaymentsScreen';
 
 // ── Provider screens ──────────────────────────────────────────────────────────
 import SPHomeScreen from './app/(provider)/screens/SPHomeScreen';
@@ -76,6 +77,7 @@ import SPNotificationsScreen from './app/(provider)/screens/SPNotificationsScree
 import SPEditProfileScreen from './app/(provider)/screens/SPEditProfileScreen';
 import SPVerificationScreen from './app/(provider)/screens/SPVerificationScreen';
 import SPPayoutAccountScreen from './app/(provider)/screens/SPPayoutAccountScreen';
+import SPEarningsScreen from './app/(provider)/screens/SPEarningsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 import SPPortfolioScreen from './app/(provider)/screens/SPPortfolioScreen';
 import SPCredentialsScreen from './app/(provider)/screens/SPCredentialsScreen';
@@ -799,7 +801,7 @@ function AppFlow() {
     if (hoScreen === 'Job Detail') {
       return wrap(
         <ScreenFrame bottomColor={V6Colors.surface}>
-          <HOJobDetailScreen jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
+          <HOJobDetailScreen key={hoSelectedId ?? 'none'} jobId={hoSelectedId} onBack={hoBack} onNavigate={hoNavigate} />
         </ScreenFrame>
       );
     }
@@ -849,6 +851,13 @@ function AppFlow() {
       return wrap(
         <ScreenFrame>
           <HODisputeStatusScreen jobId={hoSelectedId} onBack={hoBack} onMessage={() => hoNavigate('Chat', hoSelectedId ?? undefined)} />
+        </ScreenFrame>
+      );
+    }
+    if (hoScreen === 'Payments') {
+      return wrap(
+        <ScreenFrame>
+          <HOPaymentsScreen onBack={hoBack} onOpenJob={(jobId) => hoNavigate('Job Detail', jobId)} />
         </ScreenFrame>
       );
     }
@@ -959,6 +968,7 @@ function AppFlow() {
     return wrap(
       <ScreenFrame bottomColor={V6Colors.surface}>
         <SPJobDetailScreen
+          key={spJobId ?? 'none'}
           jobId={spJobId}
           onBack={spBack}
           onNavigate={spNavigate}
@@ -1062,6 +1072,13 @@ function AppFlow() {
     return wrap(
       <ScreenFrame bottomColor={V6Colors.surface}>
         <SPSkillRequestScreen onBack={spBack} />
+      </ScreenFrame>
+    );
+  }
+  if (spScreen === 'Earnings') {
+    return wrap(
+      <ScreenFrame bottomColor={V6Colors.surface}>
+        <SPEarningsScreen onBack={spBack} onOpenJob={(jobId) => spNavigate('Job Detail', jobId)} />
       </ScreenFrame>
     );
   }
