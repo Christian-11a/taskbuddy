@@ -156,9 +156,14 @@ export class AuthController {
   googleAuthorize(
     @Query('app_redirect') appRedirect: string,
     @Query('handoff') handoff?: string,
+    @Query('handoff_challenge') handoffChallenge?: string,
   ) {
     if (!appRedirect) throw new BadRequestException('app_redirect is required');
-    const url = this.authService.buildGoogleAuthUrl(appRedirect, handoff);
+    const url = this.authService.buildGoogleAuthUrl(
+      appRedirect,
+      handoff,
+      handoffChallenge,
+    );
     return { url, statusCode: 302 };
   }
 
@@ -180,20 +185,24 @@ export class AuthController {
     @Res() res: Response,
   ) {
     try {
-      const { appRedirect, handoffId, session } =
+      const { appRedirect, handoffId, handoffSecret, session } =
         await this.authService.handleGoogleCallback(code, state);
 
       // With a handoff the link carries only the id and the app claims the
       // session over HTTPS, which survives a redirect that never arrives or an
       // app that restarts on it. Without one — an older build — the tokens
       // still ride on the link, because that build has no way to claim them.
-      const params = handoffId
-        ? new URLSearchParams({ handoff: handoffId })
-        : new URLSearchParams({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            expires_at: String(session.expires_at),
-          });
+      const params =
+        handoffId && handoffSecret
+          ? new URLSearchParams({
+              handoff: handoffId,
+              handoff_secret: handoffSecret,
+            })
+          : new URLSearchParams({
+              access_token: session.access_token,
+              refresh_token: session.refresh_token,
+              expires_at: String(session.expires_at),
+            });
       return this.sendToApp(res, appendRedirectParams(appRedirect, params));
     } catch (err: unknown) {
       // Try to send the error back to the app rather than leaving the user
@@ -238,7 +247,11 @@ export class AuthController {
   @HttpCode(200)
   @ThrottleAuth()
   claimGoogleSession(@Body() dto: ClaimGoogleSessionDto) {
-    return this.authService.claimGoogleHandoff(dto.handoff_id);
+    return this.authService.claimGoogleHandoff(
+      dto.handoff_id,
+      dto.handoff_secret,
+      dto.verifier,
+    );
   }
 
   /** Mails a recovery code. Always 200, even for an address with no account. */

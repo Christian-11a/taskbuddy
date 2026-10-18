@@ -218,3 +218,78 @@ describe('AuthController browser admin endpoints', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 });
+
+describe('AuthController Google handoff (0071)', () => {
+  function respond() {
+    const res = {
+      setHeader: jest.fn(),
+      type: jest.fn().mockReturnThis(),
+      send: jest.fn(),
+      redirect: jest.fn(),
+    };
+    return res;
+  }
+
+  it('sends the handoff id and its secret, never tokens, on the deep link', async () => {
+    const authService = {
+      handleGoogleCallback: jest.fn().mockResolvedValue({
+        appRedirect: 'taskbuddy://',
+        handoffId: 'handoff-0123456789abcdef',
+        handoffSecret: 'secret-value',
+        session: {
+          access_token: 'access',
+          refresh_token: 'refresh',
+          expires_at: 1,
+        },
+      }),
+    } as unknown as AuthService;
+    const res = respond();
+
+    await new AuthController(authService).googleCallback(
+      'code',
+      'state',
+      res as never,
+    );
+
+    const page = String(res.send.mock.calls[0][0]);
+    expect(page).toContain('handoff=handoff-0123456789abcdef');
+    expect(page).toContain('handoff_secret=secret-value');
+    expect(page).not.toContain('access');
+  });
+
+  it('passes the challenge through to the authorize URL builder', () => {
+    const buildGoogleAuthUrl = jest
+      .fn()
+      .mockReturnValue('https://accounts.test');
+    const controller = new AuthController({
+      buildGoogleAuthUrl,
+    } as unknown as AuthService);
+
+    controller.googleAuthorize('taskbuddy://', 'handoff-id', 'c'.repeat(64));
+
+    expect(buildGoogleAuthUrl).toHaveBeenCalledWith(
+      'taskbuddy://',
+      'handoff-id',
+      'c'.repeat(64),
+    );
+  });
+
+  it('requires all three parts to claim', async () => {
+    const claimGoogleHandoff = jest.fn().mockResolvedValue({ session: {} });
+    const controller = new AuthController({
+      claimGoogleHandoff,
+    } as unknown as AuthService);
+
+    await controller.claimGoogleSession({
+      handoff_id: 'handoff-id',
+      handoff_secret: 'secret',
+      verifier: 'verifier',
+    });
+
+    expect(claimGoogleHandoff).toHaveBeenCalledWith(
+      'handoff-id',
+      'secret',
+      'verifier',
+    );
+  });
+});

@@ -148,6 +148,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0068` | Reserved for the certificate-required verification PR. |
    | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
    | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
+   | `0071_oauth_handoff_binding.sql` | `oauth_handoffs.challenge` and `secret_hash`: a Google sign-in claim needs the app's verifier and the redirect's secret (audit C2). |
 
    On the linked project, 0001–0052 are recorded in the migration history.
    Later migrations were applied but not all are recorded there (0060 and
@@ -328,8 +329,8 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /auth/forgot-password` | `{ email }` → mails a 6-digit code. **Always** `{ success: true }`, even for an unknown address — otherwise it's an email-enumeration oracle |
 | `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}`; the linked project's Email OTP expiry is 3600 seconds. Rejected-code logs include Supabase status/code/message without recording the token or new password — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
 | `POST /auth/send-email-otp` | `{ email }` → mails the signup confirmation code. **Always** `{ success: true }` — same enumeration reasoning as forgot-password |
-| `GET /auth/google/authorize` · `GET /auth/google/callback` | server-side Google OAuth; the callback hands the app a single-use code |
-| `POST /auth/google/claim` | exchange that code for a session (see `docs/google-auth-setup.md`) |
+| `GET /auth/google/authorize?app_redirect=&handoff=&handoff_challenge=` · `GET /auth/google/callback` | server-side Google OAuth. With a `handoff`, `handoff_challenge` (hex sha256 of a verifier the app keeps) is required; the callback parks the session and redirects with `handoff` and a one-time `handoff_secret` (0071) |
+| `POST /auth/google/claim` | `{ handoff_id, handoff_secret, verifier }` → `{ session }`; all three must match, single use, 5 minutes (see `docs/google-auth-setup.md`) |
 | `POST /auth/complete-google-profile` 🔒 | role and details for a new Google account |
 | `POST /auth/accept-terms` 🔒 | `{ version }`: records the Terms version accepted (migration 0055) |
 | `POST /auth/verify-email-otp` | `{ email, token }` → `{ user, session }`. Confirms the address with Supabase Auth and stamps `profiles.email_verified_at`. Needs the **Confirm signup** template to emit `{{ .Token }}` — see [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |

@@ -1153,13 +1153,17 @@ export const api = {
   async getGoogleAuthorizeUrl(
     appRedirect: string,
     handoffId?: string,
+    handoffChallenge?: string,
   ): Promise<string> {
     // Async so sign-in cannot open the browser against one backend while the
     // rest of the app has resolved to the other.
     const baseUrl = await ensureApiBaseUrl();
     const encoded = encodeURIComponent(appRedirect);
     const handoff = handoffId
-      ? `&handoff=${encodeURIComponent(handoffId)}`
+      ? `&handoff=${encodeURIComponent(handoffId)}` +
+        (handoffChallenge
+          ? `&handoff_challenge=${encodeURIComponent(handoffChallenge)}`
+          : '')
       : '';
     return `${baseUrl}/auth/google/authorize?app_redirect=${encoded}${handoff}`;
   },
@@ -1168,14 +1172,15 @@ export const api = {
    * Collects the session the OAuth callback parked under `handoffId`
    * (`POST /auth/google/claim`).
    *
-   * Unauthenticated — the id is the credential — single use, and good for five
+   * Unauthenticated — the id, the redirect's secret and this app's verifier
+   * together are the credential (backend 0071) — single use, and good for five
    * minutes. This, not the deep link, is how a Google session reaches the app:
    * a claim can be retried, a redirect that never arrives cannot.
    */
-  claimGoogleSession(handoffId: string) {
+  claimGoogleSession(handoffId: string, handoffSecret: string, verifier: string) {
     return request<{ session: Session }>('/auth/google/claim', {
       method: 'POST',
-      body: { handoff_id: handoffId },
+      body: { handoff_id: handoffId, handoff_secret: handoffSecret, verifier },
     });
   },
 
