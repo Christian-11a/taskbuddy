@@ -15,13 +15,12 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check (2026-10-16):** every migration through 0052 is recorded in
-> the linked Supabase project's migration history, and the tables, columns,
-> indexes, functions and enum values added by 0039–0052 were confirmed present.
-> The Render API serves the 0046–0052 contracts, and 62 deployed acceptance
-> checks passed the same day ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)). `/health` does not identify
-> the deployed commit yet; it was confirmed by probing the new routes. The last
-> ML check returned HTTP 429.
+> **Release check (2026-10-18):** migrations through **0064** are applied to
+> the linked Supabase project. Some (0053–0061, 0063) were applied outside the
+> migration history, so check the objects themselves rather than
+> `supabase migration list`. Render serves upstream `main`; `/health` reports
+> the deployed commit in its `commit` field. The ML service check has been
+> returning HTTP 429.
 
 ## Architecture
 
@@ -70,7 +69,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
 1. Create a project at [supabase.com](https://supabase.com).
 2. Apply **every** migration in [`supabase/migrations/`](./supabase/migrations) **in order**
-   (0001 → 0050), either by pasting each file into the SQL Editor or with the CLI:
+   (0001 → 0064), either by pasting each file into the SQL Editor or with the CLI:
 
    ```bash
    supabase link --project-ref <your-project-ref>
@@ -122,12 +121,12 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0036_admin_handover_queries.sql` | Service-role-only audit/wallet search and exact dashboard/booking counts. **Apply before deploying the updated API.** |
    | `0037_fulltest_remediation.sql` | Approved-skill eligibility, job-task and dispute safeguards, chat notifications, and escrow protection. Applied to the linked project on 2026-10-02; its earlier remote history mismatch has since been reconciled. |
    | `0038_admin_queue_search.sql` | Service-request search with matching pagination totals, booking-title search/counts, and a service-role-only password-presence check for Google-only mobile accounts. Applied to the linked project; apply before deploying this API to another project. |
-   | `0039`–`0045` | Dispute, warranty, portfolio, and wallet safeguards; see the migration files for order and effects. |
-   | `0046_early_payment_release.sql` | Atomic client-authorized release of a completed job's held payment. |
+   | `0039`–`0045` | Dispute, warranty, portfolio, and wallet safeguards; see the migration files for order and effects. The warranty hold was later replaced by 0060 and the wallet retired by 0056. |
+   | `0046_early_payment_release.sql` | Atomic client-authorized release of a completed job's held payment. *Disabled by 0064.* |
    | `0047_shared_platform_identity.sql` | Shared platform name/support email with versioned admin updates and audit. |
    | `0048_job_capacity.sql` | Server-enforced active-job, pending-application and booking limits. |
    | `0049_job_change_requests.sql` | Participant-approved schedule and wallet-funded price changes. |
-   | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. |
+   | `0050_provider_release_requests.sql` | Rate-limited provider requests for early payment release. *Disabled by 0064.* |
    | `0051_admin_alert_notification_type.sql` | Adds the notification type for persistent admin inbox alerts. Apply before 0052. |
    | `0052_web_admin_handoffs.sql` | Structured case recipients/evidence requests, admin inbox events, notification broadcast delivery counters, and dismissal state. |
    | `0053_price_tiers.sql` | Category base prices, urgency price multipliers, per-task effort and the job's chosen price tier. **Apply before deploying the updated API.** |
@@ -139,11 +138,14 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0059_photo_evidence.sql` | Photo evidence: up to 6 photos on complaints and each statement/appeal (private `dispute-evidence` bucket), and 1–4 proof photos required to tick a checklist task done (`task-proof` bucket). |
    | `0060_release_on_completion.sql` | No holding period: a job's payment is released as soon as the client confirms completion (an open complaint still blocks release). Replaces the 72-hour warranty from 0040. |
    | `0061_chat_alerts.sql` | Chat stops writing to `notifications`. Adds unread counts per conversation (`chat_unread_counts`) and a per-conversation push throttle (`claim_chat_push`). |
+   | `0062_service_radius_bounds.sql` | Clamps `provider_profiles.service_radius_km` into 1–50 km and adds a CHECK for it (the API validates the same bounds). |
+   | `0063_job_dispute_state.sql` | `jobs.dispute_state` (`open` / `resolved`), kept in sync with `disputes` by a trigger. The API derives `display_status` (`disputed` while a dispute is open) from it. |
+   | `0064_disable_early_release.sql` | Disables the early-release RPCs from 0046 and 0050 (they raise `TB409`); rows are kept. **Apply before deploying the API.** |
 
-   The linked project's migration history has been reconciled after checking
-   the existing schema. Migrations 0046–0052 were applied in order, and their
-   history entries and database objects were verified. Vault synchronization
-   was skipped. The matching backend API is deployed (verified 2026-10-16).
+   On the linked project, 0001–0052 are recorded in the migration history.
+   Later migrations were applied but not all are recorded there (0060 and
+   0062 are recorded under timestamps). Verify by checking the database
+   objects each file creates.
 
    > Migrations 0008 and 0009 each run `alter type notification_type add value`.
    > Postgres allows this inside a transaction as long as the new value isn't
@@ -158,8 +160,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    > in its own transaction and needs no special handling. Apply **0020 only
    > after 0019**: it depends on the complete jobs, escrow, and admin schema
    > established by the preceding migrations. 0021 has no such ordering
-   > requirement — it's a standalone enum addition — but comes last since
-   > it's the most recently added.
+   > requirement — it's a standalone enum addition.
    >
    > The API code that ships with these migrations reads `job_tasks` on every
    > job query, so **apply 0019 before deploying the API**. Out of order, job
@@ -179,9 +180,10 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
 
    The Storage buckets are created by the migrations themselves
    (`insert into storage.buckets ... on conflict do nothing`), so there is no
-   separate dashboard step. `job-photos` and `avatars` are public-read;
-   `verification-docs` is private and is only ever read through short-lived
-   signed URLs the API generates for admins.
+   separate dashboard step. `job-photos`, `avatars`, `provider-portfolio` and
+   `task-proof` are public-read. `verification-docs`, `chat-attachments`,
+   `provider-credentials` and `dispute-evidence` are private and are only ever
+   read through short-lived signed URLs the API generates.
 
 3. (Development) In Authentication → Providers → Email, consider disabling
    "Confirm email" so `POST /auth/register` returns a session immediately.
@@ -194,6 +196,22 @@ cp .env.example .env    # fill in your Supabase URL + keys (Settings → API)
 npm install
 npm run start:dev       # http://localhost:3000
 ```
+
+Every variable is listed in [`.env.example`](./.env.example):
+
+| Group | Variables | Needed for |
+|---|---|---|
+| Supabase | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | everything |
+| Server | `PORT`, `WEB_CORS_ORIGINS`, `TRUST_PROXY_HOPS`, `PUBLIC_API_URL` | deployment, payment return URLs |
+| ML | `ML_SERVICE_URL` | recommendations |
+| Google OAuth | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `GOOGLE_STATE_SECRET` | Google sign-in |
+| Geocoding | `GEOAPIFY_API_KEY` | address verification, autocomplete, static maps |
+| Xendit | `XENDIT_SECRET_KEY`, `XENDIT_CALLBACK_TOKEN` | pay at hire and payouts (preferred when set) |
+| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_MOBILE_API_VERSION`, `STRIPE_CONNECT_*` | card checkout fallback, Identity, Connect |
+| Push | `EXPO_ACCESS_TOKEN` | Expo push delivery |
+| Scheduling | `CRON_DRIVER`, `CRON_SECRET` | unset runs the in-process `@Cron` sweeps; `pg_cron` lets Postgres (migration 0025) call `POST /internal/tick/{push,recommendations,payments}` with the secret instead |
+
+`RENDER_GIT_COMMIT` is set by Render and reported by `/health`.
 
 `WEB_CORS_ORIGINS` is a comma-separated allowlist for credentialed browser
 requests. Set it explicitly in every externally deployed API environment and
@@ -303,6 +321,10 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `POST /auth/forgot-password` | `{ email }` → mails a 6-digit code. **Always** `{ success: true }`, even for an unknown address — otherwise it's an email-enumeration oracle |
 | `POST /auth/reset-password` | `{ email, token, new_password }` → `{ session }`. Needs the Supabase template to emit `{{ .Token }}`; the linked project's Email OTP expiry is 3600 seconds. Rejected-code logs include Supabase status/code/message without recording the token or new password — see [`docs/password-reset-setup.md`](../docs/password-reset-setup.md) |
 | `POST /auth/send-email-otp` | `{ email }` → mails the signup confirmation code. **Always** `{ success: true }` — same enumeration reasoning as forgot-password |
+| `GET /auth/google/authorize` · `GET /auth/google/callback` | server-side Google OAuth; the callback hands the app a single-use code |
+| `POST /auth/google/claim` | exchange that code for a session (see `docs/google-auth-setup.md`) |
+| `POST /auth/complete-google-profile` 🔒 | role and details for a new Google account |
+| `POST /auth/accept-terms` 🔒 | `{ version }`: records the Terms version accepted (migration 0055) |
 | `POST /auth/verify-email-otp` | `{ email, token }` → `{ user, session }`. Confirms the address with Supabase Auth and stamps `profiles.email_verified_at`. Needs the **Confirm signup** template to emit `{{ .Token }}` — see [`docs/email-otp-setup.md`](../docs/email-otp-setup.md) |
 
 **Profiles & providers**
@@ -310,11 +332,16 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `PATCH /profiles/me` 🔒 | update `full_name, phone, avatar_url, address, city`. A changed `address`/`city` is geocoded server-side and stores `latitude`/`longitude`; if it can't be verified the save is rejected (`400`, or `503` when geocoding is unavailable). An unchanged address still missing coordinates is geocoded best-effort and never blocks the save. Coordinates are never accepted from the client (`BACKEND_SCHEMA.md` §32). `avatar_url` takes either an `avatars` Storage path (converted to a public URL) or an `https://` URL; `""` clears it |
-| `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? }` |
+| `PUT /profiles/me/provider` 🔒 (provider) | `{ category_id, bio (20–400 chars), years_experience?, service_radius_km? (1–50, default 15; migration 0062) }` |
 | `PATCH /profiles/me/provider/availability` 🔒 (provider) | `{ is_available: boolean }` |
 | `DELETE /profiles/me` 🔒 | self-serve account deletion → `204`, or `409 { blockers[] }` while the account still has a balance, a pending withdrawal, escrow held, an open dispute, or a live job. A **soft** delete: the row survives (the ledger, reviews and ML snapshots reference it) with every identifying field scrubbed, and the Auth user is renamed, banned and signed out (migration 0023, `BACKEND_SCHEMA.md` §27.1) |
 | `GET /providers/:id` 🔒 | public provider card (bio, category, rating, completed jobs) |
 | `GET /providers/:id/reviews` 🔒 | reviews for a provider |
+| `GET /providers/:id/work` 🔒 | the provider's completed work |
+| `GET /providers/me/portfolio` · `POST` · `PATCH/DELETE /providers/me/portfolio/:id` 🔒 (provider) | own portfolio items (migration 0044) |
+| `GET /providers/:id/portfolio` 🔒 | a provider's public portfolio |
+| `GET /skill-requests/me` · `POST /skill-requests` · `POST /skill-requests/:id/cancel` 🔒 (provider) | request to offer another service category; an admin approves or rejects it |
+| `GET /geocoding/autocomplete` · `GET /geocoding/reverse` 🔒 | address suggestions (30/min) and reverse geocoding via Geoapify |
 | `GET /categories` | Public list of active categories, `[{ id, name }]`, used by provider sign-up before login. Database errors return 400 rather than an empty list. |
 
 **Jobs**
@@ -328,23 +355,23 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
-| `GET /jobs/:id` 🔒 | job detail; for the job's client and assigned provider it includes `escrow: { status, funding_method } \| null` (null = no payment record yet) |
+| `GET /jobs/:id` 🔒 | job detail; for the job's client and assigned provider it includes `escrow: { status, funding_method } \| null` (null = no payment record yet). Every job read carries `dispute_state` and `display_status` (`disputed` while a dispute is open, otherwise `status`; migration 0063) |
 | `POST /jobs/:id/cancel` 🔒 (client) | any pre-completion state → `cancelled` |
 | `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
 | `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
 | `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done, proof_photo_paths? }` — assigned provider ticks a checklist item; allowed only while `in_progress`. Ticking done needs 1–4 proof photos uploaded to the `task-proof` bucket (migration 0059); un-ticking clears them. Returns the whole job; each task carries `proof_photo_urls` for both sides |
-| `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed` |
+| `POST /jobs/:id/complete` 🔒 (client) | `in_progress` → `completed`; releases the payment to the provider at once unless a complaint is open (migration 0060) |
 | `POST /jobs/:id/recommendations/trigger` 🔒 (client) | manually re-run the recommendation engine |
 
 **Applications**
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/applications` 🔒 (provider) | `{ cover_message? (≤300) }` — one per job |
+| `POST /jobs/:jobId/applications` 🔒 (provider) | `{ cover_message? (≤300) }` — one per job. `403 verification_required` if unverified, `403 payout_account_required` if no payout account is linked; capacity limits answer `409` (0048) |
 | `GET /jobs/:jobId/applications` 🔒 (client) | applicants for own job |
 | `GET /applications/mine` 🔒 (provider) | my applications with job info |
-| `POST /applications/:id/accept` 🔒 (client) | hire this provider — assigns the job, auto-rejects everyone else, and holds the budget in escrow (400 if the wallet can't cover it) |
+| `POST /applications/:id/accept` 🔒 (client) | hire this provider — assigns the job, auto-rejects everyone else. Only for jobs without a price: a priced job answers `400 payment_required` and is hired by paying through `POST /payments/hire-checkout-session`, whose webhook accepts the application |
 | `POST /applications/:id/reject` 🔒 (client) | decline |
 | `POST /applications/:id/withdraw` 🔒 (provider) | retract a pending application |
 
@@ -353,12 +380,15 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `POST /jobs/:jobId/review` 🔒 (client) | `{ rating: 1–5, comment? (≤500) }` — once per completed job |
-| `GET /notifications?unread=true` 🔒 | newest 50 |
+| `GET /notifications?unread=true` 🔒 | newest 50. Every row carries `target: { screen, job_id?, request_id? }` saying where a tap should lead (`job`, `dispute`, `payouts`, `verification`, `skill_requests`, `notifications`); push payloads carry it too |
+| `GET /notifications/page?limit=&offset=` 🔒 | `{ items, total, unread_total }` |
+| `GET /notifications/snapshot` · `GET /notifications/stream` 🔒 | one consistent `{ notifications, unreadCount }`; the stream is SSE, re-sent every 5 s when it changes |
 | `GET /notifications/unread-count` 🔒 | `{ count }` — server-side count, not capped at 50 |
+| `DELETE /notifications/:id` · `DELETE /notifications` 🔒 | dismiss one or all |
 | `POST /notifications/:id/read` 🔒 | mark one read |
 | `POST /notifications/read-all` 🔒 | mark all read |
 
-**Wallet, Chat & Calendar** (🔒 — app-support subsystems, migration 0006)
+**Payouts, Chat & Calendar** (🔒)
 
 | Method & path | Description |
 |---|---|
@@ -368,10 +398,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | `GET /payouts/account` 🔒 (provider) | the linked payout account, masked: `{ method, bank_name, account_name, account_last4 }` or `null` |
 | `PUT /payouts/account` 🔒 (provider) | `{ method: gcash\|maya\|bank, bank_code? (bank only, from `GET /payouts/banks`), account_name, account_number (6–20 digits) }` — also sends any payout that was waiting for an account |
 | `DELETE /payouts/account` 🔒 (provider) | unlink |
-| `POST /wallet/withdrawals` 🔒 | `{ amount, destination, title? }` → a **pending** ledger row. Nothing moves until an admin settles it — there is no payout rail, so the admin queue *is* the disbursement mechanism (migration 0024, `BACKEND_SCHEMA.md` §27.2) |
-| `GET /wallet/withdrawals` 🔒 | the caller's own requests, newest first |
-| `POST /wallet/withdrawals/:id/cancel` 🔒 | retract a request an admin has not acted on |
-| `POST /wallet/transactions` 🔒 | **Deprecated** — use `POST /wallet/withdrawals`. Still accepts `{ direction: 'debit', amount, title, job_id?, destination? }` and now files the same pending request. `direction: 'credit'` is refused for **every** caller, admins included: wallet funding has exactly one entry point, a settled Stripe charge. The one deliberate exception lives on the admin surface — `POST /admin/wallet-transactions/recovery-credit` |
+| `GET /payouts/banks` 🔒 | banks a payout can go to, `[{ code, name }]` |
 | `GET /conversations` 🔒 | caller's conversations (counterpart name + last-message time) |
 | `POST /conversations` 🔒 | get-or-create for `{ job_id }` — job must have an assigned provider |
 | `GET /conversations/:id/messages` 🔒 | messages, oldest first |
@@ -386,7 +413,7 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 
 | Method & path | Description |
 |---|---|
-| `POST /uploads/signed-url` 🔒 | `{ bucket: 'job-photos' \| 'verification-docs' \| 'avatars', content_type }` → `{ bucket, path, upload_url, token }` |
+| `POST /uploads/signed-url` 🔒 | `{ bucket, content_type }` → `{ bucket, path, upload_url, token }`. Buckets: `job-photos`, `avatars`, `verification-docs`, `chat-attachments`, `provider-portfolio`, `provider-credentials`, `dispute-evidence`, `task-proof` |
 
 The object path is generated **server-side** as `<profile id>/<uuid>.<ext>` — a
 client-supplied path would let one user overwrite another's ID documents. Upload
@@ -430,8 +457,10 @@ the flag can only be set by an approval or a Stripe Identity webhook.
 
 | Method & path | Description |
 |---|---|
-| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000), photo_paths? (≤6, private `dispute-evidence` bucket, 0059) }` — participants can raise active/cancelled-job disputes or complain before the 72-hour completion deadline; held escrow freezes, settled payments remain settled (0041) |
-| `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider) |
+| `POST /jobs/:jobId/disputes` 🔒 (client/provider) | `{ reason (1–200), details? (≤1000), photo_paths? (≤6, private `dispute-evidence` bucket, 0059) }` — participants can raise active/cancelled-job disputes; a held payment freezes until an admin decides, and settled payments stay settled (0041, 0060) |
+| `GET /jobs/:jobId/disputes` 🔒 | the job's latest dispute (client or assigned provider), with `chat: { conversation_id, message_count }`; the whole job chat is part of the case |
+| `POST /disputes/:id/entries` 🔒 (client/provider) | `{ kind: statement\|appeal, body, photo_paths? }`. `message_id` is deprecated |
+| `POST /disputes/:id/cancellation-response` 🔒 (provider) | `{ accept, note }` on a client's cancellation |
 
 **Settings** (🔒 — migration 0011)
 
@@ -461,20 +490,14 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 |---|---|
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
 | `POST /payments/xendit/webhook` | Xendit (test mode) invoice callback, verified by the `x-callback-token` header; a `PAID` invoice completes the hire or price change named by its `external_id` (`hire_<application>_…` / `pchg_<request>_…`) |
-| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as a wallet accept; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
-| `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?topup=success\|cancelled`, or `?hire=…` when `flow=hire`. No JWT — it is a plain browser navigation that reveals and changes nothing |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as `POST /applications/:id/accept`; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?hire=…` (or the price-change result). No JWT — it is a plain browser navigation that reveals and changes nothing |
+| `POST /payments/price-change-checkout-session` 🔒 (client) | pay the difference for an approved price increase (migration 0057) |
 | `POST /payments/webhook` | Stripe only. No JWT — authenticated by the signature over the **raw** body |
 
-**The wallet is credited by the webhook, never by `POST /payments/topup`, and
-never by the browser returning from Checkout.** Those only open the payment UI;
-a client that reported its own success could mint balance, and balance buys
-labour through escrow. Refresh `GET /wallet` afterwards — on a slow webhook the
-balance can lag a second or two.
-
-Both routes converge on one handler: the Checkout session puts the payer
-identity in `payment_intent_data.metadata`, so `payment_intent.succeeded`
-credits the wallet whether the charge came from PaymentSheet or Checkout. No
-second handler, and no extra Dashboard subscription.
+**A hire is made by the payment webhook, never by the browser returning from
+checkout.** The checkout calls only open the payment UI; a client that reported
+its own success could get labour without paying.
 
 `app_redirect` is checked against the same allowlist as the Google OAuth flow
 (`isAllowedAppRedirect`) at both session creation and return. Stripe accepts
@@ -503,8 +526,8 @@ vars these endpoints return **503** and the rest of the API is unaffected.
 
 **Card-funded payouts** are sent on to the provider's Connect account automatically when the escrow
 is released — a transfer sourced from the job's own charge, so Stripe's own FX rate applies
-(`BACKEND_SCHEMA.md` §29.5). Wallet-funded payouts, and providers without an active account, stay in
-the wallet and withdraw through the manual queue.
+(`BACKEND_SCHEMA.md` §29.5). Everything else, and any transfer Stripe refuses, is paid to the
+provider's linked payout account by the payments tick (see *Payments without a wallet*).
 
 The three `POST` routes carry the payments rate limit. Connect is optional: without
 `STRIPE_CONNECT_WEBHOOK_SECRET` the webhook answers 503 and statuses update only on sync.
@@ -540,10 +563,17 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `POST /admin/credentials/:id/reject` | `{ reason }` (1–500) |
 | `GET /admin/transactions?search=&status=&limit=&offset=` | escrow records with both parties + service name; search matches transaction ID, client/provider name, or job title (story #17/#18) |
 | `GET /admin/disputes?status=&limit=&offset=` | dispute queue |
-| `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client', note? }` (story #20) |
-| `POST /admin/wallet-transactions/recovery-credit` | `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
-| `POST /admin/escrow/:id/retry-transfer` | retries a card-funded payout's Stripe transfer that `failed`, was `abandoned`, or was `not_eligible` → `{ outcome }`. Audited (`escrow.retry_transfer`). The money is in the provider's wallet either way (`BACKEND_SCHEMA.md` §29.5) |
-| `GET /admin/withdrawals?status=&limit=&offset=` | the settlement queue — `pending` by default, oldest first (migration 0024) |
+| `POST /admin/disputes/:id/resolve` | `{ resolution: 'released_to_provider' \| 'refunded_to_client' \| 'reviewed', note }` (story #20) |
+| `POST /admin/disputes/:id/clarification` · `POST /admin/disputes/:id/evidence-request` | `{ body, recipient?: client\|provider\|both }` (migration 0052) |
+| `POST /admin/attachments/sign` | renew signed URLs for case photos and chat attachments |
+| `GET /admin/queues/counts` | pending counts for the sidebar badges |
+| `GET /admin/verifications/:id` | one verification submission |
+| `POST /admin/skill-requests/:id/approve` · `/reject` | decide a provider's service-change request |
+| `GET /admin/maintenance` · `PATCH /admin/maintenance` | maintenance mode (migration 0017) |
+| `GET /admin/wallet-transactions` | the internal ledger (payments in, payouts, refunds) |
+| `POST /admin/wallet-transactions/recovery-credit` | **Legacy (wallet era).** `{ profile_id, amount, title, job_id? }` — issues a trust credit after a dispute, tagged `kind: 'recovery_credit'` (migration 0021). **The only route that adds balance outside a settled Stripe charge or an escrow release**, which is why it is admin-only and audited; `POST /wallet/transactions` still refuses credits from everyone. Refuses a deleted recipient, a `job_id` they are not on, and anything over ₱50,000. See `BACKEND_SCHEMA.md` §28.1 |
+| `POST /admin/escrow/:id/retry-transfer` | retries a card-funded payout's Stripe transfer that `failed`, was `abandoned`, or was `not_eligible` → `{ outcome }`. Audited (`escrow.retry_transfer`). A refused transfer is paid to the linked payout account instead (`BACKEND_SCHEMA.md` §29.5) |
+| `GET /admin/withdrawals?status=&limit=&offset=` | **Legacy.** The manual settlement queue from 0024. Payouts are now sent automatically, so it only holds old rows |
 | `POST /admin/withdrawals/:id/settle` | `{ reference }` — records that the money was actually sent. This is what debits the wallet; the balance is re-checked first and the row is only settled once, whoever clicks |
 | `POST /admin/withdrawals/:id/reject` | `{ reason }` — the reason reaches the account holder and the amount returns to their available balance |
 | `GET /admin/categories` | every service category, active or not (`GET /categories` still serves the apps only active ones) |
@@ -552,8 +582,8 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | `GET /admin/admins` | who currently holds admin |
 | `POST /admin/admins` | `{ email, full_name }` — creates or promotes an admin. **No password is accepted**; the new admin sets their own from the reset email this sends |
 | `POST /admin/admins/:id/revoke` | demote to `client`. Refuses self-demotion and refuses to remove the last admin |
-| `POST /admin/notifications/broadcast` | `{ title, body, audience: 'all' \| 'clients' \| 'providers' }` → `{ sent, failed, audience }`. One row per recipient (so read state and push both work); excludes admins, suspended and deleted accounts |
-| `GET /admin/commission` | the current platform cut |
+| `POST /admin/notifications/broadcast` | `{ title, body, audience: 'all' \| 'clients' \| 'providers' }` → `{ broadcast_id, sent, failed, audience, … }`; delivery status at `GET /admin/notifications/broadcasts/:id` (0052). One row per recipient (so read state and push both work); excludes admins, suspended and deleted accounts |
+| `GET /admin/commission` | `{ commission_rate, updated_at, total_earned, earned_this_month, released_jobs, pending_estimate }`: the rate and what it has earned; `pending_estimate` is what held payments would yield at today's rate |
 | `PATCH /admin/commission` | `{ commission_rate }` — a **fraction**, 0.15 being 15%, capped at 0.5. Applies to escrow released from now on; settled jobs keep their figures (migration 0024) |
 
 Admin accounts can't self-register (`POST /auth/register` only allows
@@ -571,36 +601,18 @@ which audits job lifecycle transitions, not the admin behind a decision.
 
 ### Escrow, in one paragraph
 
-The `wallet_transactions` ledger is the only account of record; Stripe decides
-whether money arrived, the ledger records it. When a client accepts an
-application on a job with a `budget`, the client is **debited** and an
-`escrow_transactions` row is created as `held` — in one SQL transaction
-(`escrow_place_hold`, migration 0028). A client can also **pay the hire by
-card** (`POST /payments/hire-checkout-session`): Stripe's webhook credits the
-payment, holds it and confirms the application (`BACKEND_SCHEMA.md` §29.4).
-Client completion confirmation starts a **72-hour warranty hold**; only expiry
-without an open timely complaint makes payment eligible for release. Hired-job
-cancellation opens response/review with funds held; the decision releases or refunds.
-The completion endpoint re-reads the persisted job after its database trigger
-stamps `completed_at`, so its response includes the 72-hour `warranty_expires_at`.
-
-Because a hold needs real funds, **`POST /applications/:id/accept` returns 400
-`Insufficient wallet balance`** when the client can't cover the budget — the job
-stays `open`. Clients top up through Stripe hosted Checkout
-(`POST /payments/checkout-session`), and the wallet is credited when Stripe's
-webhook reports the charge settled. That webhook is the **only** way money
-enters: `POST /wallet/transactions` refuses `direction: 'credit'`, since anything
-else would let any authenticated caller mint balance that buys real labour.
-
-The balance the hold checks is the **available** one — settled, less anything
-already promised to a pending withdrawal. Without that reservation a client could
-file a withdrawal for their whole balance and hire someone with the same money;
-whichever settled second would take the ledger negative.
-
-Money leaves by request, not by ledger entry. `POST /wallet/withdrawals` files a
-**pending** row and an admin settles it by hand from `GET /admin/withdrawals` —
-there is no payout rail, so that queue *is* the disbursement mechanism
-(`BACKEND_SCHEMA.md` §27.2).
+There is no user wallet (migration 0056). A client pays for a hire at checkout
+(`POST /payments/hire-checkout-session`: Xendit test mode when configured,
+otherwise Stripe card Checkout). The payment webhook credits the payment,
+places the `escrow_transactions` hold and accepts the application, all in one
+step. When the client confirms completion, the payment is **released at once**
+(migration 0060; there is no warranty hold, and early release was removed in
+0064). The commission is withheld, and the rest is paid to the provider's
+linked GCash/Maya/bank account by `pass_through_balances()` and the payments
+tick (Xendit sandbox payouts, 0058). A failed payout is re-queued on the next
+tick. An open complaint freezes the hold until an admin releases or refunds it.
+`wallet_transactions` remains as the internal ledger these functions write to,
+and no balance stays on it between jobs.
 
 **Releasing raises rather than going quiet.** `EscrowService.release()` throws on
 an escrow that does not exist or is no longer `held`; `releaseIfHeld()` — what the
@@ -611,15 +623,13 @@ retried caller read success and believe a provider had been paid. §28.2.
 
 **Hiring holds the money before it accepts the application.** The accept fires a
 trigger that assigns the job and rejects every rival applicant, which application
-code cannot reverse; an insufficient balance discovered afterwards used to leave a
-hired provider standing behind an error the client read as a failure. Now the
-refusal lands while the job is still `open`. §28.3.
+code cannot reverse, so the webhook places the hold first. §28.3.
 
 Every ledger row carries a `kind`, and **`kind = 'payout'` is the gross value
 that flowed through the platform**. This matters: a payout and a refund are both
 credits with a `job_id`, so the old `direction + job_id` rule would have counted
 refunds as revenue. `kind` is derived server-side and never read from the request
-body — otherwise anyone could inflate the reported figure by topping up.
+body, so nobody can inflate the reported figure.
 
 What the platform actually **keeps** is the commission: a fraction of the budget
 withheld at release, frozen onto `escrow_transactions.commission_amount`. It has
@@ -741,34 +751,25 @@ currency. This is a prototype: no real money moves.
   `{ change_request_id, app_redirect }`); the webhook then holds it and applies
   the new price. Unpaid, it expires and the price stays. A payment that arrives
   too late is refunded.
-- Not changed yet: the web admin's withdrawal queue and recovery credits (now
-  unused).
+- Early payment release (0046, 0050) was removed: its routes are gone and
+  migration 0064 disables the RPCs.
+- Legacy and unused: the admin withdrawal queue and recovery credits. The web
+  admin still shows them.
 
 ## Pending handoffs
 
-- The post-UAT server requests are in [`docs/backend-requests.md`](../docs/backend-requests.md).
-  Migrations 0046–0050 and their API were merged into `upstream/main` by PR #81,
-  and the web handoff contracts in migrations 0051–0052 by PR #84.
-  Migrations 0046–0052 are applied to the linked Supabase project (verified
-  2026-10-16). The matching API is deployed, and the funded-job, booking and
-  admin-queue acceptance checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json)). Not
-  covered: notification broadcast, card-at-hire, the scheduler's 72-hour
-  release and physical devices. Capacity refusals on job posting and applying
-  now return HTTP 409 for the database conflict (`TB409`); not yet deployed.
-- [`docs/backend-handoff-mobile-e2e-test-environment.md`](../docs/backend-handoff-mobile-e2e-test-environment.md)
-  still requires a test wallet balance when the Maestro account runs low. Its Google
-  Maps key request is obsolete because the app no longer uses `react-native-maps`.
+- Physical-device checks of the post-UAT flows (pay at hire, completion
+  release, payout account gate, notification routing) remain open.
+- The ML service health check has been returning HTTP 429; investigate before
+  relying on recommendations end to end.
 - Android push delivery still needs Firebase credentials and a new native build.
   Admin verification emails need a verified sending domain and email API configuration.
-- The Stripe sandbox webhook has a confirmed completed wallet top-up from a recent
-  `payment_intent.succeeded` event. Two card-at-hire PaymentIntents also have
-  matching card-funded escrow rows. Those escrows are now disputed, so onward
-  payout is not established. Recent Identity sessions were canceled; successful
-  Identity completion and physical-device flows still need separate checks.
-  The local `STRIPE_MOBILE_API_VERSION` omits the release suffix; this checkout
-  now treats that form as invalid and uses the full default
-  `2025-01-27.acacia`. Render is set to `2025-01-27.acacia`; a sandbox
-  PaymentSheet top-up returned its client secret and ephemeral key on 2026-10-16.
+- Xendit payouts run in sandbox mode only. A production launch needs live keys
+  and a review of refunds, which are still simulated (0058).
+- The web admin still shows wallet-era screens (withdrawal queue, warranty
+  line, recovery credit) and does not show the new commission totals.
+- Older handoff notes are in [`docs/backend-requests.md`](../docs/backend-requests.md)
+  and `docs/backend-handoff-*.md`; check them against this README before acting.
 
 ## Project layout
 
@@ -785,18 +786,28 @@ backend/
     ├── applications/            # apply / accept / reject / withdraw
     ├── reviews/  notifications/
     ├── recommendations/         # scoring service + every-minute scheduler
-    ├── wallet/  chat/  calendar/  # app-support subsystems (migration 0006)
-    ├── uploads/                 # signed Storage upload URLs (0007/0008)
-    ├── verifications/           # provider ID/selfie submissions (0008)
-    ├── escrow/                  # escrow lifecycle + disputes (0009)
+    ├── chat/  calendar/         # conversations, unread counts, bookings
+    ├── wallet/                  # internal ledger service (no routes since 0056)
+    ├── payments/                # Xendit + Stripe checkout, webhooks, Connect
+    ├── payouts/                 # linked payout account, banks, history
+    ├── uploads/                 # signed Storage upload URLs
+    ├── verifications/  credentials/  # identity and skill credentials
+    ├── skill-requests/          # provider service-change requests
+    ├── geocoding/               # Geoapify autocomplete / reverse
+    ├── escrow/                  # escrow, disputes, payments scheduler
+    ├── push/  settings/         # Expo push delivery, user settings
+    ├── internal/                # cron-secret tick routes for an external driver
+    ├── health/                  # status page and /health (with deployed commit)
+    ├── common/                  # throttling, maintenance mode, sanitize helpers
     └── admin/                   # admin console: users, bookings, analytics,
-                                 # verification queue, transactions, disputes
+                                 # queues, transactions, disputes, platform
 ```
 
 ## Scripts
 
 ```bash
 npm run start:dev   # dev server with watch
+npm run start:prod  # run the compiled build (node dist/main)
 npm run build       # compile
 npm run lint        # eslint --fix
 npm run format      # prettier
@@ -815,7 +826,10 @@ stubbed, then exercises the money functions from 0028, the RLS lockdown from
 database and cannot see SQL at all; this is what does. `0025` is skipped — it
 needs pg_cron, pg_net and Vault.
 
-## October 4 test-document contracts
+## History: October 4 test-document contracts
+
+> Historical. The warranty, wallet and withdrawal parts below were superseded
+> by migrations 0056, 0060 and 0064.
 
 Apply reviewed migrations **0039–0045 in order** before the API/mobile release.
 They add confirmed hiring, warranty settlement, participant complaints and
@@ -836,7 +850,7 @@ for direct ledger inserts/updates as well as escrow/Connect RPC paths.
 
 ## Post-UAT backend contracts
 
-Migrations 0046–0050 add early payment release, shared platform identity,
+Migrations 0046–0050 add early payment release (since removed by 0064), shared platform identity,
 capacity limits, participant-approved job changes, and provider release requests.
 They were merged into `upstream/main` by PR #81, and migrations 0051–0052 for
 the remaining web admin contracts by PR #84. Migrations 0046–0052 are applied
@@ -847,19 +861,14 @@ category and the three general consents.
 
 | Route | Caller | Purpose |
 |---|---|---|
-| `POST /jobs/:id/release` | Client | Release a completed job's held payment once, if there is no open complaint. |
-| `POST /jobs/:id/release-request` | Assigned provider | Ask the client to release held payment, subject to per-job limits; the response includes `next_allowed_at`, and a rate-limit 409 includes the same field. |
-| `GET /jobs/:id/release-requests` | Participants | Read those requests. |
 | `GET/POST /jobs/:id/change-requests` | Participants | Read or propose schedule/price changes. |
 | `POST /jobs/change-requests/:requestId/decide` | Other participant or proposer | Accept, decline or withdraw a request. |
 | `GET /platform/identity` | Public | Read the shared name, support email and version. |
 | `GET/PATCH /admin/platform-identity` | Admin | Read/update those fields with `expected_version`; stale writes return 409. |
 | `GET/PATCH /admin/job-capacity` | Admin | Read/update active-job, pending-application and booking limits. |
 
-Price changes require wallet-funded held escrow and happen before work starts.
-The job and escrow update in one database transaction; a raised price debits
-the client wallet and a lowered price refunds the difference. Card-funded price
-changes need a separate payment authorization flow and are rejected. Request
+Price changes happen before work starts; how they are paid is described under
+*Payments without a wallet* (migration 0057). Request
 expiry is reconciled on the five-minute payments tick and when requests are
 read or acted on. Live API checks passed on 2026-10-16 ([evidence](../test-docs/DEPLOYED_POST_UAT_ACCEPTANCE_EVIDENCE.json));
 the mobile UI for these contracts remains outstanding. `GET /jobs/:id` also
