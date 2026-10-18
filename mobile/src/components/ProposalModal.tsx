@@ -6,6 +6,7 @@ import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
 import TextField from './ui/TextField';
 import { cleanText, validateText } from '../lib/textRules';
+import { feeRows, type JobFee } from '../lib/feeBreakdown';
 
 /** Matches ApplyDto.cover_message's MaxLength on the backend. */
 export const PROPOSAL_MAX_LENGTH = 300;
@@ -38,6 +39,10 @@ export function canSendProposal(message: string): boolean {
 interface ProposalModalProps {
   visible: boolean;
   jobTitle?: string;
+  /** The job price, the fee's base. */
+  jobBudget?: number | string | null;
+  /** The platform fee on the job; the breakdown is hidden when it is missing. */
+  fee?: JobFee | null;
   busy?: boolean;
   error?: string | null;
   /** The server refused with `payout_account_required`: show the note and a way to link an account instead of the error. */
@@ -53,7 +58,7 @@ interface ProposalModalProps {
  * chance to say why them — shown to the client on the Proposals screen.
  */
 export default function ProposalModal({
-  visible, jobTitle, busy = false, error, payoutRequired = false, onLinkPayout, onSubmit, onCancel,
+  visible, jobTitle, jobBudget, fee, busy = false, error, payoutRequired = false, onLinkPayout, onSubmit, onCancel,
 }: ProposalModalProps) {
   const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
@@ -62,6 +67,7 @@ export default function ProposalModal({
     if (visible) setMessage('');
   }, [visible]);
 
+  const breakdown = feeRows(jobBudget, fee);
   const ready = canSendProposal(message);
   // Shown once the field is left or Send is tapped, never while the first words are being typed.
   const messageError = proposalError(message) ?? undefined;
@@ -73,6 +79,23 @@ export default function ProposalModal({
     <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.sheet}>
       <Text style={styles.title} accessibilityRole="header">Send a proposal</Text>
       {!!jobTitle && <Text style={styles.forJob} numberOfLines={2}>{`For "${jobTitle}"`}</Text>}
+
+      {!!breakdown && (
+        <View style={styles.fee} accessible accessibilityLabel={breakdown.summary} testID="proposal-fee">
+          <View style={styles.feeRow}>
+            <Text style={styles.feeLabel}>Job price</Text>
+            <Text style={styles.feeValue}>{breakdown.price}</Text>
+          </View>
+          <View style={styles.feeRow}>
+            <Text style={styles.feeLabel}>{breakdown.feeLabel}</Text>
+            <Text style={styles.feeValue}>{breakdown.fee}</Text>
+          </View>
+          <View style={styles.feeRow}>
+            <Text style={styles.feeLabel}>You receive</Text>
+            <Text style={styles.feeTotal}>{breakdown.receives}</Text>
+          </View>
+        </View>
+      )}
 
       <View style={styles.tips}>
         <Text style={styles.tipsTitle}>Good proposals mention:</Text>
@@ -155,6 +178,12 @@ function createThemedStyles(theme: ThemePalette) {
     sheet: { paddingHorizontal: 20, gap: 14 },
     title: { color: C.ink900, fontSize: 20, fontWeight: '700', lineHeight: 26, fontFamily: 'Inter' },
     forJob: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginTop: -6 },
+
+    fee: { backgroundColor: C.wellBg, borderRadius: 14, padding: 14, gap: 8 },
+    feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+    feeLabel: { flexShrink: 1, color: C.ink700, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
+    feeValue: { color: C.ink900, fontSize: 14, lineHeight: 20, fontWeight: '600', fontFamily: 'Inter' },
+    feeTotal: { color: C.ink900, fontSize: 15, lineHeight: 20, fontWeight: '700', fontFamily: 'Inter' },
 
     tips: { backgroundColor: C.wellBg, borderRadius: 14, padding: 14, gap: 8 },
     tipsTitle: { color: C.ink900, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },

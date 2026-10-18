@@ -57,6 +57,7 @@ const SP_FAQS = [
   { q: 'How do I get verified?', a: 'Go to Profile → Get Verified and submit a government ID photo plus a selfie. An admin reviews it, usually within a few days.' },
   { q: 'How do I submit a proposal?', a: 'Browse open jobs on the Feed tab and tap into one to submit a proposal. You need to be verified before proposals can be submitted.' },
   { q: 'How do I get paid?', a: 'Payouts are sent to the GCash, Maya or bank account you link under Profile → Payout account, as soon as the client confirms the job is done.' },
+  { q: 'How much is the platform fee?', a: 'TaskBuddy keeps a platform fee from each job’s price. The job shows the exact fee and what you receive before you send a proposal, and the rate is locked when you are hired. The rest goes to your GCash, Maya or bank account when the client confirms the job is done.' },
   { q: 'How do I change the services I offer?', a: 'Go to Profile → My services and send the admins a request to change or add a service. Only one request can be open at a time.' },
   { q: 'How do I update my bio or service radius?', a: 'Go to Profile → Edit profile to update your bio and service radius.' },
 ];

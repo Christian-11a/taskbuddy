@@ -102,6 +102,24 @@ describe('HelpSupportScreen — provider FAQ', () => {
   });
 });
 
+describe('HelpSupportScreen — platform fee question (M15)', () => {
+  it('explains the fee in the provider FAQ without stating a percentage', () => {
+    render(<HelpSupportScreen role="provider" onBack={jest.fn()} />);
+
+    fireEvent.press(screen.getByRole('button', { name: 'How much is the platform fee?' }));
+
+    expect(screen.getByText(/TaskBuddy keeps a platform fee from each job’s price/)).toBeTruthy();
+    expect(screen.getByText(/the rate is locked when you are hired/)).toBeTruthy();
+    expect(screen.queryByText(/\d+\s*%/)).toBeNull();
+  });
+
+  it('is not in the client FAQ', () => {
+    render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} />);
+
+    expect(screen.queryByRole('button', { name: 'How much is the platform fee?' })).toBeNull();
+  });
+});
+
 describe('HelpSupportScreen — contact and credits', () => {
   it('Contact support opens the support mailto link', () => {
     const openURL = jest.spyOn(Linking, 'openURL').mockImplementation(() => Promise.resolve(true));
