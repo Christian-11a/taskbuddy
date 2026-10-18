@@ -157,7 +157,15 @@ export class PaymentsController {
       throw new BadRequestException('Invalid Xendit callback token');
     }
     const paid = this.xendit.paidInvoice(req.body);
-    if (paid) await this.hireFunding.completeFromXendit(paid);
+    if (!paid) return { received: true };
+    // Act only on what Xendit itself reports, not on the callback body.
+    if (!(await this.xendit.confirmPaidInvoice(paid))) {
+      this.logger.warn(
+        `Xendit callback for ${paid.invoiceId} does not match the invoice; ignored`,
+      );
+      return { received: true };
+    }
+    await this.hireFunding.completeFromXendit(paid);
     return { received: true };
   }
 

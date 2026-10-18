@@ -319,6 +319,7 @@ export class HireFundingService {
       this.logger.error(
         `Xendit invoice ${paid.invoiceId} names no known proposal`,
       );
+      await this.alertUnappliedPayment(paid, 'names no known proposal');
       return;
     }
     await this.completeHire({
@@ -337,6 +338,31 @@ export class HireFundingService {
       funding: undefined,
       methodLabel: methodLabel(paid.channel),
     });
+  }
+
+  /**
+   * A paid invoice that cannot be tied to a hire or price change. There is no
+   * payer to credit or refund automatically, so admins must look at it in
+   * Xendit; the alert is written once per invoice.
+   */
+  private async alertUnappliedPayment(
+    paid: XenditPaidInvoice,
+    why: string,
+  ): Promise<void> {
+    const { error } = await this.supabase.admin.rpc('write_admin_alert', {
+      p_event_key: `unapplied_payment:${paid.invoiceId}`,
+      p_title: 'Payment received but not applied',
+      p_body: `Xendit invoice ${paid.invoiceId} (${paid.externalId}, PHP ${(paid.amountCentavos / 100).toFixed(2)}) ${why}. Refund it in Xendit or apply it by hand.`,
+      p_data: {
+        target: 'transactions',
+        invoice_id: paid.invoiceId,
+        external_id: paid.externalId,
+      },
+    });
+    if (error)
+      this.logger.error(
+        `Unapplied payment ${paid.invoiceId} not alerted: ${error.message}`,
+      );
   }
 
   private async completeHire(payment: {
@@ -380,8 +406,8 @@ export class HireFundingService {
         await this.notify(
           profile_id,
           'payment_update',
-          'Payment refunded',
-          `Your ${payment.methodLabel} payment of ${peso(amount)} could not complete the hire: ${reason}. It has been refunded to your payment method.`,
+          'Payment being refunded',
+          `Your ${payment.methodLabel} payment of ${peso(amount)} could not complete the hire: ${reason}. It will be refunded to your payment method shortly (test mode: the refund is recorded, no money moves).`,
           job_id,
         );
       }
@@ -499,6 +525,7 @@ export class HireFundingService {
       this.logger.error(
         `Xendit invoice ${paid.invoiceId} names no known change request`,
       );
+      await this.alertUnappliedPayment(paid, 'names no known change request');
       return;
     }
     const profile_id = row.jobs.client_id;
@@ -534,8 +561,8 @@ export class HireFundingService {
       await this.notify(
         profile_id,
         'payment_update',
-        'Payment refunded',
-        `Your ${method} payment of ${peso(amount)} could not be applied: ${error.message}. It has been refunded to your payment method.`,
+        'Payment being refunded',
+        `Your ${method} payment of ${peso(amount)} could not be applied: ${error.message}. It will be refunded to your payment method shortly (test mode: the refund is recorded, no money moves).`,
         job_id,
       );
     }

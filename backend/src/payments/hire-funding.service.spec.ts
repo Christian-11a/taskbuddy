@@ -350,7 +350,7 @@ describe('HireFundingService.completeFromIntent', () => {
     expect(writes(calls, 'wallet_transactions')).toHaveLength(1);
     expect(writes(calls, 'notifications')).toEqual([
       expect.objectContaining({
-        title: 'Payment refunded',
+        title: 'Payment being refunded',
         body: expect.stringContaining('the proposal was withdrawn'),
       }),
     ]);
@@ -615,6 +615,34 @@ describe('HireFundingService with Xendit (test mode)', () => {
     expect(applications.acceptFunded).toHaveBeenCalled();
   });
 
+  it('alerts admins about a paid invoice that names no known proposal', async () => {
+    const { service, calls, escrow } = build({
+      job_applications: [ok(null)],
+    });
+
+    await service.completeFromXendit({
+      invoiceId: 'inv_lost',
+      externalId: 'hire_gone_abcd1234',
+      purpose: 'hire',
+      subjectId: 'gone',
+      amountCentavos: 150000,
+      currency: 'php',
+      channel: 'GCASH',
+    });
+
+    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        table: 'rpc:write_admin_alert',
+        args: [
+          expect.objectContaining({
+            p_event_key: 'unapplied_payment:inv_lost',
+          }),
+        ],
+      }),
+    );
+  });
+
   describe('paying for a price increase', () => {
     const paid = {
       invoiceId: 'inv_pc',
@@ -697,7 +725,7 @@ describe('HireFundingService with Xendit (test mode)', () => {
 
       expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
       expect(writes(calls, 'notifications')).toEqual([
-        expect.objectContaining({ title: 'Payment refunded' }),
+        expect.objectContaining({ title: 'Payment being refunded' }),
       ]);
     });
   });
