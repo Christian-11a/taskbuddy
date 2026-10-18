@@ -13,7 +13,7 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 
 const CLIENT = '11111111-1111-1111-1111-111111111111';
 const PROVIDER = '22222222-2222-2222-2222-222222222222';
@@ -57,10 +57,11 @@ beforeEach(async () => {
     );
   }
   await q(
-    `insert into provider_profiles (profile_id, category_id, bio, is_verified)
+    `insert into provider_profiles (profile_id, category_id, bio, identity_verified)
      values ($1, 1, 'Licensed plumber, ten years around Quezon City.', true)`,
     [PROVIDER],
   );
+  await q(APPROVED_CREDENTIAL_SQL, [PROVIDER, 1]);
   const job = await one(
     `insert into jobs (client_id, category_id, title, description, address,
                        latitude, longitude, budget, recommendation_deadline,

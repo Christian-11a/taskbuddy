@@ -10,7 +10,7 @@
  */
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 
 const CLIENT = '11111111-1111-1111-1111-111111111111';
 const PLUMBING = 1;
@@ -50,10 +50,11 @@ async function provider({
   );
   await q(
     `insert into provider_profiles
-       (profile_id, category_id, bio, is_verified, is_available, service_radius_km)
+       (profile_id, category_id, bio, identity_verified, is_available, service_radius_km)
      values ($1, $2, $3, $4, $5, $6)`,
     [id, category, bio, verified, available, radiusKm],
   );
+  if (verified) await q(APPROVED_CREDENTIAL_SQL, [id, category]);
   await q(
     `update profiles
         set latitude = $2, longitude = $3,
@@ -112,6 +113,9 @@ describe('fn_job_provider_features eligibility', () => {
     const jobId = await postJob();
     assert.deepEqual(await pool(jobId), []);
     await q('insert into provider_secondary_categories(provider_id, category_id) values ($1, $2)', [id, PLUMBING]);
+    // A secondary service also needs its own certificate (0068).
+    assert.deepEqual(await pool(jobId), []);
+    await q(APPROVED_CREDENTIAL_SQL, [id, PLUMBING]);
     const [row] = await pool(jobId);
     assert.equal(row.provider_id, id);
     assert.equal(Number(row.skills_match), 1);

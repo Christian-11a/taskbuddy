@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 let db;
 const client = '11111111-1111-1111-1111-111111111111';
 const provider = '22222222-2222-2222-2222-222222222222';
@@ -9,7 +9,8 @@ before(async () => {
   for (const [id, role] of [[client, 'client'], [provider, 'provider']]) {
     await db.query('insert into auth.users(id, raw_user_meta_data) values ($1, $2)', [id, JSON.stringify({ role, full_name: role })]);
   }
-  await db.query('insert into provider_profiles(profile_id, category_id, is_verified) values ($1, 1, true)', [provider]);
+  await db.query('insert into provider_profiles(profile_id, category_id, identity_verified) values ($1, 1, true)', [provider]);
+  await db.query(APPROVED_CREDENTIAL_SQL, [provider, 1]);
 });
 after(async () => { await db.close(); });
 async function job(status = 'in_progress') {
@@ -98,6 +99,8 @@ it('rejects direct applications outside approved skills and permits approved sec
     values ($1, 2, 'Cleaning test', 'Clean the kitchen and dining room.', 'QC', 14.6, 121) returning id`, [client]);
   await assert.rejects(db.query('insert into job_applications(job_id, provider_id) values ($1, $2)', [row.id, provider]), /approved skill/);
   await db.query('insert into provider_secondary_categories(provider_id, category_id) values ($1, 2)', [provider]);
+  await assert.rejects(db.query('insert into job_applications(job_id, provider_id) values ($1, $2)', [row.id, provider]), /certificate/);
+  await db.query(APPROVED_CREDENTIAL_SQL, [provider, 2]);
   await db.query('insert into job_applications(job_id, provider_id) values ($1, $2)', [row.id, provider]);
 });
 it('requires Start Job before checklist changes and all tasks before client completion', async () => {

@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration } from './harness.mjs';
+import { migratedDatabase, readMigration, APPROVED_CREDENTIAL_SQL } from './harness.mjs';
 
 const client = '11111111-1111-1111-1111-111111111111';
 const provider = '22222222-2222-2222-2222-222222222222';
@@ -14,7 +14,8 @@ before(async () => {
       [id, JSON.stringify({ role, full_name: role })]);
   }
   for (const id of [provider, rival]) {
-    await db.query('insert into provider_profiles(profile_id, category_id, is_verified) values ($1, 1, true)', [id]);
+    await db.query('insert into provider_profiles(profile_id, category_id, identity_verified) values ($1, 1, true)', [id]);
+    await db.query(APPROVED_CREDENTIAL_SQL, [id, 1]);
   }
   await db.query(`insert into wallet_transactions(profile_id, direction, kind, amount, title)
     values ($1, 'credit', 'topup', 10000, 'Local fixture')`, [client]);
