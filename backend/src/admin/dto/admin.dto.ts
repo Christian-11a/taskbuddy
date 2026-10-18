@@ -95,8 +95,10 @@ export class ListBookingsQueryDto {
     'completed',
     'cancelled',
     'expired',
+    'disputed',
   ])
-  status?: JobStatus;
+  /** A job status, or 'disputed' for jobs with an open dispute (any status). */
+  status?: JobStatus | 'disputed';
 
   @IsOptional()
   @IsInt()

@@ -43,6 +43,19 @@ it('searches booking titles in both the page and status counts', async () => {
   assert.equal(Number(counts.counts.open), 1);
 });
 
+it('filters bookings by disputed while keeping real statuses intact', async () => {
+  await db.query("insert into jobs(client_id, category_id, title, description, address, latitude, longitude, dispute_state) values ($1, 1, 'Broken water heater', 'The water heater stopped working after the storm.', 'QC', 14.6, 121, 'open'), ($1, 1, 'Resolved water heater', 'The water heater was repaired and the dispute was closed.', 'QC', 14.6, 121, 'resolved')", [client]);
+  const { rows: [disputed] } = await db.query("select * from admin_list_bookings('water heater', 'disputed', null, 20, 0)");
+  assert.equal(Number(disputed.total), 1);
+  assert.equal(disputed.rows[0].title, 'Broken water heater');
+  const { rows: [sameStatus] } = await db.query("select * from admin_list_bookings('water heater', 'open', null, 20, 0)");
+  assert.equal(Number(sameStatus.total), 2);
+  const { rows: [completed] } = await db.query("select * from admin_list_bookings('water heater', 'completed', null, 20, 0)");
+  assert.equal(Number(completed.total), 0);
+  const { rows: [unfiltered] } = await db.query("select * from admin_list_bookings('water heater', null, null, 20, 0)");
+  assert.equal(Number(unfiltered.total), 2);
+});
+
 it('restricts the new service-request RPC to service role', async () => {
   const { rows: [row] } = await db.query("select has_function_privilege('anon', 'admin_list_skill_requests(text,skill_request_status,integer,integer)', 'execute') as anon, has_function_privilege('authenticated', 'admin_list_skill_requests(text,skill_request_status,integer,integer)', 'execute') as authenticated");
   assert.deepEqual(row, { anon: false, authenticated: false });

@@ -28,6 +28,11 @@ type CredentialRow = {
   [key: string]: unknown;
 };
 
+/** Admin list row: the name is embedded via provider_profiles -> profiles. */
+type JoinedCredentialRow = CredentialRow & {
+  provider_profiles: { profiles: { full_name: string } | null } | null;
+};
+
 /** Today in Manila, as the `date` the expiry is compared with. */
 const today = () =>
   new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
@@ -135,7 +140,7 @@ export class CredentialsService {
     let request = this.supabase.admin
       .from('provider_credentials')
       .select(
-        `${SELECT}, profiles!provider_credentials_provider_id_fkey(full_name)`,
+        `${SELECT}, provider_profiles!provider_credentials_provider_id_fkey(profiles(full_name))`,
         { count: 'exact' },
       )
       .order('created_at', { ascending: true })
@@ -144,7 +149,13 @@ export class CredentialsService {
     const { data, error, count } = await request;
     if (error) throw new BadRequestException(error.message);
     const credentials = await Promise.all(
-      (data as CredentialRow[]).map((row) => this.shape(row, true)),
+      (data as unknown as JoinedCredentialRow[]).map(
+        ({ provider_profiles, ...row }) =>
+          this.shape(
+            { ...row, profiles: provider_profiles?.profiles ?? null },
+            true,
+          ),
+      ),
     );
     return { credentials, total: count ?? 0 };
   }
@@ -157,6 +168,7 @@ export class CredentialsService {
         rejection_reason: null,
       },
       admin,
+      true,
     );
     await this.adminActions.record(
       admin,
@@ -198,13 +210,20 @@ export class CredentialsService {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /** Writes a decision on a pending row only, so a double click is a 409. */
+  /**
+   * Writes a decision on a pending row only, so a double click is a 409.
+   * With `refuseExpired`, the expiry check is part of the same UPDATE's WHERE
+   * clause, so it cannot race with a date change or a concurrent review. When
+   * the UPDATE matches nothing, one follow-up read tells "expired" apart from
+   * "not found / already reviewed".
+   */
   private async review(
     id: string,
     patch: Record<string, unknown>,
     admin: Profile,
+    refuseExpired = false,
   ): Promise<CredentialRow> {
-    const { data, error } = await this.supabase.admin
+    let request = this.supabase.admin
       .from('provider_credentials')
       .update({
         ...patch,
@@ -212,13 +231,32 @@ export class CredentialsService {
         reviewed_at: new Date().toISOString(),
       })
       .eq('id', id)
+      .eq('status', 'pending');
+    if (refuseExpired)
+      request = request.or(`expires_on.is.null,expires_on.gte.${today()}`);
+    const { data, error } = await request.select(SELECT).maybeSingle();
+    if (error) throw new BadRequestException(error.message);
+    if (!data) {
+      if (refuseExpired) await this.assertPendingNotExpired(id);
+      throw new ConflictException('Credential not found or already reviewed');
+    }
+    return data;
+  }
+
+  /** Follow-up read after a refused approval: throws if the row is pending and expired. */
+  private async assertPendingNotExpired(id: string) {
+    const { data, error } = await this.supabase.admin
+      .from('provider_credentials')
+      .select('id, status, expires_on')
+      .eq('id', id)
       .eq('status', 'pending')
-      .select(SELECT)
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    if (!data)
-      throw new ConflictException('Credential not found or already reviewed');
-    return data;
+    const expiresOn = (data as { expires_on: string | null } | null)?.expires_on;
+    if (expiresOn && expiresOn < today())
+      throw new BadRequestException(
+        `This credential expired on ${expiresOn}. Ask the provider to upload a current one.`,
+      );
   }
 
   private async shape(row: CredentialRow, withDocument: boolean) {

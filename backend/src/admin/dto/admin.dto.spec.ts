@@ -15,4 +15,21 @@ describe('admin list search query DTOs', () => {
     await expect(validate(dto, { whitelist: true })).resolves.toEqual([]);
     expect(dto).toMatchObject({ search: 'Ramos' });
   });
+
+  it.each(['disputed', 'in_progress'])(
+    'accepts the booking status filter %s',
+    async (status) => {
+      const dto = plainToInstance(ListBookingsQueryDto, { status });
+
+      await expect(validate(dto, { whitelist: true })).resolves.toEqual([]);
+      expect(dto).toMatchObject({ status });
+    },
+  );
+
+  it('rejects an unknown booking status filter', async () => {
+    const dto = plainToInstance(ListBookingsQueryDto, { status: 'bogus' });
+
+    const errors = await validate(dto, { whitelist: true });
+    expect(errors.map((error) => error.property)).toEqual(['status']);
+  });
 });
