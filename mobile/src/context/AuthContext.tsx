@@ -37,6 +37,13 @@ import { clearAsyncDataCache } from '../hooks/useAsyncData';
 import { clearLastAccountPersisted, clearPersisted, setCacheAccount } from '../lib/persistentCache';
 import { requestExpoPushRegistration } from '../lib/pushNotifications';
 import { openRedirectSession } from '../lib/appRedirectSession';
+import {
+  challengeFor,
+  newVerifier,
+  parsePending,
+  secretFromRedirect,
+  type PendingGoogleSignIn,
+} from '../lib/googleHandoff';
 
 // Required for expo-auth-session to complete the OAuth flow on Android
 WebBrowser.maybeCompleteAuthSession();
@@ -47,7 +54,7 @@ WebBrowser.maybeCompleteAuthSession();
 const SESSION_KEY = 'taskbuddy.session';
 
 /**
- * A Google sign-in waiting to be claimed: `{ id, startedAt }`. On disk rather
+ * A Google sign-in waiting to be claimed (`PendingGoogleSignIn`). On disk rather
  * than in state because the redirect can restart the app (a development build
  * reloads its bundle when its own scheme is opened), and everything in memory
  * goes with it.
@@ -306,10 +313,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * unknown is final — it was already used, or it expired — so it stops.
    */
   const claimPendingSignIn = useCallback(
-    async (handoffId: string): Promise<boolean> => {
+    async (pending: PendingGoogleSignIn): Promise<boolean> => {
+      // Without the redirect's secret there is nothing this app can claim.
+      if (!pending.secret) return false;
       for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
         try {
-          const { session: claimed } = await api.claimGoogleSession(handoffId);
+          const { session: claimed } = await api.claimGoogleSession(
+            pending.id,
+            pending.secret,
+            pending.verifier,
+          );
           await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
           await adoptSession(claimed);
           if (__DEV__) console.log('[auth] claimed google session');
@@ -342,10 +355,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const raw = await AsyncStorage.getItem(PENDING_SIGNIN_KEY);
     if (!raw) return false;
 
-    let pending: { id: string; startedAt: number };
-    try {
-      pending = JSON.parse(raw) as { id: string; startedAt: number };
-    } catch {
+    // An older shape (no verifier) cannot be claimed since backend 0071.
+    let pending = parsePending(raw);
+    if (!pending) {
       await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
       return false;
     }
@@ -356,7 +368,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
 
-    return claimPendingSignIn(pending.id);
+    // The redirect may have restarted the app: its secret is then on the
+    // launch URL rather than on a browser result.
+    if (!pending.secret) {
+      const secret = secretFromRedirect(await Linking.getInitialURL(), pending.id);
+      if (!secret) return false;
+      pending = { ...pending, secret };
+      await AsyncStorage.setItem(PENDING_SIGNIN_KEY, JSON.stringify(pending));
+    }
+
+    return claimPendingSignIn(pending);
   }, [claimPendingSignIn]);
 
   // ── Restore a persisted session on launch ────────────────────────────────
@@ -547,20 +568,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Google OAuth (server-side flow) ────────────────────────────────────────
   //
   // Flow:
-  //   1. App mints a handoff id, saves it to disk, and opens the backend
-  //      /auth/google/authorize URL (carrying that id) in a browser.
+  //   1. App mints a handoff id and a secret verifier, saves both to disk, and
+  //      opens the backend /auth/google/authorize URL carrying the id and
+  //      sha256(verifier) in a browser.
   //   2. Backend redirects to Google (HTTPS callback — Google accepts it).
   //   3. Google redirects to the backend callback, which exchanges the code
-  //      for an id_token, calls Supabase signInWithIdToken, and *parks* the
-  //      session under sha256(handoff id) before sending the browser back to
-  //      the app with only the id.
-  //   4. The app claims the session over HTTPS, retrying until it succeeds.
+  //      for an id_token, calls Supabase signInWithIdToken, *parks* the session
+  //      under sha256(handoff id), and sends the browser back to the app with
+  //      the id and a one-time secret.
+  //   4. The app claims the session over HTTPS with the id, the secret and the
+  //      verifier, retrying until it succeeds (backend 0071).
   //
-  // Step 4 is why sign-in is no longer at the mercy of the redirect. The deep
-  // link now only decides *when* the app notices it should claim — and if it
-  // never arrives, or it restarts the app, the pending id on disk is picked up
-  // on the next launch and the sign-in still completes. Tokens never travel in
-  // a URL, so they are also out of browser history.
+  // The redirect has to reach the app once, live or as the launch URL after a
+  // restart, because only it carries the secret: that is what stops someone
+  // who started a sign-in for a victim from claiming the victim's session.
+  // After that, step 4 is retried from disk, so a restart or a cold backend
+  // still completes. Tokens never travel in a URL.
   //
   // Google never sees the app deep-link — only the backend HTTPS callback —
   // so exp:// and taskbuddy:// both work without any Google Console changes.
@@ -568,16 +591,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuthError(null);
 
     const handoffId = Crypto.randomUUID();
-    await AsyncStorage.setItem(
-      PENDING_SIGNIN_KEY,
-      JSON.stringify({ id: handoffId, startedAt: Date.now() }),
-    );
+    const verifier = newVerifier();
+    let pending: PendingGoogleSignIn = {
+      id: handoffId,
+      verifier,
+      startedAt: Date.now(),
+    };
+    await AsyncStorage.setItem(PENDING_SIGNIN_KEY, JSON.stringify(pending));
 
     // appRedirect is exp://[ip]:8081 in Expo Go, taskbuddy:// in a real build.
     const appRedirect = AuthSession.makeRedirectUri({ scheme: 'taskbuddy' });
     const authorizeUrl = await api.getGoogleAuthorizeUrl(
       appRedirect,
       handoffId,
+      await challengeFor(verifier),
     );
 
     if (__DEV__) console.log('[auth] google redirect uri', appRedirect);
@@ -595,13 +622,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.removeItem(PENDING_SIGNIN_KEY);
         throw new Error(googleError);
       }
+      const secret = secretFromRedirect(result.url, handoffId);
+      if (secret) {
+        pending = { ...pending, secret };
+        await AsyncStorage.setItem(PENDING_SIGNIN_KEY, JSON.stringify(pending));
+      }
     }
 
     // Claim whatever the browser's own outcome was. 'dismiss' is what Android
     // reports when the custom tab closes because the deep link fired, so
     // treating it as a cancellation is exactly the bug this replaces — only a
     // claim that finds nothing parked means the user really did back out.
-    if (await claimPendingSignIn(handoffId)) return;
+    if (await claimPendingSignIn(pending)) return;
 
     if (result.type === 'cancel' || result.type === 'dismiss') return;
     throw new Error('Google sign-in was unsuccessful. Please try again.');
