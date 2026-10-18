@@ -10,13 +10,12 @@ import { HeroLoop, HERO_LOOP_FRAMES } from './v2/HeroLoop';
 import { StoryClip, storyClipMetadata } from './v2/StoryClip';
 import { PhoneStill, PHONE_STILL } from './v2/PhoneStill';
 import { OgImage } from './OgImage';
-import { HeroBeat1, HeroBeat2 } from './v2/HeroStage';
+import { HeroStill } from './v2/HeroLoop';
 import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAMES } from './guide/GuideLesson';
 
 export const Root: React.FC = () => (
   <>
-    <Still id="HeroBeat1" component={HeroBeat1} width={1920} height={1080} defaultProps={{ at: 60 }} />
-    <Still id="HeroBeat2" component={HeroBeat2} width={1920} height={1080} defaultProps={{ at: 118 }} />
+    <Still id="HeroStill" component={HeroStill} width={1920} height={1080} defaultProps={{ at: 60 }} />
     <Composition id="TaskBuddy60" component={PromoV2} durationInFrames={TOTAL60} fps={FPS} width={1920} height={1080} />
     <Composition id="HeroLoop" component={HeroLoop} durationInFrames={HERO_LOOP_FRAMES} fps={FPS} width={1920} height={1080} />
     <Composition id="StoryClip" component={StoryClip} durationInFrames={100} fps={FPS} width={1080} height={1080} defaultProps={{ role: 'customer' as const, step: 1 }} calculateMetadata={storyClipMetadata} />
