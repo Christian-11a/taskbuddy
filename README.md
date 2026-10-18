@@ -167,17 +167,24 @@ The web console defaults to `http://localhost:3001`; set
 ## Status and open work (October 2026)
 
 - **Deployed:** the API on Render runs upstream `main` (check `/health` for
-  the commit). Supabase has migrations through **0069**, including 0068
-  (certificates required). Some were applied outside the history, so verify by
-  the objects each file creates. New migrations start at **0070**.
+  the commit). Supabase has migrations through **0074**. Some were applied
+  outside the history, so verify by the objects each file creates. New
+  migrations start at **0075**.
+- **Security and money fixes (October 18):** Google sign-in is bound to both
+  ends of the flow (0071; needs the new app build), sign-up can no longer
+  create admins (0070), profiles and open jobs are no longer readable straight
+  from PostgREST and uploads are limited (0072), payouts are safe against
+  double payment, failed hires can be re-hired, fresh payments are not swept
+  before their hold, and paid invoices are confirmed with Xendit (0073).
 - **Certificates are now required** to propose, be invited or be hired: an
   approved identity check plus an approved, unexpired TESDA, PRC or trade
   certificate for that service. Applying 0068 left no provider verified until
   certificates are uploaded and approved.
-- **Open backend work** is planned in
-  [`docs/backend-handoff-plan-2026-10-18.md`](./docs/backend-handoff-plan-2026-10-18.md):
-  deploy what is merged, harden payouts before real money, the audit's
-  security items, real refunds, and the handoff leftovers.
+- **Open backend work** and what was done is tracked in
+  [`docs/backend-handoff-plan-2026-10-18.md`](./docs/backend-handoff-plan-2026-10-18.md).
+  Still open: real refunds and live Xendit keys, a sandbox payout and device
+  check, real concurrency tests, and the pre-release data wipe (script ready,
+  not run).
 - **Admin website:** Disputed status and filter, Failed payouts page, one
   verification case per provider (ID, selfie and certificate), commission
   headline; warranty, Issue Credit and the separate Credentials tab removed. It

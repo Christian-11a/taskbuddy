@@ -15,14 +15,12 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check (2026-10-18):** migrations through **0069** are applied to
-> the linked Supabase project (0068 and the 0069 hotfix verified by their
-> objects). Some were applied outside the migration history, so check the
-> objects themselves rather than `supabase migration list`. Render deploys the
-> fork's `main`; `/health` reports the deployed commit in its `commit` field.
-> At the time of writing it still reported `c6af502` after `main` moved to
-> `6ba5de2`, so the certificate API and payout callback were not yet live.
-> Open work: [`docs/backend-handoff-plan-2026-10-18.md`](../docs/backend-handoff-plan-2026-10-18.md).
+> **Release check (2026-10-18):** migrations through **0074** are applied to
+> the linked Supabase project, each verified by the objects it creates (some
+> were applied outside the migration history, so check objects rather than
+> `supabase migration list`). Render deploys the fork's `main`; `/health`
+> reports the deployed commit in its `commit` field. Status of the open work:
+> [`docs/backend-handoff-plan-2026-10-18.md`](../docs/backend-handoff-plan-2026-10-18.md).
 
 ## Architecture
 

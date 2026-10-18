@@ -2,10 +2,14 @@
 
 ## Current state (October 2026)
 
-Migrations through 0069 are applied, including 0068 (certificates required).
-Testers need a new EAS preview build with the certificate step, and the API on
-Render must be on `main` (`6ba5de2` or later) for it to work. Device checks of
-the newest flows remain open.
+Migrations through 0074 are applied and the API on Render runs `main`.
+**Testers need a new EAS preview build:** it has the certificate step and the
+new Google sign-in handshake (backend 0071). Older builds can still use email
+sign-in, but Google sign-in tells them to update. Device checks of the newest
+flows remain open.
+- **Google sign-in** keeps a verifier on the device and claims the session
+  with the id, the one-time secret from the redirect and that verifier
+  (`src/lib/googleHandoff.ts`).
 
 - **No wallet.** Hires are paid at a Xendit test-mode checkout (GCash, Maya,
   card, online banking). Payouts go to the provider's linked GCash/Maya/bank

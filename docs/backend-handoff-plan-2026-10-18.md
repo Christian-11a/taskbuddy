@@ -19,6 +19,12 @@ Firebase) and are covered here or already closed.
 
 ## Phase 0 — make what is merged actually live (today)
 
+> **Status 2026-10-18:** done. `main` did not compile (an autofix in #103
+> dropped a type), which is why Render had stopped deploying; #106 fixed it.
+> Render now deploys every merge; 0064–0069 verified. Still open: the Xendit
+> Payouts callback URL in the dashboard, the owner's Vercel sync and EAS
+> build, and a real-provider certificate smoke test.
+
 1. **Deploy `6ba5de2` on Render.** Check the dashboard for a failed build or
    disabled auto-deploy; trigger a manual deploy. Done when `/health` reports
    `6ba5de2…`. Until then the admin Verifications page and the app's certificate
@@ -37,6 +43,9 @@ Firebase) and are covered here or already closed.
 
 ## Phase 1 — payouts safe before any real money (#103 follow-ups)
 
+> **Status:** done in #107 (deployed). All seven items; 1.3 is the read-only
+> `scripts/payout-audit.mjs`. Not yet checked against a real sandbox reply.
+
 Branch `fix/xendit-payout-hardening`. Failing test first for each.
 
 | # | Problem | Fix |
@@ -51,6 +60,11 @@ Branch `fix/xendit-payout-hardening`. Failing test first for each.
 
 ## Phase 2 — security P0/P1 (from the audit)
 
+> **Status:** done and deployed. 2.2 in #108 (0070); 2.1 in #109 (0071,
+> backend and mobile; old builds must update for Google sign-in); 2.3–2.5 in
+> #110 (0072 and the full-path upload check). Production had one admin (the
+> known account), so the sign-up hole was never used.
+
 Each its own PR; migrations numbered from **0070**.
 
 | # | Problem | Fix | Needs |
@@ -63,6 +77,11 @@ Each its own PR; migrations numbered from **0070**.
 
 ## Phase 3 — money correctness before going live
 
+> **Status:** code parts done in #111 (0073, deployed): 3.2, 3.3, 3.5 (admin
+> alert), 3.6, and refund wording for 3.1. 3.4 was already enforced by 0045's
+> debit trigger; 0073 makes it explicit. **Open:** real refunds (3.1) need
+> live Xendit access; a periodic invoice poll (rest of 3.5) once live.
+
 | # | Problem | Fix |
 |---|---|---|
 | 3.1 | Refunds are simulated (`SIM-`); clients are told they were refunded | Xendit refund API per channel (Stripe `refunds.create` for card), idempotent on ledger id; until then app copy says "refund recorded (test mode)" (admin already does) |
@@ -73,6 +92,11 @@ Each its own PR; migrations numbered from **0070**.
 | 3.6 | Xendit invoice callback body trusted after the token check | Re-fetch the invoice before acting |
 
 ## Phase 4 — handoff leftovers
+
+> **Status:** #112 (0074, deployed): 4.1 done; 4.2 already paged; 4.5 step 1
+> done (mobile); 4.7 script ready, **not run** (needs the owner's go-ahead and
+> a backup). **Open:** 4.3 (admin console), 4.4 (needs real Postgres), 4.6
+> (mobile), 4.8 (`HOHomeScreen` tests fail consistently on `main`, mobile).
 
 | # | Item | Plan |
 |---|---|---|
@@ -96,6 +120,6 @@ Each its own PR; migrations numbered from **0070**.
 ## Order and gates
 
 Phase 0 → Phase 1 → Phase 2 → Phase 3 → Phase 4. Phases 1 and 2 can run in
-parallel (different files). Every item: own branch, failing test first, backend
+parallel (different files). Migrations used: 0070–0074; the next is 0075. Every item: own branch, failing test first, backend
 `jest` + `test:sql` + `tsc` green, migration with a PGlite test, PR with deploy
 steps. Re-audit the money path after Phase 3.
