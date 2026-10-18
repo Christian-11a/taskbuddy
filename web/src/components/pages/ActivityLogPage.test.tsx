@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ActivityLogPage } from "./ActivityLogPage";
 import * as services from "@/lib/services";
+import { ApiError } from "@/lib/api/client";
 import type { ActivityEvent } from "@/lib/domain";
 
 vi.mock("@/lib/services", () => ({ searchActivity: vi.fn() }));
@@ -52,6 +53,20 @@ describe("ActivityLogPage", () => {
     mockedSearchActivity.mockResolvedValueOnce({ items: [event], total: 1 });
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("caps the search box at 100 characters and shows the API's 400 message under it", async () => {
+    const user = userEvent.setup();
+    render(<ActivityLogPage />);
+    const search = await screen.findByLabelText("Search activity by job title");
+    expect(search).toHaveAttribute("maxLength", "100");
+
+    mockedSearchActivity.mockRejectedValueOnce(new ApiError(400, "Search is too long."));
+    await user.type(search, "x");
+
+    expect(await screen.findByText("Search is too long.")).toHaveAttribute("role", "alert");
+    expect(search).toHaveAccessibleDescription("Search is too long.");
+    expect(screen.queryByText("Couldn't refresh platform activity.")).not.toBeInTheDocument();
   });
 
   it("reloads when the live console refresh lands", async () => {

@@ -532,6 +532,7 @@ export function UsersPage() {
               }}
               placeholder="Search by name, email…"
               label="Search users by name or email"
+              maxLength={100}
             />
             <FilterTabs
               id="users-role"

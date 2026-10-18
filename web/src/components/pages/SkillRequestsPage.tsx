@@ -26,6 +26,7 @@ import {
   SearchField,
   initialsOf,
   neighborAfterRemoval,
+  searchErrorMessage,
   useIsWide,
   useQueueKeys,
 } from "@/components/admin/queue";
@@ -70,6 +71,8 @@ export function SkillRequestsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  /** The API rejected the search term (HTTP 400); shown under the search box. */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -95,9 +98,15 @@ export function SkillRequestsPage() {
       }
       setItems(result.items);
       setTotal(result.total);
+      setSearchError(null);
     } catch (err) {
       if (seq !== requestSeq.current) return;
-      setError(err instanceof Error ? err.message : "Could not load service requests. Please try again.");
+      const badSearch = searchErrorMessage(err);
+      if (badSearch) {
+        setSearchError(badSearch);
+      } else {
+        setError(err instanceof Error ? err.message : "Could not load service requests. Please try again.");
+      }
     } finally {
       if (seq === requestSeq.current) {
         setLoading(false);
@@ -222,7 +231,7 @@ export function SkillRequestsPage() {
                 { value: "rejected", label: "Rejected" },
               ]}
             />
-            <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); setSelectedId(null); }} placeholder="Search by provider or service…" label="Search service requests" />
+            <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); setSelectedId(null); }} placeholder="Search by provider or service…" label="Search service requests" maxLength={100} error={searchError} />
             {status === "pending" ? (
               <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
             ) : (

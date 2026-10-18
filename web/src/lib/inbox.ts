@@ -31,7 +31,7 @@ export const MERGE_WINDOW_MS = 5 * 60_000;
 const NOUNS: Record<QueueId, { one: string; many: string }> = {
   verifications: { one: "provider verification", many: "provider verifications" },
   disputes: { one: "dispute", many: "disputes" },
-  withdrawals: { one: "withdrawal request", many: "withdrawal requests" },
+  withdrawals: { one: "failed payout", many: "failed payouts" },
   "skill-requests": { one: "service request", many: "service requests" },
 };
 

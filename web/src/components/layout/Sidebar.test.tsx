@@ -46,13 +46,20 @@ beforeEach(() => {
   mockState.settings = { activityBadge: true };
 });
 
+describe("Sidebar credentials link", () => {
+  it("links to the credentials page", () => {
+    renderSidebar();
+    expect(navLink("Credentials")).toHaveAttribute("href", "/admin/credentials");
+  });
+});
+
 describe("Sidebar queue badges", () => {
   it("shows a number on every queue that has work", () => {
     mockState.queueCounts = { verifications: 3, disputes: 1, withdrawals: 2, "skill-requests": 2 };
     renderSidebar();
     expect(within(navLink("Verifications")).getByText("3")).toBeInTheDocument();
     expect(within(navLink("Disputes")).getByText("1")).toBeInTheDocument();
-    expect(within(navLink("Withdrawals")).getByText("2")).toBeInTheDocument();
+    expect(within(navLink("Failed payouts")).getByText("2")).toBeInTheDocument();
     expect(within(navLink("Service Requests")).getByText("2")).toBeInTheDocument();
   });
 
@@ -62,10 +69,22 @@ describe("Sidebar queue badges", () => {
     expect(within(navLink("Service Requests")).getByText("100+")).toBeInTheDocument();
   });
 
-  it("shows no badge for a queue that failed to load", () => {
+  it("shows Failed payouts with no badge at 0", () => {
+    renderSidebar();
+    expect(navLink("Failed payouts").textContent).toBe("Failed payouts");
+  });
+
+  it("shows Failed payouts with no badge while the count is unknown", () => {
     mockState.queueCounts = { verifications: 0, disputes: 0, withdrawals: null, "skill-requests": 0 };
     renderSidebar();
-    expect(navLink("Withdrawals").textContent).toBe("Withdrawals");
+    expect(navLink("Failed payouts").textContent).toBe("Failed payouts");
+  });
+
+  it("shows the Failed payouts count with the activity badge setting off", () => {
+    mockState.queueCounts = { verifications: 3, disputes: 1, withdrawals: 2, "skill-requests": 2 };
+    mockState.settings = { activityBadge: false };
+    renderSidebar();
+    expect(within(navLink("Failed payouts")).getByText("2")).toBeInTheDocument();
   });
 
   it("hides every badge when the activity badge setting is off", () => {
@@ -79,6 +98,6 @@ describe("Sidebar queue badges", () => {
   it("keeps the count on the collapsed link's accessible name", () => {
     mockState.queueCounts = { verifications: 0, disputes: 0, withdrawals: 4, "skill-requests": 0 };
     renderSidebar(true);
-    expect(screen.getByRole("link", { name: "Withdrawals (4)" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Failed payouts (4)" })).toBeInTheDocument();
   });
 });

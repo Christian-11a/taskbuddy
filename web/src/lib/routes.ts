@@ -11,6 +11,7 @@ import type { Page } from "@/lib/domain";
 const PAGES: Page[] = [
   "dashboard",
   "verifications",
+  "credentials",
   "users",
   "transactions",
   "disputes",

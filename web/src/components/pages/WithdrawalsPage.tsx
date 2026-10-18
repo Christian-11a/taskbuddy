@@ -1,338 +1,285 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Banknote, CheckCircle2, CircleSlash, RefreshCw, WalletCards, XCircle } from "lucide-react";
-import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { CheckCircle2, RefreshCw } from "lucide-react";
+import * as services from "@/lib/services";
+import { ApiError } from "@/lib/api/client";
+import { RETRY_OUTCOME_MESSAGE, isXenditPayoutFailure, payoutHeadline, TRANSFER_STATUS_DISPLAY, formatCurrency, formatDate } from "@/lib/adapters";
+import type { AdminWithdrawal, Transaction } from "@/lib/domain";
+import type { PayoutFailures } from "@/lib/services";
+import { useApp } from "@/context/AppContext";
+import { useLiveTick } from "@/hooks/useLiveTick";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input, ReasonField } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
-import { AnimatedNumber } from "@/components/admin/AnimatedNumber";
-import {
-  Avatar,
-  DetailCard,
-  DetailEmpty,
-  DetailSection,
-  Field,
-  FieldGrid,
-  FilterTabs,
-  KeyHints,
-  QueueItem,
-  QueueList,
-  QueueListSkeleton,
-  QueueListState,
-  QueueProgress,
-  QueueShell,
-  SearchField,
-  initialsOf,
-  neighborAfterRemoval,
-  useIsWide,
-  useQueueKeys,
-} from "@/components/admin/queue";
-import { useLiveTick } from "@/hooks/useLiveTick";
-import { useApp } from "@/context/AppContext";
-import { getWithdrawals, rejectWithdrawal, settleWithdrawal } from "@/lib/services";
-import type { AdminWithdrawal } from "@/lib/domain";
-import { formatCurrency, formatDate } from "@/lib/adapters";
+import { toneFromBadgeClass } from "@/components/admin/tones";
+import { DataTable, LoadFailedState, RefreshFailedBanner, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 
-type QueueStatus = "pending" | "completed" | "failed";
-
-const REASON_MAX = 500;
-const STATUS_META: Record<string, { label: string; tone: "warn" | "ok" | "danger" | "neutral" }> = {
-  pending: { label: "Needs review", tone: "warn" },
-  completed: { label: "Settled", tone: "ok" },
-  failed: { label: "Rejected", tone: "danger" },
+const OLD_STATUS: Record<string, { label: string; tone: "warn" | "ok" | "danger" | "neutral" }> = {
+  pending: { label: "Was waiting", tone: "warn" },
+  completed: { label: "Paid", tone: "ok" },
+  failed: { label: "Not paid", tone: "danger" },
 };
+
+/** Why an older card payout did not go out, in plain words. The payment service's own error comes first when there is one. */
+function cardFailureReason(t: Transaction): string {
+  if (t.transferError) return t.transferError;
+  if (t.transferStatus === "not_eligible") return "The provider has not finished setting up a payout account.";
+  if (t.transferStatus === "abandoned") return "Automatic retries ran out.";
+  return "The payout was refused.";
+}
+
+/** The payment provider's refusal note without its "Xendit:" prefix. */
+function payoutReason(w: AdminWithdrawal): string {
+  const text = (w.reviewNote ?? "").replace(/^\s*Xendit:\s*/i, "").trim();
+  return text || "No reason given";
+}
 
 export function WithdrawalsPage() {
   const { showToast } = useToast();
   const { refreshCounts } = useApp();
-  const isWide = useIsWide();
-  const [status, setStatus] = useState<QueueStatus>("pending");
-  const [items, setItems] = useState<AdminWithdrawal[]>([]);
-  const [total, setTotal] = useState(0);
+  const [split, setSplit] = useState<PayoutFailures>({ unresolved: [], resolved: [], providers: [], owed: [] });
+  const items = split.unresolved;
+  const [cardItems, setCardItems] = useState<Transaction[]>([]);
+  const [cardFailed, setCardFailed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [settling, setSettling] = useState<AdminWithdrawal | null>(null);
-  const [rejecting, setRejecting] = useState<AdminWithdrawal | null>(null);
-  const [reference, setReference] = useState("");
-  const [reason, setReason] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [doneThisSession, setDoneThisSession] = useState(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
-  // Only the newest request may write state: switching tabs (or a live tick)
-  // while an older request is slow must not fill this tab with another's rows.
+  // Only the newest request may write state (a live tick can overlap a slow one).
   const requestSeq = useRef(0);
-  const load = useCallback(async (quiet = false) => {
+  const load = useCallback(async () => {
     const seq = ++requestSeq.current;
-    if (!quiet) setLoading(true);
-    setError("");
+    // The older card list is secondary: if it cannot load, the main list still shows.
+    const cardRead = services.getFailedCardPayouts().catch(() => null);
     try {
-      const result = await getWithdrawals(status);
+      const result = await services.getPayoutFailures();
+      const card = await cardRead;
       if (seq !== requestSeq.current) return;
-      setItems(result.items);
-      setTotal(result.total);
+      setSplit(result);
+      if (card) setCardItems(card);
+      setCardFailed(!card);
+      setLoadFailed(false);
     } catch {
       if (seq !== requestSeq.current) return;
-      setError("Could not load withdrawal requests. The backend may still be deploying.");
+      setLoadFailed(true);
     } finally {
-      if (seq === requestSeq.current) {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [status]);
+  }, []);
 
-  /* eslint-disable react-hooks/set-state-in-effect -- initial data fetch is an
-     external-system synchronization; the state updates happen in its async
-     continuation. */
+  /* eslint-disable react-hooks/set-state-in-effect -- initial data fetch; state is set in its async continuation. */
   useEffect(() => { void load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
-  useLiveTick(() => void load(true));
+  useLiveTick(() => void load());
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter(
-      (i) => i.profileName.toLowerCase().includes(q) || (i.destination ?? "").toLowerCase().includes(q) || i.title.toLowerCase().includes(q),
-    );
-  }, [items, search]);
-  const ids = useMemo(() => filtered.map((i) => i.id), [filtered]);
-  const selected = filtered.find((i) => i.id === selectedId) ?? (isWide ? filtered[0] : undefined);
-  const effectiveId = selected?.id ?? null;
-  const amountInView = items.reduce((sum, item) => sum + item.amount, 0);
-
-  function afterDecision(id: string) {
-    setSelectedId(neighborAfterRemoval(ids, id));
-    // Drop it locally right away; the quiet reload then confirms from the server.
-    setItems((prev) => prev.filter((i) => i.id !== id));
-    setTotal((t) => Math.max(0, t - 1));
-    setDoneThisSession((n) => n + 1);
-  }
-
-  async function confirmSettle() {
-    if (!settling || !reference.trim() || reference.trim().length > 500) return;
-    const id = settling.id;
-    setBusy(true);
+  async function retry(t: Transaction) {
+    setRetryingId(t.id);
     try {
-      await settleWithdrawal(id, reference);
-      showToast("Withdrawal marked as paid.");
-      setSettling(null);
-      setReference("");
-      afterDecision(id);
+      const outcome = await services.retryEscrowTransfer(t.id);
+      showToast(RETRY_OUTCOME_MESSAGE[outcome], outcome === "transferred" ? "success" : "error");
+      await load();
       void refreshCounts();
-      await load(true);
-    } catch {
-      showToast("Could not settle this withdrawal. Check the balance and try again.", "error");
-    } finally { setBusy(false); }
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Could not retry the payout.", "error");
+    } finally {
+      setRetryingId(null);
+    }
   }
 
-  async function confirmReject() {
-    if (!rejecting || !reason.trim()) return;
-    const id = rejecting.id;
-    setBusy(true);
-    try {
-      await rejectWithdrawal(id, reason);
-      showToast("Withdrawal rejected.");
-      setRejecting(null);
-      setReason("");
-      afterDecision(id);
-      void refreshCounts();
-      await load(true);
-    } catch {
-      showToast("Could not reject this withdrawal. Please try again.", "error");
-    } finally { setBusy(false); }
-  }
+  const headline = payoutHeadline(split.owed, cardItems);
 
-  function openSettle(item: AdminWithdrawal) { setSettling(item); setReference(""); }
-  function openReject(item: AdminWithdrawal) { setRejecting(item); setReason(""); }
+  const columns: Column<AdminWithdrawal>[] = [
+    { id: "provider", header: "Provider", cell: (w) => <span className="font-medium">{w.profileName}</span> },
+    { id: "amount", header: "Amount", align: "right", cell: (w) => <span className="tabular font-semibold">{formatCurrency(w.amount)}</span> },
+    { id: "date", header: "Date", hideBelow: "md", cell: (w) => <span className="tabular text-muted-foreground">{formatDate(w.createdAt)}</span> },
+    { id: "reason", header: "Why it failed", cell: (w) => <span className="block max-w-[360px] text-[12.5px] text-muted-foreground">{payoutReason(w)}</span> },
+  ];
 
-  const pending = selected?.status === "pending";
-  useQueueKeys({
-    ids,
-    selectedId: effectiveId,
-    onSelect: setSelectedId,
-    onApprove: pending && !busy ? () => openSettle(selected!) : undefined,
-    onReject: pending && !busy ? () => openReject(selected!) : undefined,
-  });
+  const cardColumns: Column<Transaction>[] = [
+    { id: "provider", header: "Provider", cell: (t) => <span className="font-medium">{t.providerName}</span> },
+    {
+      id: "job",
+      header: "Job",
+      hideBelow: "md",
+      cell: (t) => (
+        <span className="text-muted-foreground">
+          {t.service} <span className="font-mono text-[11.5px]" title={t.jobId}>{t.jobId.slice(0, 8)}</span>
+        </span>
+      ),
+    },
+    { id: "amount", header: "Amount", align: "right", cell: (t) => <span className="tabular font-semibold">{formatCurrency(t.amount)}</span> },
+    {
+      id: "reason",
+      header: "Why it failed",
+      cell: (t) => (
+        <div className="max-w-[320px]">
+          <Badge tone={toneFromBadgeClass(TRANSFER_STATUS_DISPLAY[t.transferStatus].badgeClass)}>{TRANSFER_STATUS_DISPLAY[t.transferStatus].label}</Badge>
+          <div className="mt-1 text-[12px] text-muted-foreground">{cardFailureReason(t)}</div>
+        </div>
+      ),
+    },
+    { id: "date", header: "When", hideBelow: "lg", cell: (t) => <span className="tabular text-muted-foreground">{formatDate(t.date)}</span> },
+    {
+      id: "retry",
+      header: "",
+      align: "right",
+      cell: (t) => (
+        <Button size="sm" variant="outline" onClick={() => void retry(t)} disabled={retryingId !== null} aria-label={`Retry payout for ${t.providerName}, ${formatCurrency(t.amount)}`}>
+          <RefreshCw className={retryingId === t.id ? "animate-spin" : ""} /> {retryingId === t.id ? "Retrying…" : "Retry"}
+        </Button>
+      ),
+    },
+  ];
 
-  const listBody = loading ? (
-    <QueueListSkeleton />
-  ) : error ? (
-    <QueueListState icon={AlertTriangle} tone="danger" title="Couldn't load withdrawals" description={error} action={<Button size="sm" variant="outline" onClick={() => void load()}>Try again</Button>} />
-  ) : filtered.length === 0 ? (
-    items.length > 0 ? (
-      <QueueListState title="Nothing matches" description="Try a different search." />
-    ) : status === "pending" ? (
-      <QueueListState icon={CheckCircle2} tone="ok" title="No withdrawals waiting" description="New payout requests from providers will appear here." />
-    ) : (
-      <QueueListState icon={CircleSlash} title={`No ${STATUS_META[status].label.toLowerCase()} withdrawals`} />
-    )
-  ) : (
-    <QueueList label="Withdrawal requests">
-      {filtered.map((item) => (
-        <QueueItem
-          key={item.id}
-          id={item.id}
-          selected={item.id === effectiveId}
-          onSelect={setSelectedId}
-          leading={<Avatar initials={initialsOf(item.profileName)} tone={item.status === "pending" ? "warn" : "neutral"} />}
-          title={item.profileName}
-          trailing={<span className="tabular text-[13px] font-semibold">{formatCurrency(item.amount)}</span>}
-          meta={item.destination ?? "No destination provided"}
-          aside={
-            <span className="flex items-center gap-2">
-              <Badge tone={STATUS_META[item.status]?.tone ?? "neutral"} dot>{STATUS_META[item.status]?.label ?? item.status}</Badge>
-              <span className="text-[11.5px] text-muted-foreground">{formatDate(item.createdAt)}</span>
-            </span>
-          }
-        />
-      ))}
-    </QueueList>
-  );
+  const historyColumns: Column<{ withdrawal: AdminWithdrawal; paidAt: string }>[] = [
+    { id: "provider", header: "Provider", cell: (r) => <span className="font-medium">{r.withdrawal.profileName}</span> },
+    { id: "amount", header: "Amount", align: "right", cell: (r) => <span className="tabular font-semibold">{formatCurrency(r.withdrawal.amount)}</span> },
+    { id: "date", header: "Failed on", hideBelow: "md", cell: (r) => <span className="tabular text-muted-foreground">{formatDate(r.withdrawal.createdAt)}</span> },
+    { id: "reason", header: "Why it failed", cell: (r) => <span className="block max-w-[360px] text-[12.5px] text-muted-foreground">{payoutReason(r.withdrawal)}</span> },
+    { id: "paid", header: "Later", cell: (r) => <span className="text-[12.5px] text-ok">Paid later, {formatDate(r.paidAt)}</span> },
+  ];
 
   return (
     <div>
       <PageHeader
         eyebrow="Operations"
-        title="Withdrawals"
-        description="Review payout requests and record payouts made outside the platform."
+        title="Failed payouts"
+        description="When a client confirms a job, the provider is paid automatically to their linked payout account. Payouts the payment provider refused show here."
         actions={
-          <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); void load(true); }} disabled={refreshing}>
-            <RefreshCw className={refreshing ? "animate-spin" : ""} /> Refresh
+          <Button variant="outline" size="sm" onClick={() => { setLoading(true); void load(); }} disabled={loading}>
+            <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
           </Button>
         }
       />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-[auto_auto_1fr]">
-        <Stat icon={Banknote} label="Waiting for review" tone={status === "pending" && total > 0 ? "warn" : "neutral"}>
-          {status === "pending" ? <AnimatedNumber value={total} /> : "—"}
-        </Stat>
-        <Stat icon={WalletCards} label="Amount in this view">
-          <AnimatedNumber value={amountInView} format={formatCurrency} />
-        </Stat>
-        <div className="flex items-center gap-2.5 rounded-[12px] border border-warn/25 bg-warn-soft px-4 py-3 text-[12.5px] leading-relaxed text-warn">
-          <AlertTriangle className="size-4 shrink-0" />
-          Only mark a request paid after the money has actually moved.
-        </div>
-      </div>
-
-      <QueueShell
-        showDetailOnNarrow={!!selectedId && !!selected}
-        onBack={() => setSelectedId(null)}
-        storageKey="admin.queue.withdrawals"
-        railCount={filtered.length}
-        railLabel="withdrawals"
-        toolbar={
-          <>
-            <FilterTabs
-              id="withdrawals"
-              label="Filter withdrawals by status"
-              value={status}
-              onChange={(s) => { setStatus(s); setSelectedId(null); }}
-              options={[
-                { value: "pending", label: "Needs review" },
-                { value: "completed", label: "Settled" },
-                { value: "failed", label: "Rejected" },
-              ]}
-            />
-            <SearchField value={search} onChange={setSearch} placeholder="Search by name or destination…" label="Search withdrawals" />
-            {status === "pending" ? (
-              <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
-            ) : (
-              <span className="text-[12px] text-muted-foreground tabular">{total.toLocaleString()} request{total === 1 ? "" : "s"}</span>
-            )}
-          </>
-        }
-        list={<>{listBody}<KeyHints approve="settle" reject="reject" /></>}
-        detail={
-          selected ? (
-            <DetailCard
-              key={selected.id}
-              header={
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-start gap-3.5">
-                    <Avatar initials={initialsOf(selected.profileName)} size="lg" tone="neutral" />
-                    <div className="min-w-0">
-                      <h2 className="truncate text-[17px] font-semibold tracking-tight">{selected.profileName}</h2>
-                      <p className="mt-0.5 text-[12.5px] text-muted-foreground">{selected.title}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="tabular text-[22px] font-semibold tracking-tight">{formatCurrency(selected.amount)}</div>
-                    <Badge tone={STATUS_META[selected.status]?.tone ?? "neutral"} dot className="mt-1">
-                      {STATUS_META[selected.status]?.label ?? selected.status}
-                    </Badge>
-                  </div>
-                </div>
-              }
-              footer={
-                selected.status === "pending" ? (
-                  <>
-                    <Button variant="destructive-outline" onClick={() => openReject(selected)} disabled={busy}>
-                      <XCircle /> Reject
-                    </Button>
-                    <Button onClick={() => openSettle(selected)} disabled={busy}>
-                      <CheckCircle2 /> Mark as paid
-                    </Button>
-                  </>
-                ) : undefined
-              }
-            >
-              <DetailSection title="Payout">
-                <FieldGrid>
-                  <Field label="Send to">{selected.destination ?? "Not provided"}</Field>
-                  <Field label="Requested">{formatDate(selected.createdAt)}</Field>
-                  {selected.reviewedAt && <Field label="Reviewed">{formatDate(selected.reviewedAt)}</Field>}
-                  {selected.status !== "pending" && <Field label="Review note">{selected.reviewNote ?? "—"}</Field>}
-                </FieldGrid>
-              </DetailSection>
-              {selected.status === "pending" && (
-                <p className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
-                  Send the money through GCash or the bank first, then mark it paid with the reference. Rejecting returns the reserved amount to the provider&apos;s available balance.
-                </p>
-              )}
-            </DetailCard>
-          ) : (
-            <DetailEmpty queueEmpty={filtered.length === 0} title="Pick a request" description="Select a withdrawal on the left to see where the money goes and settle it." />
-          )
-        }
+      <SummaryStrip
+        items={[
+          { label: headline.count === 1 ? "provider not yet paid" : "providers not yet paid", value: headline.count.toLocaleString() },
+          {
+            label: "waiting to be paid",
+            value: formatCurrency(headline.total),
+          },
+        ]}
       />
 
-      <ConfirmDialog open={!!settling} title="Mark withdrawal as paid?" message={settling ? `${settling.profileName} will be told that ${formatCurrency(settling.amount)} was sent.` : ""} confirmLabel="Mark as paid" cancelLabel="Keep pending" danger={false} busy={busy} confirmDisabled={!reference.trim() || reference.trim().length > 500} onConfirm={() => void confirmSettle()} onCancel={() => !busy && setSettling(null)}>
-        <label className="block text-[12px] font-medium text-muted-foreground">
-          Payout reference <span className="font-normal text-subtle">(required)</span>
-          <Input required maxLength={500} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="GCash / bank reference" className="mt-1.5" />
-        </label>
-      </ConfirmDialog>
-      <ConfirmDialog open={!!rejecting} title="Reject withdrawal?" message="The requester will be notified and the reserved amount will return to their available balance." confirmLabel="Reject withdrawal" busy={busy} confirmDisabled={!reason.trim() || reason.length > REASON_MAX} onConfirm={() => void confirmReject()} onCancel={() => !busy && setRejecting(null)}>
-        <ReasonField autoFocus required value={reason} onChange={setReason} max={REASON_MAX} label="Reason" placeholder="Explain why this request cannot be paid" />
-      </ConfirmDialog>
+      {(split.providers.length > 0 || cardItems.length > 0) && (
+        <p className="-mt-2 mb-4 text-[12px] text-muted-foreground">
+          Each automatic payout sends the provider&apos;s whole wallet balance, so the amount waiting is each provider&apos;s current balance, not the failed amounts.
+          {cardItems.length > 0 && " Older card payouts add the amount shown for each."}
+          {split.providers.length > split.owed.length && " Providers with nothing left to send are listed below but not counted."}
+        </p>
+      )}
+
+      {cardFailed && (
+        <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-[10px] border border-border bg-surface px-4 py-3 text-[13px]">
+          <span>Couldn&apos;t load older card payouts. The totals above leave them out.</span>
+          <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>
+        </div>
+      )}
+
+      <TableCard>
+        {loadFailed && items.length > 0 && <RefreshFailedBanner noun="failed payouts" onRetry={() => void load()} />}
+        <DataTable
+          label="Failed payouts table"
+          columns={columns}
+          rows={items}
+          getRowId={(w) => w.id}
+          minWidth={560}
+          empty={
+            loadFailed && !loading ? (
+              <LoadFailedState noun="failed payouts" onRetry={() => void load()} />
+            ) : (
+              <TableEmpty>
+                {loading ? (
+                  "Loading failed payouts…"
+                ) : (
+                  <span className="inline-flex items-center gap-2"><CheckCircle2 className="size-4 text-ok" aria-hidden /> No failed payouts. Providers are being paid automatically.</span>
+                )}
+              </TableEmpty>
+            )
+          }
+        />
+      </TableCard>
+
+      {split.resolved.length > 0 && (
+        <section className="mt-6" aria-label="Earlier failed attempts">
+          <h2 className="mb-1 text-[13px] font-medium">Earlier failed attempts</h2>
+          <p className="mb-2 text-[12px] text-muted-foreground">Read-only. These providers were paid by a later payout, so nothing is owed.</p>
+          <TableCard>
+            <DataTable label="Earlier failed attempts table" columns={historyColumns} rows={split.resolved} getRowId={(r) => r.withdrawal.id} minWidth={640} empty={null} />
+          </TableCard>
+        </section>
+      )}
+
+      {cardItems.length > 0 && (
+        <section className="mt-6" aria-label="Older card payouts that failed">
+          <h2 className="mb-2 text-[13px] font-medium">Older card payouts that failed</h2>
+          <TableCard>
+            <DataTable label="Older card payouts table" columns={cardColumns} rows={cardItems} getRowId={(t) => t.id} minWidth={720} empty={null} />
+          </TableCard>
+        </section>
+      )}
+
+      <OldWithdrawals />
     </div>
   );
 }
 
-function Stat({
-  icon: Icon,
-  label,
-  tone = "neutral",
-  children,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  tone?: "warn" | "neutral";
-  children: React.ReactNode;
-}) {
+/** Read-only history of withdrawal requests made before automatic payouts. Refused Xendit payouts are listed above, so they are not repeated. Fetched only when opened. */
+function OldWithdrawals() {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [rows, setRows] = useState<AdminWithdrawal[]>([]);
+
+  const load = useCallback(async () => {
+    setState("loading");
+    try {
+      const results = await Promise.all((["pending", "completed", "failed"] as const).map((s) => services.getWithdrawals(s)));
+      setRows(results.flatMap((r) => r.items).filter((w) => !isXenditPayoutFailure(w)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+      setState("ready");
+    } catch {
+      setState("error");
+    }
+  }, []);
+
+  const columns: Column<AdminWithdrawal>[] = [
+    { id: "name", header: "Provider", cell: (w) => <span className="font-medium">{w.profileName}</span> },
+    { id: "amount", header: "Amount", align: "right", cell: (w) => <span className="tabular font-semibold">{formatCurrency(w.amount)}</span> },
+    { id: "dest", header: "Sent to", hideBelow: "md", cell: (w) => <span className="text-muted-foreground">{w.destination ?? "Not provided"}</span> },
+    { id: "status", header: "Status", cell: (w) => <Badge tone={OLD_STATUS[w.status]?.tone ?? "neutral"} dot>{OLD_STATUS[w.status]?.label ?? w.status}</Badge> },
+    { id: "date", header: "Requested", hideBelow: "lg", cell: (w) => <span className="tabular text-muted-foreground">{formatDate(w.createdAt)}</span> },
+    { id: "note", header: "Note", hideBelow: "lg", cell: (w) => <span className="text-muted-foreground">{w.status === "failed" ? (w.reviewNote?.trim() || "No reason given") : ""}</span> },
+  ];
+
   return (
-    <div className="min-w-[180px] rounded-[12px] border border-border bg-surface px-4 py-3 shadow-ui-sm">
-      <div className={`flex items-center gap-1.5 text-[12px] ${tone === "warn" ? "text-warn" : "text-muted-foreground"}`}>
-        <Icon className="size-3.5" /> {label}
-      </div>
-      <div className="mt-1 tabular text-[22px] font-semibold tracking-tight">{children}</div>
-    </div>
+    <details
+      className="mt-6 rounded-[12px] border border-border bg-surface shadow-ui-sm"
+      onToggle={(e) => {
+        const nowOpen = e.currentTarget.open;
+        setOpen(nowOpen);
+        if (nowOpen && state === "idle") void load();
+      }}
+    >
+      <summary className="cursor-pointer select-none px-4 py-3 text-[13px] font-medium">Old withdrawal requests (before automatic payouts)</summary>
+      {open && (
+        <div className="border-t border-border">
+          <p className="px-4 pt-3 text-[12px] text-muted-foreground">Read-only history. Nothing here can be approved or rejected any more.</p>
+          {state === "loading" && <TableEmpty>Loading old requests…</TableEmpty>}
+          {state === "error" && <LoadFailedState noun="old withdrawal requests" onRetry={() => void load()} />}
+          {state === "ready" && (
+            <DataTable
+              label="Old withdrawal requests table"
+              columns={columns}
+              rows={rows}
+              getRowId={(w) => w.id}
+              minWidth={640}
+              empty={<TableEmpty>No old withdrawal requests.</TableEmpty>}
+            />
+          )}
+        </div>
+      )}
+    </details>
   );
 }

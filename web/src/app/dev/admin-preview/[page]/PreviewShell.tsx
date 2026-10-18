@@ -32,7 +32,7 @@ const PAGES: Record<string, React.ComponentType> = {
 
 /**
  * Real shell + page, fed sample data. `?theme=dark` and `?collapsed=1` preview those states.
- * `?bump=1` adds one pending withdrawal 8 s after load, so the arrival alert can be seen.
+ * `?bump=1` adds one failed payout 8 s after load, so the arrival alert can be seen.
  * `?inbox=1` starts the bell's inbox with sample entries (two unread) instead of an empty one.
  */
 export function PreviewShell({ page, dark, collapsed, bump, inbox }: { page: string; dark: boolean; collapsed: boolean; bump: boolean; inbox: boolean }) {

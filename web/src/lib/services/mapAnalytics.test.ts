@@ -3,11 +3,14 @@ import {
   mapActivity,
   mapBookingsByCategory,
   mapBookingsSeries,
+  mapCommissionSeries,
   mapCompletionRate,
   mapRevenueSeries,
   mapTopProviders,
 } from "./mapAnalytics";
 import type { AnalyticsSummaryApiResponse } from "@/lib/api/types";
+
+const NOW = new Date("2026-05-20T00:00:00Z"); // UTC 2026-05-20
 
 const SUMMARY: AnalyticsSummaryApiResponse = {
   totals: {
@@ -64,11 +67,32 @@ describe("mapCompletionRate", () => {
 });
 
 describe("mapBookingsSeries", () => {
-  it("sums daily counts into monthly buckets, sorted", () => {
-    expect(mapBookingsSeries(SUMMARY)).toEqual([
-      { month: "Apr", value: 3 },
-      { month: "May", value: 2 },
+  it("sums daily counts into monthly buckets, keyed by YYYY-MM, zero-filled to 12 months ending this month", () => {
+    const series = mapBookingsSeries(SUMMARY, NOW);
+    expect(series).toHaveLength(12);
+    expect(series[0]).toEqual({ month: "2025-06", value: 0 });
+    expect(series.slice(-3)).toEqual([
+      { month: "2026-03", value: 0 },
+      { month: "2026-04", value: 3 },
+      { month: "2026-05", value: 2 },
     ]);
+  });
+
+  it("keeps the year across the Dec to Jan boundary", () => {
+    const series = mapBookingsSeries(
+      { ...SUMMARY, booking_trend: [{ date: "2026-12-30", count: 4 }, { date: "2027-01-02", count: 1 }] },
+      new Date("2027-01-15T00:00:00Z"),
+    );
+    expect(series.slice(-3)).toEqual([
+      { month: "2026-11", value: 0 },
+      { month: "2026-12", value: 4 },
+      { month: "2027-01", value: 1 },
+    ]);
+  });
+
+  it("drops activity outside the 12-month window", () => {
+    const series = mapBookingsSeries({ ...SUMMARY, booking_trend: [{ date: "2024-01-05", count: 9 }] }, NOW);
+    expect(series.every((p) => p.value === 0)).toBe(true);
   });
 });
 
@@ -94,10 +118,58 @@ describe("mapTopProviders", () => {
 });
 
 describe("mapRevenueSeries", () => {
-  it("maps revenue_trend months to chart points", () => {
-    expect(mapRevenueSeries(SUMMARY)).toEqual([
-      { month: "Apr", value: 900 },
-      { month: "May", value: 600 },
+  it("maps revenue_trend months to chart points, zero-filled", () => {
+    const series = mapRevenueSeries(SUMMARY, NOW);
+    expect(series).toHaveLength(12);
+    expect(series.slice(-3)).toEqual([
+      { month: "2026-03", value: 0 },
+      { month: "2026-04", value: 900 },
+      { month: "2026-05", value: 600 },
+    ]);
+  });
+});
+
+describe("mapRevenueSeries with commission", () => {
+  it("sums provider payouts and commission per month into released payments", () => {
+    const summary = {
+      ...SUMMARY,
+      revenue_trend: [{ month: "2026-04", amount: 900 }, { month: "2026-05", amount: 600 }],
+      commission_trend: [{ month: "2026-05", amount: 60 }, { month: "2026-06", amount: 5.5 }],
+    } as AnalyticsSummaryApiResponse;
+    expect(mapRevenueSeries(summary, new Date("2026-06-10T00:00:00Z")).slice(-3)).toEqual([
+      { month: "2026-04", value: 900 },
+      { month: "2026-05", value: 660 },
+      { month: "2026-06", value: 5.5 },
+    ]);
+  });
+
+  it("names the year when the window crosses a year, and fills the gap months with 0", () => {
+    const summary = {
+      ...SUMMARY,
+      revenue_trend: [{ month: "2026-12", amount: 50 }],
+      commission_trend: [],
+    } as AnalyticsSummaryApiResponse;
+    const series = mapRevenueSeries(summary, new Date("2027-01-15T00:00:00Z"));
+    expect(series[0].month).toBe("2026-02");
+    expect(series.at(-1)).toEqual({ month: "2027-01", value: 0 });
+    expect(series.find((p) => p.month === "2026-12")).toEqual({ month: "2026-12", value: 50 });
+    expect(series.find((p) => p.month === "2026-11")).toEqual({ month: "2026-11", value: 0 });
+  });
+
+  it("ends the window at the UTC month: 2026-10-31 20:00 UTC is still October", () => {
+    const series = mapRevenueSeries(SUMMARY, new Date("2026-10-31T20:00:00Z"));
+    expect(series.at(-1)?.month).toBe("2026-10");
+  });
+});
+
+describe("mapCommissionSeries", () => {
+  it("returns the released commission per month, zero-filled, keyed YYYY-MM", () => {
+    const summary = { ...SUMMARY, commission_trend: [{ month: "2026-05", amount: 60 }] } as AnalyticsSummaryApiResponse;
+    const series = mapCommissionSeries(summary, NOW);
+    expect(series).toHaveLength(12);
+    expect(series.slice(-2)).toEqual([
+      { month: "2026-04", amount: 0 },
+      { month: "2026-05", amount: 60 },
     ]);
   });
 });

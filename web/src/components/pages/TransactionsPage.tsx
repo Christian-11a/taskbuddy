@@ -1,13 +1,12 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, Download, Gift, Landmark, Lock, PanelRightOpen, Receipt, RefreshCw, ShieldAlert } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Download, Landmark, Lock, PanelRightOpen, Receipt, RefreshCw, ShieldAlert } from "lucide-react";
 import * as services from "@/lib/services";
 import { useApp } from "@/context/AppContext";
-import { toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
+import { RETRY_OUTCOME_MESSAGE, toTransactionRow, toWalletTxnRow, type TransactionRow, type WalletTxnRow } from "@/lib/adapters";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
-import { RECOVERY_CREDIT_MAX_AMOUNT, RECOVERY_CREDIT_TITLE_MAX_LENGTH, validateRecoveryCreditAmount } from "@/lib/validation";
 import { ApiError } from "@/lib/api/client";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
@@ -15,11 +14,9 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
-import { FilterTabs, SearchField } from "@/components/admin/queue";
+import { FilterTabs, SearchField, searchErrorMessage } from "@/components/admin/queue";
 import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
-import { WarrantyLine } from "@/components/admin/WarrantyLine";
 import { toneFromBadgeClass } from "@/components/admin/tones";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useBookingDetailCache } from "@/hooks/useBookingDetailCache";
@@ -27,16 +24,6 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 12;
-
-/** What an admin is told after "Retry transfer" (see ConnectPayoutsService). */
-const RETRY_OUTCOME_MESSAGE: Record<services.TransferRetryOutcome, string> = {
-  transferred: "Payout sent to the provider's Stripe account.",
-  not_eligible: "The provider hasn't finished setting up payouts. The money stays in their wallet.",
-  failed: "Stripe refused the transfer again. The money stays in the provider's wallet.",
-  abandoned: "Stripe refused the transfer. The money stays in the provider's wallet.",
-  retry: "Stripe didn't answer. The transfer is queued and will be retried automatically.",
-  skipped: "Nothing to retry for this escrow.",
-};
 
 type StatusFilter = "all" | "Completed" | "In Escrow" | "Disputed" | "Refunded";
 type Tab = "escrow" | "wallet";
@@ -92,12 +79,14 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   const [loading, setLoading] = useState(true);
   /** The last load failed. Rows stay on screen when there are any (see the banner). */
   const [loadFailed, setLoadFailed] = useState(false);
+  /** The API rejected the search term (HTTP 400); shown under the search box. */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const { showToast } = useToast();
   const sel = useSelection(transactions.map((t) => t.id));
 
-  /** Retries a card-funded payout's Stripe transfer, then reloads the page. */
+  /** Retries a payout that did not go through, then reloads the page. */
   async function retryTransfer(t: TransactionRow) {
     setRetryingId(t.id);
     try {
@@ -134,15 +123,20 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
           setTransactions(result.items.map(toTransactionRow));
           setTotalCount(result.total);
           setLoadFailed(false);
+          setSearchError(null);
           setLoading(false);
         }
       })
-      .catch(() => {
-        // Keep the last good rows and total; the banner says they may be stale.
-        if (!cancelled) {
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const badSearch = searchErrorMessage(err);
+        if (badSearch) {
+          setSearchError(badSearch);
+        } else {
+          // Keep the last good rows and total; the banner says they may be stale.
           setLoadFailed(true);
-          setLoading(false);
         }
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -206,7 +200,9 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
           <Badge tone={toneFromBadgeClass(t.payoutClass)} title={t.payoutDetail ?? undefined}>
             {t.payout}
           </Badge>
-        ) : null,
+        ) : (
+          <span className="text-muted-foreground" title={t.payoutNote ?? undefined}>—</span>
+        ),
     },
     { id: "date", header: "Date", hideBelow: "md", cell: (t) => <span className="tabular text-muted-foreground">{t.date}</span> },
     {
@@ -233,10 +229,15 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
   const open = transactions.find((t) => t.id === openId) ?? null;
   const openJobId = open?.jobId ?? null;
 
-  // Job detail gives the warranty window. Requested when the drawer opens and
+  // Job detail gives whether the job is completed. Requested when the drawer opens and
   // refreshed on live ticks while it stays open (see useBookingDetailCache); a
   // failed request shows nothing extra and no toast.
-  const warranty = useBookingDetailCache(openJobId);
+  const job = useBookingDetailCache(openJobId);
+  // Released once a completed job's escrow is released; otherwise release is in progress, or held while a complaint is open.
+  const jobPayment =
+    job && job !== "error" && job.status === "completed" && (job.escrowStatus === "COMPLETED" || job.escrowStatus === "IN_ESCROW" || job.escrowStatus === "DISPUTED")
+      ? job.escrowStatus
+      : null;
 
   return (
     <div>
@@ -262,6 +263,8 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
               }}
               placeholder="Search by ID, client, or provider…"
               label="Search escrow transactions"
+              maxLength={100}
+              error={searchError}
             />
             <FilterTabs
               id="escrow-status"
@@ -343,7 +346,7 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
               </Button>
               <Button className="flex-1" onClick={() => void retryTransfer(open)} disabled={retryingId === open.id}>
                 <RefreshCw className={retryingId === open.id ? "animate-spin" : ""} />
-                {retryingId === open.id ? "Retrying…" : "Retry transfer"}
+                {retryingId === open.id ? "Retrying…" : "Retry payout"}
               </Button>
             </>
           ) : undefined
@@ -372,19 +375,30 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                 <DrawerField label="Funded by" value={open.funding} />
                 <DrawerField
                   label="Payout"
-                  value={open.payout ? <Badge tone={toneFromBadgeClass(open.payoutClass)}>{open.payout}</Badge> : "—"}
+                  value={open.payout ? <Badge tone={toneFromBadgeClass(open.payoutClass)}>{open.payout}</Badge> : <span title={open.payoutNote ?? undefined}>{open.payoutNote ? `— ${open.payoutNote}` : "—"}</span>}
                 />
-                {open.payoutDetail && <DrawerField label="Stripe" value={<span className="break-all">{open.payoutDetail}</span>} />}
+                {open.payoutDetail && <DrawerField label="Payout reference" value={<span className="break-all">{open.payoutDetail}</span>} />}
               </div>
-              {warranty && warranty !== "error" && (
-                <div className="mt-4">
-                  <WarrantyLine completedAt={warranty.completedAt} escrowStatus={warranty.escrowStatus} />
+              {jobPayment && (
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[12.5px]">
+                  {jobPayment === "COMPLETED" ? (
+                    <Badge tone="ok" dot>Released</Badge>
+                  ) : (
+                    <>
+                      <Badge tone="danger" dot>Held</Badge>
+                      <span className="text-muted-foreground">
+                        {jobPayment === "DISPUTED" || (job !== "error" && job?.displayStatus === "disputed")
+                          ? "Held while the complaint is open"
+                          : "Release in progress"}
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
             </DrawerSection>
             {open.canRetryTransfer && (
               <p className="rounded-[10px] bg-warn-soft px-3.5 py-2.5 text-[12.5px] leading-relaxed text-warn">
-                The payout is in the provider&apos;s wallet. Retrying sends it to their Stripe account.
+                This payout did not reach the provider. Retrying sends it to their linked payout account.
               </p>
             )}
           </>
@@ -395,45 +409,22 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
 });
 
 /**
- * The wallet ledger — top-ups, withdrawals, and the payout/refund rows escrow
- * itself writes. Distinct data source from the Escrow tab: escrow is money
- * held for one job, this is a user's running balance.
+ * Read-only wallet history from before per-job card payments — top-ups,
+ * withdrawals, and the payout/refund rows escrow wrote. Distinct data source
+ * from the Escrow tab. Nothing can be issued or changed from here.
  */
 const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExportCountChange, onRequestExport }, ref) {
-  const { users, usersLoading, ensureUsers, settings, refreshCounts } = useApp();
+  const { settings } = useApp();
   const anonymizeExports = settings.anonymizeExports;
-  const { showToast } = useToast();
-  // The credit form searches the loaded users. Read the list here if it is more than 5 minutes old.
-  useEffect(() => {
-    ensureUsers({ maxAgeMs: 5 * 60_000 });
-  }, [ensureUsers]);
   const [rows, setRows] = useState<WalletTxnRow[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
   const debouncedSearch = useDebouncedValue(search, 250);
-
-  // Issue Credit form state.
-  const [issuingCredit, setIssuingCredit] = useState(false);
-  const [creditRecipientQuery, setCreditRecipientQuery] = useState("");
-  const [creditProfileId, setCreditProfileId] = useState<string | null>(null);
-  const [creditAmount, setCreditAmount] = useState("");
-  const [creditTitle, setCreditTitle] = useState("");
-  const [creditJobId, setCreditJobId] = useState("");
-  const [creditBusy, setCreditBusy] = useState(false);
-  const [creditError, setCreditError] = useState("");
-
-  function resetCreditForm() {
-    setCreditRecipientQuery("");
-    setCreditProfileId(null);
-    setCreditAmount("");
-    setCreditTitle("");
-    setCreditJobId("");
-    setCreditError("");
-  }
 
   useEffect(() => {
     let cancelled = false;
@@ -446,17 +437,22 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         if (!cancelled) {
           setRows(result.items.map(toWalletTxnRow));
           setTotalCount(result.total);
+          setSearchError(null);
           const lastPage = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
           if (page > lastPage) setPage(lastPage);
           setLoading(false);
         }
       })
-      .catch(() => {
-        // Keep the last good rows and total; the banner says they may be stale.
-        if (!cancelled) {
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const badSearch = searchErrorMessage(err);
+        if (badSearch) {
+          setSearchError(badSearch);
+        } else {
+          // Keep the last good rows and total; the banner says they may be stale.
           setError(true);
-          setLoading(false);
         }
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -485,10 +481,10 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         if (exportUnavailable) return;
         const mask = exportMasks(anonymizeExports);
         const csv = toCsv(
-          ["ID", "User", "Kind", "Amount", "Title", "Date"],
-          exportScope.map((r) => [r.id, mask.name(r.profileName), r.kindLabel, r.amountValue, r.title, r.createdAt]),
+          ["ID", "User", "Kind", "Amount", "Status", "Title", "Date"],
+          exportScope.map((r) => [r.id, mask.name(r.profileName), r.kindLabel, r.amountValue, r.statusLabel, r.title, r.createdAt]),
         );
-        downloadCsv(datedFilename("taskbuddy-wallet-transactions"), csv);
+        downloadCsv(datedFilename("taskbuddy-payment-records"), csv);
       },
     }),
     [exportScope, exportUnavailable, anonymizeExports],
@@ -502,55 +498,6 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
 
   const totalTopups = visibleRows.filter((r) => r.direction === "credit").reduce((s, r) => s + r.amountValue, 0);
   const totalWithdrawals = visibleRows.filter((r) => r.direction === "debit").reduce((s, r) => s + r.amountValue, 0);
-
-  // Recipient search over the users already loaded app-wide — there's no
-  // dedicated "search users" endpoint. Capped to 6 so a common name doesn't
-  // dump the whole user base into a dropdown.
-  const selectedRecipient = creditProfileId ? users.find((u) => u.id === creditProfileId) : undefined;
-  const recipientMatches =
-    !selectedRecipient && creditRecipientQuery.trim().length > 0
-      ? users
-          .filter(
-            (u) =>
-              u.name.toLowerCase().includes(creditRecipientQuery.toLowerCase()) ||
-              u.email.toLowerCase().includes(creditRecipientQuery.toLowerCase()),
-          )
-          .slice(0, 6)
-      : [];
-
-  const creditAmountError = creditAmount ? validateRecoveryCreditAmount(creditAmount) : null;
-  const creditTitleTooLong = creditTitle.length > RECOVERY_CREDIT_TITLE_MAX_LENGTH;
-  const creditFormValid =
-    !!creditProfileId && creditAmount.trim().length > 0 && !creditAmountError && creditTitle.trim().length > 0 && !creditTitleTooLong;
-
-  function closeCreditDialog() {
-    setIssuingCredit(false);
-    resetCreditForm();
-  }
-
-  async function confirmIssueCredit() {
-    if (!creditProfileId || !creditFormValid) return;
-    setCreditBusy(true);
-    setCreditError("");
-    try {
-      await services.issueRecoveryCredit({
-        profileId: creditProfileId,
-        amount: Number(creditAmount),
-        title: creditTitle,
-        jobId: creditJobId,
-      });
-      void refreshCounts();
-      sel.clear();
-      setReloadKey((key) => key + 1);
-      showToast("Recovery credit issued.");
-      closeCreditDialog();
-    } catch (err) {
-      // Surfaced verbatim: the backend's refusal messages are specific enough to act on.
-      setCreditError(err instanceof ApiError ? err.message : "Unable to issue credit. Please try again.");
-    } finally {
-      setCreditBusy(false);
-    }
-  }
 
   const columns: Column<WalletTxnRow>[] = [
     { id: "user", header: "User", cell: (r) => <span className="font-medium">{r.profileName}</span> },
@@ -567,10 +514,9 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
         </span>
       ),
     },
+    { id: "status", header: "Status", cell: (r) => <Badge tone={toneFromBadgeClass(r.statusClass)}>{r.statusLabel}</Badge> },
     { id: "date", header: "Date", hideBelow: "md", cell: (r) => <span className="tabular text-muted-foreground">{r.createdAt}</span> },
   ];
-
-  const labelClass = "mb-1.5 block text-[12px] font-medium text-foreground";
 
   return (
     <div>
@@ -586,9 +532,6 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
           <Button variant="outline" size="sm" onClick={() => { sel.clear(); setReloadKey((key) => key + 1); }} disabled={loading}>
             <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
           </Button>
-          <Button size="sm" onClick={() => setIssuingCredit(true)}>
-            <Gift /> Issue Credit
-          </Button>
         </div>
       </div>
 
@@ -602,15 +545,17 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
               clearSelectionOnScopeChange();
             }}
             placeholder="Search by user or description…"
-            label="Search wallet activity"
+            label="Search payment records"
+            maxLength={100}
+            error={searchError}
           />
         }
       >
         {error && !walletBusy && visibleRows.length > 0 && (
-          <RefreshFailedBanner noun="wallet activity" onRetry={() => setReloadKey((key) => key + 1)} />
+          <RefreshFailedBanner noun="payment records" onRetry={() => setReloadKey((key) => key + 1)} />
         )}
         <DataTable
-          label="Wallet activity table"
+          label="Payment records table"
           columns={columns}
           rows={visibleRows}
           getRowId={(r) => r.id}
@@ -620,17 +565,17 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             onToggle: sel.toggleOne,
             onToggleAll: sel.toggleAll,
             allSelected: sel.allSelected,
-            rowLabel: (id) => `Select wallet row ${id}`,
-            allLabel: "Select all wallet rows on this page",
+            rowLabel: (id) => `Select payment row ${id}`,
+            allLabel: "Select all payment rows on this page",
             disabledAll: totalCount === 0,
           }}
           empty={
             walletBusy ? (
-              <TableEmpty>Loading wallet activity…</TableEmpty>
+              <TableEmpty>Loading payment records…</TableEmpty>
             ) : error ? (
-              <LoadFailedState noun="wallet activity" onRetry={() => setReloadKey((key) => key + 1)} />
+              <LoadFailedState noun="payment records" onRetry={() => setReloadKey((key) => key + 1)} />
             ) : (
-              <TableEmpty>No wallet activity found.</TableEmpty>
+              <TableEmpty>No payment records found.</TableEmpty>
             )
           }
         />
@@ -642,9 +587,9 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
             sel.setSelected(new Set());
             setPage(nextPage);
           }}
-          itemLabel="wallet rows"
+          itemLabel="payment rows"
         />}
-        {walletBusy && <div role="status" aria-live="polite" className="sr-only">Loading wallet activity…</div>}
+        {walletBusy && <div role="status" aria-live="polite" className="sr-only">Loading payment records…</div>}
       </TableCard>
 
       <BulkBar count={exportUnavailable ? 0 : sel.selected.size} noun="row" onClear={() => sel.setSelected(new Set())}>
@@ -652,109 +597,6 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
           <Download /> Export
         </Button>
       </BulkBar>
-
-      <ConfirmDialog
-        open={issuingCredit}
-        danger={false}
-        title="Issue recovery credit"
-        message="Adds wallet balance for a user, typically after a dispute — spendable on a hire or withdrawable like any other peso."
-        confirmLabel="Issue credit"
-        busy={creditBusy}
-        confirmDisabled={!creditFormValid}
-        onConfirm={confirmIssueCredit}
-        onCancel={closeCreditDialog}
-      >
-        <div className="flex flex-col gap-3.5">
-          <div className="relative">
-            <label className={labelClass}>Recipient</label>
-            {selectedRecipient ? (
-              <div className="flex items-center justify-between rounded-[8px] border border-input bg-surface-2 px-3 py-2 text-[12.5px]">
-                <span>
-                  <span className="font-medium">{selectedRecipient.name}</span>{" "}
-                  <span className="text-muted-foreground">({selectedRecipient.email})</span>
-                </span>
-                <button
-                  onClick={() => {
-                    setCreditProfileId(null);
-                    setCreditRecipientQuery("");
-                  }}
-                  className="text-[12px] font-medium text-primary hover:underline"
-                >
-                  Change
-                </button>
-              </div>
-            ) : (
-              <Input
-                autoFocus
-                placeholder="Search by name or email…"
-                aria-label="Search recipient by name or email"
-                value={creditRecipientQuery}
-                onChange={(e) => setCreditRecipientQuery(e.target.value)}
-              />
-            )}
-            {recipientMatches.length > 0 && (
-              <div className="absolute inset-x-0 top-full z-10 mt-1 max-h-[180px] overflow-y-auto rounded-[10px] border border-border bg-popover p-1 shadow-ui-lg">
-                {recipientMatches.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => {
-                      setCreditProfileId(u.id);
-                      setCreditRecipientQuery("");
-                    }}
-                    className="block w-full rounded-[7px] px-2.5 py-1.5 text-left text-[12.5px] hover:bg-accent"
-                  >
-                    <span className="font-medium">{u.name}</span> <span className="text-muted-foreground">({u.email})</span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {recipientMatches.length === 0 && usersLoading && !selectedRecipient && creditRecipientQuery.trim().length > 0 && (
-              <p className="mt-1 text-[12px] text-muted-foreground">Loading users…</p>
-            )}
-          </div>
-
-          <div>
-            <label className={labelClass}>Amount (₱)</label>
-            <Input
-              type="number"
-              min={0.01}
-              max={RECOVERY_CREDIT_MAX_AMOUNT}
-              step="0.01"
-              placeholder="e.g. 500"
-              aria-label="Credit amount in pesos"
-              aria-invalid={!!creditAmountError || undefined}
-              value={creditAmount}
-              onChange={(e) => setCreditAmount(e.target.value)}
-            />
-            {creditAmountError && <div className="mt-1 text-[11.5px] text-danger">{creditAmountError}</div>}
-          </div>
-
-          <div>
-            <label className={labelClass}>
-              Title <span className="font-normal text-muted-foreground">(shown to the recipient)</span>
-            </label>
-            <Input
-              placeholder="e.g. Dispute resolution credit"
-              aria-label="Credit title, shown to the recipient"
-              aria-invalid={creditTitleTooLong || undefined}
-              value={creditTitle}
-              onChange={(e) => setCreditTitle(e.target.value)}
-            />
-            <div className={cn("mt-1 text-right text-[11px] tabular", creditTitleTooLong ? "text-danger" : "text-subtle")}>
-              {creditTitle.length}/{RECOVERY_CREDIT_TITLE_MAX_LENGTH}
-            </div>
-          </div>
-
-          <div>
-            <label className={labelClass}>
-              Job ID <span className="font-normal text-muted-foreground">(optional — the dispute or job this compensates)</span>
-            </label>
-            <Input placeholder="Optional" aria-label="Related job ID (optional)" value={creditJobId} onChange={(e) => setCreditJobId(e.target.value)} />
-          </div>
-
-          {creditError && <div className="rounded-[8px] bg-danger-soft px-3 py-2 text-[12.5px] text-danger">{creditError}</div>}
-        </div>
-      </ConfirmDialog>
     </div>
   );
 });
@@ -780,7 +622,7 @@ export function TransactionsPage() {
       <PageHeader
         eyebrow="Operations"
         title="Transactions"
-        description="Money held in escrow for each job, and every wallet top-up, payout and withdrawal."
+        description="Money held in escrow for each job, and the payment records (client payments, provider payouts and refunds)."
         actions={
           <Button
             variant="outline"
@@ -802,7 +644,7 @@ export function TransactionsPage() {
           onChange={setTab}
           options={[
             { value: "escrow", label: "Escrow" },
-            { value: "wallet", label: "Wallet" },
+            { value: "wallet", label: "Payment records" },
           ]}
         />
       </div>
@@ -817,7 +659,7 @@ export function TransactionsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message={`This downloads ${exportCount} row${exportCount === 1 ? "" : "s"} from the current ${tab === "escrow" ? "Escrow" : "Wallet"} page as a .csv file to your device.`}
+        message={`This downloads ${exportCount} row${exportCount === 1 ? "" : "s"} from the current ${tab === "escrow" ? "Escrow" : "Payment records"} page as a .csv file to your device.`}
         confirmLabel="Export"
         onConfirm={handleExport}
         onCancel={() => setConfirmingExport(false)}

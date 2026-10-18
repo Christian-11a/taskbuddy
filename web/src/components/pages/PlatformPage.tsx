@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { BellRing, CheckCircle2, FolderCog, Info, Pencil, Percent, Plus, RefreshCw, ShieldCheck, UserRoundPlus, XCircle } from "lucide-react";
+import { BellRing, CalendarDays, CheckCircle2, Clock, FolderCog, Info, Pencil, Percent, Plus, RefreshCw, ShieldCheck, UserRoundPlus, WalletCards, XCircle } from "lucide-react";
 import { useToast } from "@/components/ui/Toast";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, Panel } from "@/components/admin/Panel";
 import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
 import { SelectFilter } from "@/components/admin/table";
+import { KpiCard } from "@/components/admin/KpiCard";
 import {
   broadcastNotification, createAdmin, createCategory, getAdmins, getCategories, getCommission,
   revokeAdmin, updateCategory, updateCommission,
 } from "@/lib/services";
-import type { AdminAccount, CommissionSettings, ServiceCategory } from "@/lib/domain";
+import type { CommissionOverview } from "@/lib/services";
+import type { AdminAccount, ServiceCategory } from "@/lib/domain";
 import type { BroadcastApiResponse } from "@/lib/api/types";
 import { formatCurrency, formatDate } from "@/lib/adapters";
 import { cn } from "@/lib/utils";
@@ -71,7 +73,7 @@ export function PlatformPage() {
   const [tab, setTab] = useState<Tab>("commission");
   const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [admins, setAdmins] = useState<AdminAccount[]>([]);
-  const [commission, setCommission] = useState<CommissionSettings | null>(null);
+  const [commission, setCommission] = useState<CommissionOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -122,9 +124,10 @@ export function PlatformPage() {
     }
     setBusy(true);
     try {
-      const result = await updateCommission(percent / 100);
-      setCommission(result);
+      await updateCommission(percent / 100);
       showToast("Commission rate updated.");
+      // The save returns only the rate, and pending estimate depends on it, so re-read the whole overview.
+      void load(true);
     } catch {
       showToast("Could not update commission rate.", "error");
     } finally {
@@ -285,57 +288,91 @@ export function PlatformPage() {
       ) : (
         <>
           {tab === "commission" && (
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-              <Panel
-                title={<span className="flex items-center gap-2"><Percent className="size-4 text-primary" /> Platform commission</span>}
-                description="The share TaskBuddy keeps from future escrow releases. Jobs already settled keep their original figures."
-              >
-                <form onSubmit={saveCommission} className="flex flex-wrap items-end gap-3">
-                  <label className="block">
-                    <span className={labelClass}>Commission rate (%)</span>
-                    <div className="relative">
-                      <Input type="number" min="0" max="50" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} aria-invalid={!rateValid || undefined} className="w-44 pr-8 tabular" />
-                      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-subtle">%</span>
+            <div className="space-y-4">
+              {commission && (
+                // Earnings lead: the money the platform has kept, before the rate that produces it.
+                <section aria-label="Commission earnings" className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <KpiCard
+                    label="Total earned"
+                    icon={<WalletCards />}
+                    value={commission.totalEarned}
+                    format={formatCurrency}
+                    footer={<span className="text-[12px] text-muted-foreground">Kept from released payments, all time</span>}
+                  />
+                  <KpiCard
+                    label="Earned this month"
+                    icon={<CalendarDays />}
+                    value={commission.earnedThisMonth}
+                    format={formatCurrency}
+                    footer={<span className="text-[12px] text-muted-foreground">Released this calendar month</span>}
+                  />
+                  <KpiCard
+                    label="Pending estimate"
+                    icon={<Clock />}
+                    value={commission.pendingEstimate}
+                    format={formatCurrency}
+                    footer={<span className="text-[12px] text-muted-foreground">Held payments at today&apos;s rate</span>}
+                  />
+                  <KpiCard
+                    label="Released jobs"
+                    icon={<CheckCircle2 />}
+                    value={commission.releasedJobs}
+                    footer={<span className="text-[12px] text-muted-foreground">Payments that earned commission</span>}
+                  />
+                </section>
+              )}
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <Panel
+                  title={<span className="flex items-center gap-2"><Percent className="size-4 text-primary" /> Platform commission</span>}
+                  description="The share TaskBuddy keeps from future escrow releases. Jobs already settled keep their original figures."
+                >
+                  <form onSubmit={saveCommission} className="flex flex-wrap items-end gap-3">
+                    <label className="block">
+                      <span className={labelClass}>Commission rate (%)</span>
+                      <div className="relative">
+                        <Input type="number" min="0" max="50" step="0.01" value={rate} onChange={(e) => setRate(e.target.value)} aria-invalid={!rateValid || undefined} className="w-44 pr-8 tabular" />
+                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[12px] text-subtle">%</span>
+                      </div>
+                    </label>
+                    <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save rate"}</Button>
+                  </form>
+                  {commission && (
+                    <div className="mt-4 flex items-center gap-2 text-[12.5px] text-muted-foreground">
+                      <CheckCircle2 className="size-4 text-ok" /> Current rate:{" "}
+                      <strong className="font-semibold text-foreground">{(commission.rate * 100).toFixed(2)}%</strong> · Last updated {formatDate(commission.updatedAt)}
                     </div>
-                  </label>
-                  <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save rate"}</Button>
-                </form>
-                {commission && (
-                  <div className="mt-4 flex items-center gap-2 text-[12.5px] text-muted-foreground">
-                    <CheckCircle2 className="size-4 text-ok" /> Current rate:{" "}
-                    <strong className="font-semibold text-foreground">{(commission.rate * 100).toFixed(2)}%</strong> · Last updated {formatDate(commission.updatedAt)}
+                  )}
+                  <div className="mt-5 flex items-start gap-2 rounded-[10px] bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <span>
+                      A rate of 15% is entered as <strong className="text-foreground">15</strong> here. The API receives the safe fraction{" "}
+                      <strong className="text-foreground">0.15</strong> and caps it at 50%.
+                    </span>
                   </div>
-                )}
-                <div className="mt-5 flex items-start gap-2 rounded-[10px] bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted-foreground">
-                  <Info className="mt-0.5 size-4 shrink-0" />
-                  <span>
-                    A rate of 15% is entered as <strong className="text-foreground">15</strong> here. The API receives the safe fraction{" "}
-                    <strong className="text-foreground">0.15</strong> and caps it at 50%.
-                  </span>
-                </div>
-              </Panel>
-              <Panel title="What this means" description={`On a ${formatCurrency(exampleJob)} job`}>
-                {rateValid ? (
-                  <>
-                    <div className="mb-3 flex h-3 overflow-hidden rounded-full bg-surface-2" aria-hidden>
-                      <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} />
-                      <div className="h-full flex-1 bg-ok/70" />
-                    </div>
-                    <dl className="space-y-2 text-[13px]">
-                      <div className="flex justify-between">
-                        <dt className="flex items-center gap-2"><span className="size-2 rounded-full bg-primary" /> TaskBuddy keeps</dt>
-                        <dd className="tabular font-semibold">{formatCurrency((exampleJob * percent) / 100)}</dd>
+                </Panel>
+                <Panel title="What this means" description={`On a ${formatCurrency(exampleJob)} job`}>
+                  {rateValid ? (
+                    <>
+                      <div className="mb-3 flex h-3 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+                        <div className="h-full bg-primary transition-[width] duration-300" style={{ width: `${percent}%` }} />
+                        <div className="h-full flex-1 bg-ok/70" />
                       </div>
-                      <div className="flex justify-between">
-                        <dt className="flex items-center gap-2"><span className="size-2 rounded-full bg-ok/70" /> Provider receives</dt>
-                        <dd className="tabular font-semibold">{formatCurrency(exampleJob - (exampleJob * percent) / 100)}</dd>
-                      </div>
-                    </dl>
-                  </>
-                ) : (
-                  <p className="text-[12.5px] text-danger">Enter a rate between 0 and 50%.</p>
-                )}
-              </Panel>
+                      <dl className="space-y-2 text-[13px]">
+                        <div className="flex justify-between">
+                          <dt className="flex items-center gap-2"><span className="size-2 rounded-full bg-primary" /> TaskBuddy keeps</dt>
+                          <dd className="tabular font-semibold">{formatCurrency((exampleJob * percent) / 100)}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="flex items-center gap-2"><span className="size-2 rounded-full bg-ok/70" /> Provider receives</dt>
+                          <dd className="tabular font-semibold">{formatCurrency(exampleJob - (exampleJob * percent) / 100)}</dd>
+                        </div>
+                      </dl>
+                    </>
+                  ) : (
+                    <p className="text-[12.5px] text-danger">Enter a rate between 0 and 50%.</p>
+                  )}
+                </Panel>
+              </div>
             </div>
           )}
 

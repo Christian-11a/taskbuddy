@@ -110,7 +110,7 @@ describe("NotificationsMenu inbox", () => {
     await openInbox();
     await userEvent.click(screen.getByRole("button", { name: "Delete notification: 1 new dispute" }));
     expect(screen.queryByText("1 new dispute")).not.toBeInTheDocument();
-    expect(screen.getByText("2 new withdrawal requests")).toBeInTheDocument();
+    expect(screen.getByText("2 new failed payouts")).toBeInTheDocument();
   });
 
   it("selects several entries and deletes them in one step", async () => {
@@ -121,11 +121,11 @@ describe("NotificationsMenu inbox", () => {
     expect(screen.getByRole("button", { name: "Delete selected" })).toBeDisabled();
 
     await userEvent.click(screen.getByRole("checkbox", { name: "1 new dispute" }));
-    await userEvent.click(screen.getByRole("checkbox", { name: "2 new withdrawal requests" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "2 new failed payouts" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete selected (2)" }));
 
     expect(screen.queryByText("1 new dispute")).not.toBeInTheDocument();
-    expect(screen.queryByText("2 new withdrawal requests")).not.toBeInTheDocument();
+    expect(screen.queryByText("2 new failed payouts")).not.toBeInTheDocument();
     expect(screen.getByText("1 new service request")).toBeInTheDocument();
   });
 
@@ -179,7 +179,7 @@ describe("NotificationsMenu inbox", () => {
     mockState.queueCounts = { verifications: 0, disputes: 0, withdrawals: null, "skill-requests": 0 };
     render(<NotificationsMenu />);
     await openInbox();
-    expect(screen.getByText("1 new withdrawal request")).toBeInTheDocument();
+    expect(screen.getByText("1 new failed payout")).toBeInTheDocument();
   });
 });
 
@@ -191,7 +191,7 @@ describe("NotificationsMenu pending work", () => {
     expect(screen.getByText("Pending work")).toBeInTheDocument();
     expect(within(screen.getByRole("link", { name: /^Verifications/ })).getByText("3")).toBeInTheDocument();
     expect(within(screen.getByRole("link", { name: /^Disputes/ })).getByText("0")).toBeInTheDocument();
-    expect(within(screen.getByRole("link", { name: /^Withdrawals/ })).getByText("100+")).toBeInTheDocument();
+    expect(within(screen.getByRole("link", { name: /^Failed payouts/ })).getByText("100+")).toBeInTheDocument();
     const skill = screen.getByRole("link", { name: /^Service requests/ });
     expect(within(skill).getByText("Couldn't check")).toBeInTheDocument();
     expect(skill).toHaveAttribute("href", "/admin/skill-requests");

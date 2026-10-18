@@ -4,12 +4,14 @@ import type { AppState } from "@/context/AppContext";
 import type { DisputeRow, UserRow, VerificationRow } from "@/lib/adapters";
 import type { CaseEntry } from "@/lib/domain";
 import { arrivalTitle, type InboxEntry } from "@/lib/inbox";
+import { currentMonthKey, monthsEndingAt } from "@/lib/services/monthSeries";
 import { SAMPLE_CASE_PARTIES } from "./mockApi";
 
 const noop = () => {};
 const asyncNoop = async () => {};
 
-const months = ["Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep"];
+// Keys for the 12 months ending this month, as the real series are keyed.
+const months = monthsEndingAt(currentMonthKey(), 12);
 const revenue = [18200, 21400, 26800, 24100, 29900, 33600, 31800, 38400, 42600, 47100, 52300, 58900];
 const bookingsPerMonth = [22, 27, 33, 30, 36, 41, 39, 46, 52, 57, 63, 71];
 
@@ -196,6 +198,7 @@ export const MOCK_APP: AppState = {
     totalCommission: 42500, monthlyCommission: 5890, pendingWithdrawals: 2,
   },
   revenueSeries: months.map((month, i) => ({ month, value: revenue[i] })),
+  commissionSeries: [],
   bookingsSeries: months.map((month, i) => ({ month, value: bookingsPerMonth[i] })),
   bookingsByCategory: [
     { label: "Cleaning", value: 34 }, { label: "Plumbing", value: 26 }, { label: "Handyman", value: 21 },

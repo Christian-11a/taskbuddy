@@ -15,8 +15,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/admin/Panel";
-import { SearchField } from "@/components/admin/queue";
-import { WarrantyLine } from "@/components/admin/WarrantyLine";
+import { SearchField, searchErrorMessage } from "@/components/admin/queue";
 import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -31,9 +30,11 @@ type StatusFilter =
   | "Confirmed"
   | "In Progress"
   | "Completed"
+  | "Disputed"
   | "Cancelled"
   | "Expired";
 
+// 'disputed' is not a job status: the API filters on an open complaint (migration 0065).
 const STATUS_API: Record<Exclude<StatusFilter, "all">, string> = {
   Open: "open",
   Matching: "recommending",
@@ -41,6 +42,7 @@ const STATUS_API: Record<Exclude<StatusFilter, "all">, string> = {
   Confirmed: "confirmed",
   "In Progress": "in_progress",
   Completed: "completed",
+  Disputed: "disputed",
   Cancelled: "cancelled",
   Expired: "expired",
 };
@@ -52,6 +54,7 @@ export const BOOKING_TONE: Record<string, "info" | "accent" | "ok" | "danger" | 
   Confirmed: "accent",
   "In Progress": "info",
   Completed: "ok",
+  Disputed: "danger",
   Cancelled: "danger",
   Expired: "neutral",
 };
@@ -64,7 +67,7 @@ function escrowLabel(status: string) {
 /** The dropdown's option groups, in lifecycle order. */
 const STATUS_GROUPS: { label: string; statuses: Exclude<StatusFilter, "all">[] }[] = [
   { label: "In progress", statuses: ["Open", "Matching", "Awaiting Provider", "Confirmed", "In Progress"] },
-  { label: "Finished", statuses: ["Completed", "Cancelled", "Expired"] },
+  { label: "Finished", statuses: ["Completed", "Disputed", "Cancelled", "Expired"] },
 ];
 
 /**
@@ -91,6 +94,8 @@ export function BookingsPage() {
   const { showToast } = useToast();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search, 250);
+  /** The API rejected the search term (HTTP 400); shown under the search box. */
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -131,15 +136,20 @@ export function BookingsPage() {
           setTotal(result.total);
           setStatusCounts(result.statusCounts ?? null);
           setLoadFailed(false);
+          setSearchError(null);
           setLoading(false);
         }
       })
-      .catch(() => {
-        // Keep the last good rows, counts and total; the banner says they may be stale.
-        if (!cancelled) {
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        const badSearch = searchErrorMessage(err);
+        if (badSearch) {
+          setSearchError(badSearch);
+        } else {
+          // Keep the last good rows, counts and total; the banner says they may be stale.
           setLoadFailed(true);
-          setLoading(false);
         }
+        setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -155,6 +165,8 @@ export function BookingsPage() {
     if (loading || search !== debouncedSearch) return undefined;
     if (!statusCounts) return s === statusFilter ? total : undefined;
     if (s === "all") return Object.values(statusCounts).reduce((sum, n) => sum + n, 0);
+    // No server count exists for Disputed (migration 0065 keeps the counts per job status), so the list total stands in while it is selected.
+    if (s === "Disputed") return s === statusFilter ? total : undefined;
     return statusCounts[STATUS_API[s]];
   }
 
@@ -305,6 +317,8 @@ export function BookingsPage() {
               }}
               placeholder="Search by booking ID, title, client, or service…"
               label="Search bookings"
+              maxLength={100}
+              error={searchError}
             />
             {/* One status at a time, grouped by lifecycle, each with its count.
                 A single-status query keeps paging on the server, so this stays
@@ -460,7 +474,20 @@ export function BookingsPage() {
                       {detail.escrowStatus ? `Escrow: ${escrowLabel(detail.escrowStatus)} · ${formatCurrency(detail.escrowAmount ?? 0)}` : "No escrow hold"}
                     </li>
                   </ul>
-                  {detail.status === "completed" && <WarrantyLine completedAt={detail.completedAt} escrowStatus={detail.escrowStatus} />}
+                  {detail.status === "completed" && detail.escrowStatus && (
+                    <div className="flex flex-wrap items-center gap-2 text-[12.5px]">
+                      {detail.escrowStatus === "COMPLETED" ? (
+                        <Badge tone="ok" dot>Released</Badge>
+                      ) : detail.escrowStatus === "IN_ESCROW" || detail.escrowStatus === "DISPUTED" ? (
+                        <>
+                          <Badge tone="danger" dot>Held</Badge>
+                          <span className="text-muted-foreground">
+                            {detail.displayStatus === "disputed" ? "Held while the complaint is open" : "Release in progress"}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                   {detail.photoUrls.length > 0 && (
                     <div>
                       <div className="mb-2 flex items-center gap-1.5 text-[11.5px] text-muted-foreground">

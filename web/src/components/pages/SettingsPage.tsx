@@ -315,7 +315,7 @@ export function SettingsPage() {
               <ThemeCard dark selected={darkMode} onSelect={() => setDarkMode(true)} />
             </div>
             <Toggle label="Compact sidebar" sub="Collapse the sidebar to icons only" value={sidebarCollapsed} onChange={setSidebarCollapsed} />
-            <Toggle label="Show activity badge" sub="Pending counts on the Verifications, Disputes, Withdrawals and Service Requests nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
+            <Toggle label="Show activity badge" sub="Pending counts on the Verifications, Disputes, Failed payouts and Service Requests nav items" value={settings.activityBadge} onChange={setToggle("activityBadge")} />
           </Section>
 
           <Section id="alerts" title="Alerts" description="Saved on this device." icon={BellRing}>
