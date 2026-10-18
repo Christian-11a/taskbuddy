@@ -342,6 +342,40 @@ describe('EscrowService', () => {
       });
     });
 
+    it('uses the rate locked at hire, not the current setting', async () => {
+      const escrow = { ...heldEscrow, amount: 1000, commission_rate: 0.1 };
+      const { supabase, rpc } = createSupabaseMock(
+        {
+          escrow_transactions: [ok(escrow)],
+          platform_settings: [ok({ commission_rate: 0.3 })],
+        },
+        { escrow_settle: [ok({ ...escrow, status: 'released' })] },
+      );
+      await new EscrowService(supabase, payouts, NO_XENDIT).release('j1');
+
+      expect(rpcArgs(rpc, 'escrow_settle')[0]).toMatchObject({
+        p_commission: 100,
+      });
+    });
+
+    it('feePreview matches the release rounding and the locked rate', async () => {
+      const { supabase } = createSupabaseMock({
+        platform_settings: [ok({ commission_rate: 0.075 })],
+      });
+      const service = new EscrowService(supabase, payouts, NO_XENDIT);
+      // 1000.05 * 0.075 = 75.00375 -> 75.00 (round2, as payOut does)
+      expect(await service.feePreview(1000.05)).toEqual({
+        rate: 0.075,
+        amount: 75,
+        provider_receives: 925.05,
+      });
+      expect(await service.feePreview(1000, 0.1)).toEqual({
+        rate: 0.1,
+        amount: 100,
+        provider_receives: 900,
+      });
+    });
+
     it('falls back to no commission when the settings row cannot be read', async () => {
       // A settings read that fails must not strand a provider's payout, and
       // zero is the direction that errs in the user's favour.
@@ -748,7 +782,7 @@ describe('DisputesService', () => {
     );
   });
   it.each([
-    'The three-day dispute window has ended',
+    'Complaints must be raised before the job is confirmed done',
     'There is already an open complaint',
   ])('propagates eligibility errors: %s', async (message) => {
     const { service } = build(

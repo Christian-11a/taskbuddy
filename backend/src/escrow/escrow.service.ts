@@ -36,6 +36,8 @@ export interface EscrowRow {
   refunded_at: string | null;
   /** Withheld at release; 0 until a commission rate is configured (0024). */
   commission_amount: number | string;
+  /** Rate locked when the escrow was held (0067); null on older rows. */
+  commission_rate?: number | string | null;
   /** How the hold was funded (0028): from a wallet balance, or a card at hire. */
   funding_method?: 'wallet' | 'card';
   funding_payment_intent_id?: string | null;
@@ -319,7 +321,9 @@ export class EscrowService {
       );
     }
     const amount = Number(escrow.amount);
-    const commission = round2(amount * (await this.commissionRate()));
+    const commission = round2(
+      amount * (await this.effectiveRate(escrow.commission_rate)),
+    );
     const title = await this.jobTitle(escrow.job_id);
     const released = await this.settle(escrow, 'released', {
       commission,
@@ -464,6 +468,31 @@ export class EscrowService {
    * a settings row that cannot be read must not strand a provider's payout,
    * and zero is the direction that errs in the user's favour.
    */
+  /**
+   * The rate locked on the escrow at hire (0067), or the current platform rate
+   * when the row has none (settled before 0067).
+   */
+  async effectiveRate(locked?: number | string | null): Promise<number> {
+    if (locked !== null && locked !== undefined) {
+      const rate = Number(locked);
+      if (Number.isFinite(rate) && rate >= 0) return rate;
+    }
+    return this.commissionRate();
+  }
+
+  /**
+   * What a provider would be charged on `amount`: same rate and same
+   * rounding (round2) as payOut, so the preview equals the real deduction.
+   */
+  async feePreview(
+    amount: number,
+    locked?: number | string | null,
+  ): Promise<{ rate: number; amount: number; provider_receives: number }> {
+    const rate = await this.effectiveRate(locked);
+    const fee = round2(amount * rate);
+    return { rate, amount: fee, provider_receives: round2(amount - fee) };
+  }
+
   private async commissionRate(): Promise<number> {
     const { data, error } = await this.supabase.admin
       .from('platform_settings')

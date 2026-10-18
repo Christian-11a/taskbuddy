@@ -99,7 +99,23 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   // assertions read them directly rather than off the cast object.
   const cancelForJob = jest.fn().mockResolvedValue(undefined);
   const releaseIfHeld = jest.fn().mockResolvedValue(undefined);
-  const escrow = { cancelForJob, releaseIfHeld } as unknown as EscrowService;
+  const findByJob = jest.fn().mockResolvedValue(null);
+  // Same shape and rounding as EscrowService.feePreview; current rate 10%.
+  const feePreview = jest.fn((amount: number, locked?: number | string | null) => {
+    const rate = locked == null ? 0.1 : Number(locked);
+    const fee = Math.round(amount * rate * 100) / 100;
+    return Promise.resolve({
+      rate,
+      amount: fee,
+      provider_receives: Math.round((amount - fee) * 100) / 100,
+    });
+  });
+  const escrow = {
+    cancelForJob,
+    releaseIfHeld,
+    findByJob,
+    feePreview,
+  } as unknown as EscrowService;
   const geocoding = {
     geocode: jest
       .fn()
@@ -110,6 +126,8 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
     calls,
     cancelForJob,
     releaseIfHeld,
+    findByJob,
+    feePreview,
   };
 }
 
@@ -910,6 +928,56 @@ describe('owned-job query validation', () => {
       limit: 100,
       offset: 1000,
     });
+  });
+});
+
+describe('JobsService.getById platform fee', () => {
+  const client = { id: 'c1', role: 'client' } as Profile;
+  const otherProvider = { id: 'p2', role: 'provider' } as Profile;
+  const assignedProvider = { id: 'p1', role: 'provider' } as Profile;
+
+  it('gives the assigned provider the fee locked on the escrow', async () => {
+    const { service, findByJob } = createService({
+      jobs: [ok(job({ status: 'confirmed', budget: 1000 }))],
+      escrow_transactions: [ok({ status: 'held', funding_method: 'wallet' })],
+    });
+    findByJob.mockResolvedValue({ amount: 1000, commission_rate: 0.15 });
+    const result = (await service.getById(assignedProvider, 'j1')) as Record<
+      string,
+      unknown
+    >;
+    expect(result.fee).toEqual({ rate: 0.15, amount: 150, provider_receives: 850 });
+  });
+
+  it('never shows the fee to the client', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'confirmed', budget: 1000 }))],
+      escrow_transactions: [ok({ status: 'held', funding_method: 'wallet' })],
+    });
+    const result = (await service.getById(client, 'j1')) as Record<
+      string,
+      unknown
+    >;
+    expect(result).not.toHaveProperty('fee');
+  });
+
+  it('gives a provider the current-rate fee on an open job', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'open', assigned_provider_id: null, budget: 1000 }))],
+    });
+    const result = (await service.getById(otherProvider, 'j1')) as Record<
+      string,
+      unknown
+    >;
+    expect(result.fee).toEqual({ rate: 0.1, amount: 100, provider_receives: 900 });
+    expect(result.escrow).toBeUndefined();
+  });
+
+  it('shows no fee to a provider who is not on a non-open job', async () => {
+    const { service } = createService({
+      jobs: [ok(job({ status: 'confirmed' }))],
+    });
+    await expect(service.getById(otherProvider, 'j1')).rejects.toThrow();
   });
 });
 
