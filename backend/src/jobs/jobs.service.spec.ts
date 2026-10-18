@@ -101,15 +101,17 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
   const releaseIfHeld = jest.fn().mockResolvedValue(undefined);
   const findByJob = jest.fn().mockResolvedValue(null);
   // Same shape and rounding as EscrowService.feePreview; current rate 10%.
-  const feePreview = jest.fn((amount: number, locked?: number | string | null) => {
-    const rate = locked == null ? 0.1 : Number(locked);
-    const fee = Math.round(amount * rate * 100) / 100;
-    return Promise.resolve({
-      rate,
-      amount: fee,
-      provider_receives: Math.round((amount - fee) * 100) / 100,
-    });
-  });
+  const feePreview = jest.fn(
+    (amount: number, locked?: number | string | null) => {
+      const rate = locked == null ? 0.1 : Number(locked);
+      const fee = Math.round(amount * rate * 100) / 100;
+      return Promise.resolve({
+        rate,
+        amount: fee,
+        provider_receives: Math.round((amount - fee) * 100) / 100,
+      });
+    },
+  );
   const escrow = {
     cancelForJob,
     releaseIfHeld,
@@ -254,7 +256,6 @@ describe('JobsService.accept', () => {
     });
     await expect(service.accept(provider, 'j1')).rejects.toBeInstanceOf(
       BadRequestException,
-      ValidationPipe,
     );
   });
 });
@@ -946,13 +947,19 @@ describe('JobsService.getById platform fee', () => {
       string,
       unknown
     >;
-    expect(result.fee).toEqual({ rate: 0.15, amount: 150, provider_receives: 850 });
+    expect(result.fee).toEqual({
+      rate: 0.15,
+      amount: 150,
+      provider_receives: 850,
+    });
   });
 
   it('shows what was paid on a released escrow, whatever the rate is now', async () => {
     const { service, findByJob } = createService({
       jobs: [ok(job({ status: 'completed', budget: 1000 }))],
-      escrow_transactions: [ok({ status: 'released', funding_method: 'wallet' })],
+      escrow_transactions: [
+        ok({ status: 'released', funding_method: 'wallet' }),
+      ],
     });
     // Current platform rate is 0.1, but the provider was paid at 9%.
     findByJob.mockResolvedValue({
@@ -965,7 +972,11 @@ describe('JobsService.getById platform fee', () => {
       string,
       unknown
     >;
-    expect(result.fee).toEqual({ rate: 0.09, amount: 90, provider_receives: 910 });
+    expect(result.fee).toEqual({
+      rate: 0.09,
+      amount: 90,
+      provider_receives: 910,
+    });
   });
 
   it('never shows the fee to the client', async () => {
@@ -982,13 +993,19 @@ describe('JobsService.getById platform fee', () => {
 
   it('gives a provider the current-rate fee on an open job', async () => {
     const { service } = createService({
-      jobs: [ok(job({ status: 'open', assigned_provider_id: null, budget: 1000 }))],
+      jobs: [
+        ok(job({ status: 'open', assigned_provider_id: null, budget: 1000 })),
+      ],
     });
     const result = (await service.getById(otherProvider, 'j1')) as Record<
       string,
       unknown
     >;
-    expect(result.fee).toEqual({ rate: 0.1, amount: 100, provider_receives: 900 });
+    expect(result.fee).toEqual({
+      rate: 0.1,
+      amount: 100,
+      provider_receives: 900,
+    });
     expect(result.escrow).toBeUndefined();
   });
 
