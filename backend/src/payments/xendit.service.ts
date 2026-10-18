@@ -62,6 +62,7 @@ export const PAYOUT_FAILED = new Set([
   'CANCELLED',
   'REVERSED',
   'EXPIRED',
+  'COMPLIANCE_REJECTED',
 ]);
 
 /**
@@ -72,13 +73,26 @@ export class XenditRequestError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Xendit's `error_code`, e.g. DUPLICATE_ERROR, when the body had one. */
+    readonly code: string | null = null,
   ) {
     super(message);
+  }
+
+  /**
+   * Xendit says it already has a request with this reference or key: the
+   * first attempt may have been accepted, so the outcome is unknown.
+   */
+  get duplicate(): boolean {
+    return (
+      /DUPLICATE/i.test(this.code ?? '') || /duplicate/i.test(this.message)
+    );
   }
 
   /** Xendit looked at the request and refused it: retrying cannot succeed. */
   get definite(): boolean {
     return (
+      !this.duplicate &&
       this.status >= 400 &&
       this.status < 500 &&
       this.status !== 408 &&
@@ -183,7 +197,9 @@ export class XenditService {
     description: string;
   }): Promise<XenditPayoutResult> {
     this.assertTestMode();
-    const { ok, status, data } = await this.post<XenditPayoutResult>(
+    const { ok, status, data } = await this.post<
+      XenditPayoutResult & { error_code?: string }
+    >(
       '/v2/payouts',
       {
         reference_id: input.referenceId,
@@ -202,6 +218,7 @@ export class XenditService {
       throw new XenditRequestError(
         `Xendit payout failed (${status}): ${data.message ?? 'no detail'}`,
         status,
+        data.error_code ?? null,
       );
     }
     return { id: data.id, status: data.status };
@@ -230,7 +247,15 @@ export class XenditService {
         response.status,
       );
     }
-    const rows = (Array.isArray(data) ? data : []) as unknown[];
+    // A plain array, or the `{ data: [...] }` envelope Xendit's SDK shows.
+    const envelope = data as { data?: unknown } | null;
+    const rows = (
+      Array.isArray(data)
+        ? data
+        : Array.isArray(envelope?.data)
+          ? envelope.data
+          : []
+    ) as unknown[];
     const found = rows
       .map((row) => this.payoutUpdate(row))
       .filter((row): row is XenditPayoutUpdate => row !== null);
