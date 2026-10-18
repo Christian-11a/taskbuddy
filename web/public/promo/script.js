@@ -38,12 +38,12 @@
       kicker: "For clients",
       role: "Client",
       heading: "Find the right person for the job.",
-      lede: "Describe what you need, compare providers, and choose with confidence.",
+      lede: "Pick a service, compare proposals, and hire with confidence.",
       steps: [
         {
           image: "/film/story/customer-1.jpg",
           video: "/film/story/customer-1.mp4",
-          alt: "TaskBuddy client home screen with wallet balance, services, and the Post button",
+          alt: "TaskBuddy client home screen with services and the Post button",
           caption: "Start with what you need.",
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
@@ -52,11 +52,11 @@
         {
           image: "/film/story/customer-2.jpg",
           video: "/film/story/customer-2.mp4",
-          alt: "Client posting a job: title, location, urgency, and budget",
+          alt: "Client posting a job: service, tasks, urgency, and price options",
           caption: "Tell providers what you need.",
           title: "Tell providers what you need.",
-          body: "Add the service, location, schedule, and details in one request.",
-          points: ["Describe the task clearly", "Choose a schedule", "Edit the request later"]
+          body: "Pick a service, the tasks, and how urgent it is, then choose one of three estimated price options.",
+          points: ["Choose the tasks", "Set the urgency", "Pick a price option"]
         },
         {
           image: "/film/story/customer-3.jpg",
@@ -64,17 +64,17 @@
           alt: "Client comparing three proposals and hiring a verified provider",
           caption: "Compare proposals, then hire.",
           title: "Compare proposals, then hire.",
-          body: "See each provider’s price, rating, and message side by side, then hire with one tap.",
-          points: ["Compare prices and ratings", "Read each proposal", "Hire with one tap"]
+          body: "See each provider’s price, rating, and message side by side, then hire. Hire opens payment.",
+          points: ["Compare prices and ratings", "Read each proposal", "Hire and pay in the app"]
         },
         {
           image: "/film/story/customer-4.jpg",
           video: "/film/story/customer-4.mp4",
-          alt: "Client wallet showing payment held in escrow, then released",
-          caption: "Know what you will pay.",
-          title: "Know what you will pay.",
-          body: "See the payment details and what happens next in one place.",
-          points: ["See payment status", "Know what is held", "Keep the details in one place"]
+          alt: "Client tracking the job checklist with proof photos",
+          caption: "Follow the job.",
+          title: "Follow the job.",
+          body: "Track the checklist with proof photos while your payment stays held.",
+          points: ["See each task get done", "View proof photos", "Chat in the app"]
         },
         {
           image: "/film/story/customer-5.jpg",
@@ -82,8 +82,8 @@
           alt: "Client rating the provider five stars and submitting a review",
           caption: "Finish the job and leave a review.",
           title: "Finish the job and leave a review.",
-          body: "Mark the job complete and share your experience.",
-          points: ["Confirm the job is complete", "Leave a review", "See your finished jobs"]
+          body: "Confirm the job is done, or report a problem first. Then share your experience.",
+          points: ["Confirm the job is done", "Report a problem if needed", "Leave a review"]
         }
       ]
     },
@@ -91,7 +91,7 @@
       kicker: "For providers",
       role: "Provider",
       heading: "Find jobs that fit your skills.",
-      lede: "Find jobs, show your skills, and get hired.",
+      lede: "Find jobs, send proposals, and get paid.",
       steps: [
         {
           image: "/film/story/provider-1.jpg",
@@ -105,38 +105,38 @@
         {
           image: "/film/story/provider-2.jpg",
           video: "/film/story/provider-2.mp4",
-          alt: "Provider verification: government ID, face scan, and automated check",
-          caption: "Verify your account first.",
-          title: "Verify your account first.",
-          body: "Verify your account before you apply to a job.",
-          points: ["Know when you can apply", "Complete each step in one place", "Help keep the platform safe"]
+          alt: "Provider setup: ID photo, selfie, certificates, and payout account",
+          caption: "Finish your setup first.",
+          title: "Finish your setup first.",
+          body: "Add your ID, selfie, a certificate for each service, and a payout account before you send proposals.",
+          points: ["ID photo and selfie", "Certificate for each service", "Payout account"]
         },
         {
           image: "/film/story/provider-3.jpg",
           video: "/film/story/provider-3.mp4",
-          alt: "Provider profile with jobs done, rating, and a new review",
-          caption: "Show what you can do.",
-          title: "Show what you can do.",
-          body: "Add your services and experience so clients know what you offer.",
-          points: ["List your services", "Show your experience", "Help clients choose you"]
+          alt: "Provider Earnings screen listing what was paid out and what is on its way",
+          caption: "Get paid automatically.",
+          title: "Get paid automatically.",
+          body: "Payment goes to your linked GCash, Maya, or bank account once the client confirms. See it in Earnings.",
+          points: ["Fee shown up front", "Paid out automatically", "Track it in Earnings"]
         },
         {
           image: "/film/story/provider-4.jpg",
           video: "/film/story/provider-4.mp4",
-          alt: "Provider reviewing job details and submitting a proposal",
+          alt: "Provider reviewing job details and sending a proposal",
           caption: "See the job details first.",
           title: "See the job details first.",
-          body: "Check the request, schedule, location, and client details before you apply.",
-          points: ["See the work and schedule", "Read the client’s request", "Decide before you apply"]
+          body: "Check the request, schedule, location, and the price you would receive before you send a proposal.",
+          points: ["See the work and schedule", "Read the client’s request", "Decide before you send a proposal"]
         },
         {
           image: "/film/story/provider-5.jpg",
           video: "/film/story/provider-5.mp4",
-          alt: "Provider accepting a booking request after being hired",
+          alt: "Provider doing the job with proof photos after being hired",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
-          body: "See the job details and start when you are ready.",
-          points: ["Know when you are selected", "See booking details", "Start from the job screen"]
+          body: "Do the tasks and add proof photos. The client confirms when it is done.",
+          points: ["Know when you are hired", "Add proof photos", "Chat with the client"]
         }
       ]
     }

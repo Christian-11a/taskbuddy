@@ -3,7 +3,7 @@ import { HomePage } from "@/components/pages/HomePage";
 
 const TITLE = "TaskBuddy | Everyday work, sorted.";
 const DESCRIPTION =
-  "TaskBuddy connects clients in Lipa City with verified local providers for cleaning, plumbing, handyman, manicure, and pedicure — with escrow-protected payments.";
+  "TaskBuddy connects clients in Lipa City with verified local providers for cleaning, plumbing, handyman, manicure, and pedicure — with payment held until the client confirms the job is done.";
 
 export const metadata: Metadata = {
   title: TITLE,
