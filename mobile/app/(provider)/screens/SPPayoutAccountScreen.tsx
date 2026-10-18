@@ -12,6 +12,9 @@ import { api, type PayoutAccount, type PayoutMethod } from '../../../src/lib/api
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { peso, shortDate } from '../../../src/lib/format';
+import { payoutStatus, payoutTitle } from '../../../src/lib/payoutLabels';
+
+export { payoutStatus, payoutTitle };
 import { cleanText, textLength } from '../../../src/lib/textRules';
 
 export const PAYOUT_METHODS: { key: PayoutMethod; label: string; numberLabel: string }[] = [
@@ -24,29 +27,6 @@ export const PAYOUT_METHODS: { key: PayoutMethod; label: string; numberLabel: st
 export function accountLabel(account: Pick<PayoutAccount, 'method' | 'bank_name' | 'account_last4'>): string {
   const name = account.method === 'bank' ? account.bank_name ?? 'Bank' : account.method === 'gcash' ? 'GCash' : 'Maya';
   return `${name} ••••${account.account_last4}`;
-}
-
-/**
- * How a payout row's status reads. The server sends `completed`, `pending` or
- * `failed`; any other value is shown as its raw text in neutral colour.
- */
-export function payoutStatus(status: string): { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral' } {
-  switch (status) {
-    case 'completed': return { label: 'Sent', tone: 'success' };
-    case 'pending': return { label: 'Pending', tone: 'warning' };
-    case 'failed': return { label: 'Failed', tone: 'danger' };
-    default: return { label: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Unknown', tone: 'neutral' };
-  }
-}
-
-/**
- * The title shown under a payout amount. Old wallet-era rows are titled
- * "Withdrawal" (or have no title); those read as "Payout". Other titles pass through.
- */
-export function payoutTitle(title: string | null | undefined): string {
-  const trimmed = (title ?? '').trim();
-  if (!trimmed || trimmed.toLowerCase() === 'withdrawal') return 'Payout';
-  return title as string;
 }
 
 /** The first thing wrong with the form, or null. */

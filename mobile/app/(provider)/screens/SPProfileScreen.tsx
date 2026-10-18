@@ -29,6 +29,7 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  TrendingUp,
   Wallet,
   Wrench,
   type LucideIcon,
@@ -114,6 +115,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
     { key: 'portfolio', icon: Camera, label: 'Portfolio', onPress: () => onNavigate('Portfolio') },
     { key: 'credentials', icon: Award, label: 'Certifications', onPress: () => onNavigate('Credentials') },
     { key: 'payouts', icon: Wallet, label: 'Payout account', onPress: () => onNavigate('Payout Account') },
+    { key: 'earnings', icon: TrendingUp, label: 'Earnings', onPress: () => onNavigate('Earnings') },
   ];
   const helpItems: MenuItem[] = [
     { key: 'settings', icon: Settings, label: 'Settings', onPress: () => onNavigate('Settings') },
