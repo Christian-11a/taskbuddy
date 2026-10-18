@@ -13,11 +13,13 @@ import { OgImage } from './OgImage';
 import { HeroStill } from './v2/HeroLoop';
 import { CarouselClip, CarouselPoster, carouselMetadata } from './hero/Carousel';
 import { PhoneShot, SHOT_H, SHOT_W } from './hero/PhoneShot';
+import { Film, FILM_FRAMES } from './film/Film';
 import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAMES } from './guide/GuideLesson';
 
 export const Root: React.FC = () => (
   <>
     <Still id="HeroStill" component={HeroStill} width={1920} height={1080} defaultProps={{ at: 60 }} />
+    <Composition id="TaskBuddyFilm" component={Film} durationInFrames={FILM_FRAMES} fps={FPS} width={1920} height={1080} />
     <Composition id="TaskBuddy60" component={PromoV2} durationInFrames={TOTAL60} fps={FPS} width={1920} height={1080} />
     <Composition id="HeroLoop" component={HeroLoop} durationInFrames={HERO_LOOP_FRAMES} fps={FPS} width={1920} height={1080} />
     <Still id="PhoneShot" component={PhoneShot} width={SHOT_W} height={SHOT_H} defaultProps={{ role: 'customer' as const }} />

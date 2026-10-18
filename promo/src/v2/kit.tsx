@@ -294,13 +294,15 @@ export const Screens: React.FC<{ f: number; list: Scr[] }> = ({ f, list }) => {
   const dur = 12;
   if (!prev || t >= dur || cur.kind === 'none') return <div style={{ position: 'absolute', inset: 0 }}>{cur.render(f)}</div>;
   const p = tw(f, cur.at, cur.at + dur, 0, 1, expoOut);
+  const lin = tw(f, cur.at, cur.at + dur, 0, 1, (x) => x);
   const kind = cur.kind ?? 'push';
   const inT = kind === 'push' ? `translateX(${(1 - p) * 100}%)` : kind === 'up' ? `translateY(${(1 - p) * 100}%)` : 'none';
   const outT = kind === 'push' ? `translateX(${-p * 30}%)` : 'none';
   return (
     <>
-      <div style={{ position: 'absolute', inset: 0, transform: outT, filter: `brightness(${1 - p * 0.12})` }}>{prev.render(f)}</div>
-      <div style={{ position: 'absolute', inset: 0, transform: inT, opacity: kind === 'fade' ? p : 1, boxShadow: '-10px 0 30px rgba(0,0,0,0.12)' }}>{cur.render(f)}</div>
+      {/* fade = dip: the old screen fades out, then the new one fades in, never both at once (no double image) */}
+      <div style={{ position: 'absolute', inset: 0, transform: outT, filter: kind === 'fade' ? undefined : `brightness(${1 - p * 0.12})`, opacity: kind === 'fade' ? Math.max(0, 1 - lin * 2) : 1 }}>{prev.render(f)}</div>
+      <div style={{ position: 'absolute', inset: 0, transform: inT, opacity: kind === 'fade' ? Math.max(0, lin * 2 - 1) : 1, boxShadow: kind === 'fade' ? undefined : '-10px 0 30px rgba(0,0,0,0.12)' }}>{cur.render(f)}</div>
     </>
   );
 };
