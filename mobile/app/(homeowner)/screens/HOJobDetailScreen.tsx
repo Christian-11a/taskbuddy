@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
   CalendarDays,
@@ -108,15 +108,25 @@ interface HOJobDetailScreenProps {
 export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDetailScreenProps) {
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
+  const [refreshing, setRefreshing] = useState(false);
+  // reload() is fire-and-forget, so the spinner is stopped when the fetch itself settles, on success or failure.
   const { data, loading, error, reload } = useAsyncData(async () => {
-    if (!jobId) throw new Error('No job selected.');
-    const job = await api.getJob(jobId);
-    const provider = job.assigned_provider_id
-      ? await api.getProvider(job.assigned_provider_id).catch(() => null)
-      : null;
-    const dispute = await api.jobDispute(jobId);
-    return { job, provider, dispute };
+    try {
+      if (!jobId) throw new Error('No job selected.');
+      const job = await api.getJob(jobId);
+      const provider = job.assigned_provider_id
+        ? await api.getProvider(job.assigned_provider_id).catch(() => null)
+        : null;
+      const dispute = await api.jobDispute(jobId);
+      return { job, provider, dispute };
+    } finally {
+      setRefreshing(false);
+    }
   }, [jobId]);
+  const onRefresh = () => {
+    setRefreshing(true);
+    reload();
+  };
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -336,6 +346,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           style={styles.body}
           contentContainerStyle={styles.bodyContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+          }
         >
           <View style={styles.titleBlock}>
             <Text style={styles.kicker}>

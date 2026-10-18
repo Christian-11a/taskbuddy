@@ -142,3 +142,26 @@ describe('ProposalModal — the message is checked once the field is left', () =
     expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\n\n\nBring tools.');
   });
 });
+
+describe('ProposalModal — the platform fee breakdown (M15)', () => {
+  const fee = { rate: 0.15, amount: 75, provider_receives: 425 };
+
+  it('shows the job price, the fee and what the provider receives above the message', () => {
+    render(<ProposalModal visible jobTitle="Fix the sink" jobBudget={500} fee={fee} onSubmit={jest.fn()} onCancel={jest.fn()} />);
+
+    const breakdown = screen.getByTestId('proposal-fee');
+    expect(breakdown).toBeTruthy();
+    expect(screen.getByLabelText('Job price ₱500.00 · Platform fee (15%) −₱75.00 · You receive ₱425.00')).toBeTruthy();
+    expect(screen.getByText('Platform fee (15%)')).toBeTruthy();
+    expect(screen.getByText('−₱75.00')).toBeTruthy();
+    expect(screen.getByText('₱425.00')).toBeTruthy();
+  });
+
+  it('hides the breakdown when the job has no fee', () => {
+    render(<ProposalModal visible jobTitle="Fix the sink" jobBudget={500} fee={null} onSubmit={jest.fn()} onCancel={jest.fn()} />);
+
+    expect(screen.queryByTestId('proposal-fee')).toBeNull();
+    expect(screen.queryByText(/Platform fee/)).toBeNull();
+    expect(screen.queryByText(/You receive/)).toBeNull();
+  });
+});

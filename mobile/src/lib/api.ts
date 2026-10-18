@@ -379,6 +379,8 @@ export interface JobTask {
 
 export interface Job {
   id: string;
+  /** Platform fee for this job as the provider sees it; absent on older servers. */
+  fee?: { rate: number; amount: number; provider_receives: number } | null;
   client_id: string;
   category_id: number;
   title: string;
@@ -614,6 +616,8 @@ export interface PaymentHistoryEntry {
   review_note: string | null;
   job_id: string | null;
   created_at: string;
+  /** Platform fee withheld on a payout row; null on other rows, absent on older servers. */
+  commission_amount?: number | null;
 }
 
 export interface Conversation {
@@ -790,6 +794,48 @@ interface RequestOptions {
   skipRefreshOn401?: boolean;
 }
 
+/**
+ * Deadline for a JSON request, covering the response headers and the body, so
+ * a stalled connection cannot leave the screen spinning forever. Uploads keep
+ * their own timeout in putMultipart.
+ */
+const REQUEST_TIMEOUT_MS = 30_000;
+
+/**
+ * Runs one fetch and reads its body under a deadline. On timeout it raises the
+ * same status-0 ApiError as any other "no response" failure, so screens show
+ * their existing connection message. The race is deliberate: React Native's
+ * fetch does not always honour an abort, so the deadline must reject on its own.
+ */
+async function fetchWithDeadline(
+  url: string,
+  init: Omit<RequestInit, 'signal'>,
+): Promise<{ response: Response; text: string }> {
+  const controller = new AbortController();
+  const noResponse = () =>
+    new ApiError('Cannot reach the server. Check your connection and try again.', 0);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(noResponse());
+    }, REQUEST_TIMEOUT_MS);
+  });
+  const exchange = (async () => {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    const text = await response.text();
+    return { response, text };
+  })();
+  try {
+    return await Promise.race([exchange, deadline]);
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw noResponse();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function rawRequest<T>(
   path: string,
   options: RequestOptions,
@@ -800,24 +846,16 @@ async function rawRequest<T>(
   // promise — so this costs one probe, not one per request.
   const baseUrl = await ensureApiBaseUrl();
 
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl}${path}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-  } catch {
-    throw new ApiError(
-      'Cannot reach the server. Check your connection and try again.',
-      0,
-    );
-  }
-
-  const text = await response.text();
+  // No caller passes an AbortSignal (RequestOptions has none), so the deadline
+  // inside fetchWithDeadline is the only signal this request needs.
+  const { response, text } = await fetchWithDeadline(`${baseUrl}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
   let data: any = null;
   try {
     data = text ? JSON.parse(text) : null;

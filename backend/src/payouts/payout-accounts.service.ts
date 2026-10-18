@@ -77,7 +77,35 @@ export class PayoutAccountsService {
       .order('created_at', { ascending: false })
       .limit(100);
     if (error) throw new BadRequestException(error.message);
-    return data;
+    const rows = data ?? [];
+
+    // Payout rows carry the platform fee withheld at release, taken from the
+    // escrow of the same job. Other rows (top-ups, withdrawals) get null.
+    const jobIds = [
+      ...new Set(
+        rows
+          .filter((r) => r.kind === 'payout' && r.job_id)
+          .map((r) => r.job_id as string),
+      ),
+    ];
+    const commissions = new Map<string, number>();
+    if (jobIds.length > 0) {
+      const { data: escrows, error: escrowError } = await this.supabase.admin
+        .from('escrow_transactions')
+        .select('job_id, commission_amount')
+        .in('job_id', jobIds);
+      if (escrowError) throw new BadRequestException(escrowError.message);
+      for (const e of escrows ?? []) {
+        commissions.set(e.job_id as string, Number(e.commission_amount ?? 0));
+      }
+    }
+    return rows.map((r) => ({
+      ...r,
+      commission_amount:
+        r.kind === 'payout' && r.job_id
+          ? (commissions.get(r.job_id as string) ?? 0)
+          : null,
+    }));
   }
 }
 

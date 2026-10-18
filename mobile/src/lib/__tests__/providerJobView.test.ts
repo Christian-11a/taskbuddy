@@ -532,6 +532,12 @@ describe('providerJobView while disputed', () => {
     expect(v.banner).toEqual({ text: 'A complaint is open. An admin is reviewing it.', action: { kind: 'viewCase' } });
   });
 
+  it('turns the status card amber with a COMPLAINT OPEN overline', () => {
+    const v = view({ status: 'confirmed', assigned_provider_id: ME.id, display_status: 'disputed' });
+    expect(v.card.tone).toBe('attention');
+    expect(v.card.overline).toBe('COMPLAINT OPEN');
+  });
+
   it('keeps decline and no banner otherwise', () => {
     const v = view({ status: 'confirmed', assigned_provider_id: ME.id });
     expect(v.link).toEqual({ kind: 'declineBooking' });

@@ -1,7 +1,7 @@
 /**
  * SPNotificationsScreen.tsx
  *
- * Notifications for the provider, grouped Today / Earlier, in the same card
+ * Notifications for the provider, grouped Today / This week / Earlier, in the same card
  * layout as the homeowner's (HONotificationsScreen.tsx). A service request
  * opens My services; any other row opens its job, chat or dispute. The trash
  * button hides the row and offers Undo before the delete is sent. Long-press a
@@ -18,6 +18,7 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
+import NotificationsMenu from '../../../src/components/NotificationsMenu';
 import { NotificationSelectBar, NotificationSelectRow } from '../../../src/components/NotificationSelection';
 import { ArrowLeft, BellRing } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -142,6 +143,9 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Notifications</Text>
+        {!selection.selecting && notifications.length > 0 && (
+          <NotificationsMenu canMarkAllRead={unreadCount > 0} onMarkAllRead={markAllRead} onClearAll={() => setConfirmClear(true)} />
+        )}
       </View>
 
       <ConfirmationModal
@@ -186,20 +190,11 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
             onDelete={() => setConfirmDelete(true)}
           />
         )}
-        {!selection.selecting && notifications.length > 0 && (
+        {!selection.selecting && shownUnread > 0 && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryText} numberOfLines={1}>
-              {shownUnread > 0 ? `${shownUnread} unread` : ''}
+              {`${shownUnread} unread`}
             </Text>
-            {unreadCount > 0 ? (
-              <Tap onPress={markAllRead} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Mark all read">
-                <Text style={styles.linkText} numberOfLines={1} maxFontSizeMultiplier={1.15}>Mark all read</Text>
-              </Tap>
-            ) : (
-              <Tap onPress={() => setConfirmClear(true)} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Clear all notifications">
-                <Text style={styles.linkText}>Clear all</Text>
-              </Tap>
-            )}
           </View>
         )}
 
@@ -221,6 +216,7 @@ export default function SPNotificationsScreen({ onBack, onOpenJob, onOpenChat, o
         )}
 
         {renderGroup('Today', groups.today)}
+        {renderGroup('This week', groups.thisWeek)}
         {renderGroup('Earlier', groups.earlier)}
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -253,7 +249,6 @@ function createThemedStyles(theme: ThemePalette) {
 
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
     summaryText: { flex: 1, color: V6Colors.ink500, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-    linkText: { color: Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
     groupTitle: {
       color: V6Colors.ink500, fontSize: 13, fontWeight: '700', fontFamily: 'Inter',

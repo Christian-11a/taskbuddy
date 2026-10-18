@@ -30,6 +30,7 @@ import { ArrowLeft, Check, ChevronDown } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
 import TermsAndConditions from './TermsAndConditions';
 import { useAuthLayout } from '../../../src/hooks/useAuthLayout';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 
 const SKILL_CATEGORIES = [
   { id: 1, name: 'Plumbing' },
@@ -98,12 +99,16 @@ type FieldErrors = {
   dataCollection?: string;
 };
 
+/** Top-to-bottom order on screen; the three consent errors share one section. */
+const FIELD_ORDER = ['category', 'consents'] as const;
+
 export default function GoogleSPDetailsScreen({
   role = 'provider',
   onBack,
   onComplete,
 }: GoogleSPDetailsScreenProps) {
   const isClient = role === 'client';
+  const { scrollRef, fieldLayout, containerLayout, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
   const { C, styles, V6Colors } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const [termsMode, setTermsMode] = useState<TermsMode>(null);
@@ -137,6 +142,7 @@ export default function GoogleSPDetailsScreen({
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      scrollToFirstError({ category: errors.category, consents: errors.terms ?? errors.privacy ?? errors.dataCollection });
       return;
     }
     setFieldErrors({});
@@ -176,7 +182,7 @@ export default function GoogleSPDetailsScreen({
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView keyboardDismissMode="on-drag"
+        <ScrollView ref={scrollRef} keyboardDismissMode="on-drag"
           style={styles.flex}
           contentContainerStyle={[styles.scrollContent, { paddingTop: layout.paddingTop, paddingBottom: layout.paddingBottom }]}
           showsVerticalScrollIndicator={false}
@@ -190,7 +196,7 @@ export default function GoogleSPDetailsScreen({
           </View>
 
           {/* Form card */}
-          <View style={styles.card}>
+          <View style={styles.card} onLayout={containerLayout}>
             <Text style={styles.title}>Complete your profile</Text>
             <Text style={styles.subtitle}>
               {isClient
@@ -200,7 +206,7 @@ export default function GoogleSPDetailsScreen({
 
             {/* Skill category (providers only) */}
             {!isClient && (
-            <View style={styles.fieldGroup}>
+            <View style={styles.fieldGroup} onLayout={fieldLayout('category')}>
               <Text style={styles.fieldLabel}>Skill Category<Text style={styles.asterisk}> *</Text></Text>
               <Tap
                 style={[
@@ -255,7 +261,7 @@ export default function GoogleSPDetailsScreen({
             )}
 
             {/* Consents */}
-            <View style={styles.consentSection}>
+            <View style={styles.consentSection} onLayout={fieldLayout('consents')}>
               <Text style={styles.consentSectionTitle}>Consents & Agreements</Text>
 
               {/* Terms + Privacy: one row, as on sign-up. Ticking it opens the pop-up on the first

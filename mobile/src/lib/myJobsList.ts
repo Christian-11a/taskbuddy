@@ -27,13 +27,16 @@ const scheduledAt = (job: Job): number => timeOf(job.scheduled_at) ?? 0;
 const postedAt = (job: Job): number => timeOf(job.posted_at) ?? 0;
 const isFinished = (job: Job): boolean => FINISHED_STATUSES.has(job.status);
 
-/** Whether a job belongs under a filter pill. "Needs you" and "Waiting" split open jobs by pending proposals. */
+/**
+ * Whether a job belongs under a filter pill. "Needs you" and "Waiting" split open jobs by pending proposals;
+ * "Needs you" also takes disputed jobs, which stay under their work status pill too.
+ */
 export function matchesJobFilter(job: Job, filter: JobListFilter, proposals: ProposalCounts): boolean {
   switch (filter) {
     case 'all':
       return true;
     case 'needs':
-      return isOpenJob(job) && (proposals[job.id] ?? 0) > 0;
+      return (isOpenJob(job) && (proposals[job.id] ?? 0) > 0) || job.display_status === 'disputed';
     case 'waiting':
       return isOpenJob(job) && (proposals[job.id] ?? 0) === 0;
     case 'booked':

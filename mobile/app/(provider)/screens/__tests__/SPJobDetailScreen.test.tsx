@@ -708,3 +708,84 @@ describe('SPJobDetailScreen — dispute banner', () => {
     expect(onNavigate).toHaveBeenCalledWith('Dispute Status', JOB_ID);
   });
 });
+
+describe('SPJobDetailScreen — platform fee breakdown (M15)', () => {
+  const fee = { rate: 0.15, amount: 75, provider_receives: 425 };
+  const summary = 'Job price ₱500.00 · Platform fee (15%) −₱75.00 · You receive ₱425.00';
+  const booked = {
+    ...openJob,
+    status: 'confirmed' as const,
+    assigned_provider_id: PROVIDER_ID,
+    scheduled_at: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+  });
+
+  const renderJob = (job: object) => {
+    (api.getJob as jest.Mock).mockResolvedValue(job);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+  };
+
+  it('an open job shows the price, the fee and what the provider receives before a proposal', async () => {
+    renderJob({ ...openJob, fee });
+
+    const breakdown = await screen.findByTestId('job-fee-breakdown');
+    expect(within(breakdown).getByText('Job price')).toBeTruthy();
+    expect(within(breakdown).getByText('₱500.00')).toBeTruthy();
+    expect(within(breakdown).getByText('Platform fee (15%)')).toBeTruthy();
+    expect(within(breakdown).getByText('−₱75.00')).toBeTruthy();
+    expect(within(breakdown).getByText('You receive')).toBeTruthy();
+    expect(within(breakdown).getByText('₱425.00')).toBeTruthy();
+    expect(screen.getByLabelText(summary)).toBeTruthy();
+  });
+
+  it('the proposal sheet repeats the breakdown for the same job', async () => {
+    renderJob({ ...openJob, fee });
+
+    fireEvent.press(await screen.findByLabelText('Send proposal'));
+
+    expect(screen.getByTestId('proposal-fee').props.accessibilityLabel).toBe(summary);
+  });
+
+  it('a booked job says what the provider will receive once the client confirms', async () => {
+    renderJob({ ...booked, fee });
+
+    expect(await screen.findByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
+    expect(screen.queryByTestId('job-fee-breakdown')).toBeNull();
+    expect(screen.queryByTestId('job-fee-paid-out')).toBeNull();
+  });
+
+  it('a job in progress says the same thing as a booked one', async () => {
+    renderJob({ ...booked, status: 'in_progress', fee });
+
+    expect(await screen.findByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
+  });
+
+  it('a completed job shows what was paid out, less the fee', async () => {
+    renderJob({ ...booked, status: 'completed', completed_at: new Date().toISOString(), fee });
+
+    expect(await screen.findByText('Paid out ₱425.00 (₱500.00 − ₱75.00 fee)')).toBeTruthy();
+    expect(screen.queryByText(/You'll receive/)).toBeNull();
+  });
+
+  it('shows no fee line for an open job without a fee', async () => {
+    renderJob({ ...openJob, fee: null });
+    expect(await screen.findByLabelText('Send proposal')).toBeTruthy();
+    expect(screen.queryByTestId('job-fee-breakdown')).toBeNull();
+    expect(screen.queryByText(/Platform fee/)).toBeNull();
+  });
+
+  it('shows no fee line for a booked or completed job without a fee', async () => {
+    renderJob({ ...booked, fee: undefined });
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(screen.queryByText(/You'll receive/)).toBeNull();
+    expect(screen.queryByTestId('job-fee-paid-out')).toBeNull();
+  });
+});

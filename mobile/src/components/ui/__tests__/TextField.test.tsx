@@ -1,8 +1,17 @@
-import React from 'react';
+import React, { createRef } from 'react';
+import { TextInput } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import TextField from '../TextField';
 
 const EMAIL_ERROR = 'Enter an email address like name@example.com';
+
+it('forwards its ref to the inner TextInput so a caller can focus it', () => {
+  const ref = createRef<TextInput>();
+  render(<TextField ref={ref} label="Job title" value="" onChangeText={jest.fn()} />);
+
+  expect(ref.current).toBeInstanceOf(TextInput);
+  expect(typeof ref.current?.focus).toBe('function');
+});
 
 describe('TextField error timing', () => {
   it('does not show the error before the field is left', () => {

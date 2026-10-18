@@ -64,6 +64,7 @@ export default function LoginScreen({
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
   const layout = useAuthLayout();
   const cs = layout.compact ? compactStyles : null;
@@ -94,6 +95,8 @@ export default function LoginScreen({
     const errors = validateFields();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
+      // The first problem, top to bottom, gets the cursor.
+      (errors.email ? emailRef : passwordRef).current?.focus();
       return;
     }
 
@@ -153,6 +156,7 @@ export default function LoginScreen({
       </View>
 
       <AuthField
+        ref={emailRef}
         label="Email"
         placeholder="sample@mail.com"
         testID="input-email"

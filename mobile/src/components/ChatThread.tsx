@@ -55,6 +55,8 @@ export interface ChatThreadProps {
   profileId: string | undefined;
   loading: boolean;
   error: string | null;
+  /** A failed send (text or photo), shown as a short line above the composer. Optional. */
+  sendError?: string | null;
   /** The conversation has loaded. Until it has, the composer is off. */
   conversationReady: boolean;
   /** Runs the load again after it failed. */
@@ -70,7 +72,7 @@ export interface ChatThreadProps {
 }
 
 export default function ChatThread({
-  counterpartName, subtitle, systemLine, dayHeads, messages, profileId, loading, error, conversationReady, onRetry, listRef,
+  counterpartName, subtitle, systemLine, dayHeads, messages, profileId, loading, error, sendError, conversationReady, onRetry, listRef,
   text, onChangeText, onSend, attaching, onAttach, onBack, onViewJob,
 }: ChatThreadProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -183,6 +185,10 @@ export default function ChatThread({
           showsVerticalScrollIndicator={false}
           onLayout={() => listRef.current?.scrollToOffset({ offset: 0, animated: false })}
         />
+
+        {!!sendError && (
+          <Text style={styles.sendError} accessibilityLiveRegion="polite">{sendError}</Text>
+        )}
 
         {text.length >= CHAT_COUNTER_FROM && (
           <Text style={styles.counter}>{`${text.length}/${CHAT_MESSAGE_MAX}`}</Text>
@@ -302,6 +308,10 @@ function createThemedStyles(theme: ThemePalette) {
     bubbleTime: { fontFamily: 'Inter', fontSize: 11, color: C.ink300, marginTop: 4 },
     bubbleTimeSent: { textAlign: 'right' },
 
+    sendError: {
+      paddingHorizontal: 18, paddingTop: 8, backgroundColor: C.surface,
+      color: C.dangerText, fontSize: 13, fontWeight: '600', fontFamily: 'Inter',
+    },
     counter: {
       alignSelf: 'flex-end', paddingHorizontal: 18, paddingTop: 8, backgroundColor: C.surface,
       color: C.ink500, fontSize: 12, fontWeight: '600', fontFamily: 'Inter',

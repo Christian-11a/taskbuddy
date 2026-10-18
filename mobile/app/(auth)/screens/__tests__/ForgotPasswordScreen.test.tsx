@@ -1,4 +1,5 @@
 import React from 'react';
+import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen, within } from '@testing-library/react-native';
 import ForgotPasswordScreen from '../ForgotPasswordScreen';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -219,5 +220,38 @@ describe('ForgotPasswordScreen — a code pasted with spaces', () => {
     });
     await pressVerify();
     expect(screen.getByText('Choose a new password')).toBeTruthy();
+  });
+});
+
+describe('ForgotPasswordScreen failed submit', () => {
+  it('focuses the email when Send reset code finds it invalid', async () => {
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('Send reset code'));
+    });
+
+    expect(focus).toHaveBeenCalledTimes(1);
+    expect(focus.mock.instances[0]).toMatchObject({ props: { accessibilityLabel: 'Email' } });
+    focus.mockRestore();
+  });
+
+  it('focuses the new password, then the confirmation, on a failed Reset password', async () => {
+    render(<ForgotPasswordScreen onBackToLogin={jest.fn()} />);
+    await requestCode();
+    reportCodeText('123456');
+    await pressVerify();
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+
+    await act(async () => { fireEvent.press(screen.getByText('Reset password')); });
+    expect(focus.mock.instances[0]).toMatchObject({ props: { accessibilityLabel: 'New password' } });
+
+    focus.mockClear();
+    fireEvent.changeText(screen.getByLabelText('New password'), 'Password1');
+    fireEvent.changeText(screen.getByLabelText('Confirm new password'), 'Password2');
+    await act(async () => { fireEvent.press(screen.getByText('Reset password')); });
+    expect(focus.mock.instances[0]).toMatchObject({ props: { accessibilityLabel: 'Confirm new password' } });
+    focus.mockRestore();
   });
 });

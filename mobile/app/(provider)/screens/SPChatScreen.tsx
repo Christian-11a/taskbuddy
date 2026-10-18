@@ -41,6 +41,8 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // A failed text or photo send. Shown inline above the composer, not in the load-error card.
+  const [sendError, setSendError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [attaching, setAttaching] = useState(false);
@@ -92,9 +94,11 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
       const msg = await api.sendMessage(conversation.id, body);
       setMessages((previous) => mergeMessageById(previous, msg));
       setText('');
+      setSendError(null);
       setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
-    } catch {
-      // Keep the text so the user can retry.
+    } catch (e) {
+      // Keep the text so the user can retry, and show why it did not go.
+      setSendError(e instanceof Error && e.message ? e.message : 'Message not sent. Check your connection and try again.');
     } finally {
       setSending(false);
     }
@@ -113,9 +117,10 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
       const path = await api.uploadImage('chat-attachments', result.assets[0].uri);
       const msg = await api.sendMessage(conversation.id, '', path);
       setMessages((previous) => mergeMessageById(previous, msg));
+      setSendError(null);
       setTimeout(() => listRef.current?.scrollToOffset({ offset: 0, animated: true }), 100);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not send the photo.');
+      setSendError(e instanceof Error ? e.message : 'Could not send the photo.');
     } finally {
       setAttaching(false);
     }
@@ -140,11 +145,15 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
       profileId={profile?.id}
       loading={loading}
       error={error}
+      sendError={sendError}
       conversationReady={conversation !== null}
       onRetry={() => setAttempt((n) => n + 1)}
       listRef={listRef}
       text={text}
-      onChangeText={setText}
+      onChangeText={(value) => {
+        setText(value);
+        setSendError(null);
+      }}
       onSend={handleSend}
       attaching={attaching}
       onAttach={() => void handleAttach()}

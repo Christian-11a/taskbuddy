@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { forwardRef, useRef, useState } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 import { CircleAlert } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
@@ -20,15 +20,21 @@ export type TextFieldProps = Omit<TextInputProps, 'value' | 'onChangeText'> & {
 /**
  * Labelled text input. An error shows only after the user leaves the field or
  * submits, and disappears as soon as the caller stops passing `error`.
+ * The ref goes to the inner TextInput, so a caller can focus the field.
  */
-export default function TextField({
+const TextField = forwardRef<TextInput, TextFieldProps>(function TextField({
   label, value, onChangeText, helper, error, submitted = false, counter, multiline = false, style, onBlur, onFocus,
   ...inputProps
-}: TextFieldProps) {
+}, forwardedRef) {
   const { styles, Colors, V6Colors } = useThemedStyles(createThemedStyles);
   const [focused, setFocused] = useState(false);
   const [touched, setTouched] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const inputRef = useRef<TextInput | null>(null);
+  const setInputRef = (node: TextInput | null) => {
+    inputRef.current = node;
+    if (typeof forwardedRef === 'function') forwardedRef(node);
+    else if (forwardedRef) forwardedRef.current = node;
+  };
   const revealField = useRevealOnFocus(inputRef);
   const showError = !!error && (touched || submitted);
   const footer = showError ? (
@@ -46,7 +52,7 @@ export default function TextField({
       <View style={[styles.box, focused && styles.boxFocused, showError && styles.boxError]}>
         <TextInput
           {...inputProps}
-          ref={inputRef}
+          ref={setInputRef}
           multiline={multiline}
           value={value}
           onChangeText={onChangeText}
@@ -75,7 +81,9 @@ export default function TextField({
       ) : footer}
     </View>
   );
-}
+});
+
+export default TextField;
 
 function createThemedStyles(theme: Palette) {
   const { Colors, V6Colors } = theme;

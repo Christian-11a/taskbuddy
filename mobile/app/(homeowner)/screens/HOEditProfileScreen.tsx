@@ -13,7 +13,6 @@ import React, { useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -45,6 +44,10 @@ import {
 } from '../../../src/lib/inputRules';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useLeaveGuard } from '../../../src/hooks/useLeaveGuard';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
+
+/** Top-to-bottom order on screen, so a failed Save lands on the first problem a person sees. */
+const FIELD_ORDER = ['name', 'phone', 'address', 'city'] as const;
 
 interface HOEditProfileScreenProps {
   onBack: () => void;
@@ -73,7 +76,7 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const scrollRef = useRef<ScrollView>(null);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
   const addressTop = useRef(0);
   const email = profile?.email ?? '';
 
@@ -107,7 +110,10 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
   const requestSave = () => {
     setError(null);
     setSubmitted(true);
-    if (nameError || phoneError || addressError || cityError) return;
+    if (nameError || phoneError || addressError || cityError) {
+      scrollToFirstError({ name: nameError, phone: phoneError, address: addressError, city: cityError });
+      return;
+    }
     if (changed.length > 0) setShowSaveConfirmation(true);
     else onSave();
   };
@@ -165,17 +171,20 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
           {/* Avatar — uploads on its own, independent of the Save button */}
           <AvatarPicker name={name} />
 
-          <TextField
-            label="Full name"
-            value={name}
-            onChangeText={setName}
-            placeholder="Your full name"
-            autoCapitalize="words"
-            maxLength={FULL_NAME_MAX}
-            keyboardAppearance={appearance}
-            error={nameError}
-            submitted={submitted}
-          />
+          <View onLayout={fieldLayout('name')}>
+            <TextField
+              ref={inputRef('name')}
+              label="Full name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Your full name"
+              autoCapitalize="words"
+              maxLength={FULL_NAME_MAX}
+              keyboardAppearance={appearance}
+              error={nameError}
+              submitted={submitted}
+            />
+          </View>
 
           <View style={styles.lockedGroup}>
             <Text style={styles.label}>Email</Text>
@@ -184,27 +193,31 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             </View>
           </View>
 
-          <TextField
-            label="Phone (optional)"
-            value={phone}
-            onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
-            placeholder="09XX XXX XXXX"
-            helper="11 digits, starts with 09"
-            keyboardType="number-pad"
-            keyboardAppearance={appearance}
-            error={phoneError}
-            submitted={submitted}
-          />
+          <View onLayout={fieldLayout('phone')}>
+            <TextField
+              ref={inputRef('phone')}
+              label="Phone (optional)"
+              value={phone}
+              onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
+              placeholder="09XX XXX XXXX"
+              helper="11 digits, starts with 09"
+              keyboardType="number-pad"
+              keyboardAppearance={appearance}
+              error={phoneError}
+              submitted={submitted}
+            />
+          </View>
 
           {/* The saved address is what job posts prefill and what the backend
               geocodes on save, so it gets the same suggestions + GPS the job
               form has rather than a bare text box. */}
           <View
             style={styles.addressGroup}
-            onLayout={(e) => { addressTop.current = e.nativeEvent.layout.y; }}
+            onLayout={(e) => { addressTop.current = e.nativeEvent.layout.y; fieldLayout('address')(e); }}
           >
             <Text style={styles.label}>Address</Text>
             <AddressField
+              ref={inputRef('address')}
               value={location}
               onChangeText={(value) => { setLocation(value); setResolvedLocation(null); }}
               onResolve={(resolved) => { setResolvedLocation(resolved); if (resolved?.city) setCity(resolved.city); }}
@@ -221,17 +234,20 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
             )}
           </View>
 
-          <TextField
-            label="City"
-            value={city}
-            onChangeText={(value) => { setCity(value); setResolvedLocation(null); }}
-            placeholder="City / Municipality"
-            autoCapitalize="words"
-            maxLength={CITY_MAX}
-            keyboardAppearance={appearance}
-            error={cityError}
-            submitted={submitted}
-          />
+          <View onLayout={fieldLayout('city')}>
+            <TextField
+              ref={inputRef('city')}
+              label="City"
+              value={city}
+              onChangeText={(value) => { setCity(value); setResolvedLocation(null); }}
+              placeholder="City / Municipality"
+              autoCapitalize="words"
+              maxLength={CITY_MAX}
+              keyboardAppearance={appearance}
+              error={cityError}
+              submitted={submitted}
+            />
+          </View>
 
           {!!error && <Text style={styles.errorText} accessibilityLiveRegion="polite">{error}</Text>}
         </KeyboardAwareScrollView>

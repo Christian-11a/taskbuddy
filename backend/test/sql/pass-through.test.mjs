@@ -127,6 +127,7 @@ it('keeps the admin commission: only the amount after commission is paid out (00
   await q(`update jobs set status = 'completed' where id = $1`, [job]);
 
   // 15% admin commission, as EscrowService.payOut computes it from platform_settings.
+  await q("update escrow_transactions set commission_rate = null where id = $1", [escrow]); // caller-supplied commission (no locked rate, 0067)
   const [{ r }] = await q(`select escrow_settle($1, 'held', 'released', 450, 'Payout') as r`, [escrow]);
   assert.equal(Number(r.commission_amount), 450);
 

@@ -48,8 +48,11 @@ export const DISPUTE_BANNER_TEXT = 'A complaint is open. An admin is reviewing i
 
 const DISPUTE_HIDDEN: readonly Action['kind'][] = ['confirmDone', 'cancelJob', 'declineBooking'];
 
-/** While a complaint is open (display_status 'disputed'): no complete, cancel or release, and a banner to the case. */
-export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'menu'>>(
+/**
+ * While a complaint is open (display_status 'disputed'): no complete, cancel or release, a banner to the case,
+ * and the status card turns to the amber attention tone so it agrees with the banner. Shared by both views.
+ */
+export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'menu' | 'card'>>(
   view: V,
   job: Pick<Job, 'display_status'>,
   fallbackMain: Action | null = null,
@@ -58,6 +61,7 @@ export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'men
   const hidden = (action: Action | null) => !!action && DISPUTE_HIDDEN.includes(action.kind);
   return {
     ...view,
+    card: { ...view.card, tone: 'attention', overline: 'COMPLAINT OPEN' },
     main: hidden(view.main) ? fallbackMain : view.main,
     link: hidden(view.link) ? null : view.link,
     menu: view.menu.filter((action) => !hidden(action)),
@@ -322,9 +326,11 @@ function cancelledPayment(resolution: Dispute['resolution'] | undefined, yourPay
     case 'reviewed':
       // An admin closed the case without moving the money, so no destination is named.
       return `${yourPayment} was settled by an admin review. Open the case for the outcome.`;
+    case 'refunded_to_client':
+      return `${yourPayment} was refunded to your payment method.`;
     default:
-      // Refunded to the client, or nothing recorded: the refund line as before.
-      return `${yourPayment} was returned to your wallet.`;
+      // Nothing recorded yet: the refund is still on its way back to the payment method.
+      return 'Your refund is being processed. It goes back to your payment method.';
   }
 }
 

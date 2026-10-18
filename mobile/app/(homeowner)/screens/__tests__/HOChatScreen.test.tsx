@@ -100,3 +100,33 @@ it('a conversation that fails to open shows Try again, the composer stays off, a
   fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Hi');
   expect(screen.getByRole('button', { name: 'Send message' }).props.accessibilityState).toMatchObject({ disabled: false });
 });
+
+it('a failed text send keeps the typed text and shows the error, which clears when typing resumes', async () => {
+  (api.sendMessage as jest.Mock).mockRejectedValueOnce(new Error('Message blocked by server'));
+  renderChat();
+  await screen.findByText('Incoming message');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Still here');
+  fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+
+  const line = await screen.findByText('Message blocked by server');
+  expect(line.props.accessibilityLiveRegion).toBe('polite');
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+  expect(screen.getByPlaceholderText('Message…').props.value).toBe('Still here');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Still here!');
+  expect(screen.queryByText('Message blocked by server')).toBeNull();
+});
+
+it('a failed text send with no usable message shows the fallback and keeps the text', async () => {
+  (api.sendMessage as jest.Mock).mockRejectedValueOnce('offline');
+  renderChat();
+  await screen.findByText('Incoming message');
+
+  fireEvent.changeText(screen.getByPlaceholderText('Message…'), 'Retry me');
+  fireEvent.press(screen.getByRole('button', { name: 'Send message' }));
+
+  expect(await screen.findByText('Message not sent. Check your connection and try again.')).toBeTruthy();
+  expect(screen.queryByText("Couldn't load this chat")).toBeNull();
+  expect(screen.getByPlaceholderText('Message…').props.value).toBe('Retry me');
+});

@@ -46,22 +46,20 @@ export default function ChatSafetyNote() {
 
   return (
     <View style={styles.note}>
-      <View style={styles.titleRow}>
-        <ShieldCheck size={16} color={Colors.primaryDeep} />
+      <ShieldCheck size={16} color={Colors.primaryDeep} />
+      <View style={styles.textCol}>
         <Text style={styles.title}>Stay protected</Text>
+        <Text style={styles.body} numberOfLines={2}>{COPY}</Text>
       </View>
-      <Text style={styles.body}>{COPY}</Text>
-      <View style={styles.actionRow}>
-        <Tap
-          onPress={dismiss}
-          // The 15 dp slop above and below brings the text link to 48 dp.
-          hitSlop={{ top: 15, bottom: 15, left: 8, right: 4 }}
-          accessibilityRole="button"
-          accessibilityLabel="Got it"
-        >
-          <Text style={styles.gotIt}>Got it</Text>
-        </Tap>
-      </View>
+      <Tap
+        onPress={dismiss}
+        // 44 dp tall hit area around the text link.
+        hitSlop={{ top: 14, bottom: 14, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel="Got it"
+      >
+        <Text style={styles.gotIt}>Got it</Text>
+      </Tap>
     </View>
   );
 }
@@ -70,14 +68,14 @@ function createThemedStyles(theme: ThemePalette) {
   const { Colors, V6Colors } = theme;
   const styles = StyleSheet.create({
     note: {
-      marginHorizontal: 16, marginTop: 12, padding: 14, gap: 6,
-      borderRadius: 16, backgroundColor: Colors.primaryTonal,
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      marginHorizontal: 16, marginTop: 8, paddingVertical: 8, paddingHorizontal: 12,
+      borderRadius: 14, backgroundColor: Colors.primaryTonal,
     },
-    titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    title: { color: Colors.primaryDeep, fontSize: 14, fontWeight: '700', lineHeight: 18, fontFamily: 'Inter' },
-    body: { color: V6Colors.ink700, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter' },
-    actionRow: { flexDirection: 'row', justifyContent: 'flex-end' },
-    gotIt: { color: Colors.link, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    textCol: { flex: 1, gap: 1 },
+    title: { color: Colors.primaryDeep, fontSize: 13, fontWeight: '700', lineHeight: 17, fontFamily: 'Inter' },
+    body: { color: V6Colors.ink700, fontSize: 12, lineHeight: 16, fontFamily: 'Inter' },
+    gotIt: { color: Colors.link, fontSize: 13, fontWeight: '700', lineHeight: 18, fontFamily: 'Inter' },
   });
   return { Colors, V6Colors, styles };
 }

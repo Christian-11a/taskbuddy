@@ -61,6 +61,7 @@ import {
   ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
+  type TextInput,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import NailPolishIcon from '../../../src/components/ui/icons/NailPolishIcon';
@@ -265,6 +266,8 @@ export default function HOCreateJobScreen({
   const [priceError, setPriceError] = useState<string | null>(null);
   // Bumped by "Try again" to re-request the price options after a failure.
   const [priceRetry, setPriceRetry] = useState(0);
+  // True while an estimate for the current price inputs is in flight. Next waits on it (see stepBusy).
+  const [priceLoading, setPriceLoading] = useState(false);
   const budget = priceOptions?.find((o) => o.tier === priceTier)?.amount.toString() ?? '';
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [urgency, setUrgency] = useState<'urgent' | 'normal' | 'flexible'>('normal');
@@ -304,17 +307,23 @@ export default function HOCreateJobScreen({
   const taskEfforts = tasks.map(effortFor);
   const priceKey = `${categoryId}|${urgency}|${taskEfforts.join(',')}`;
   useEffect(() => {
-    if (!categoryId) { setPriceOptions(null); return; }
+    // The old options and the tier picked from them belong to the previous
+    // inputs, so both are dropped now; Next waits until the new estimate lands.
+    setPriceOptions(null);
+    setPriceTier(null);
+    if (!categoryId) { setPriceLoading(false); return; }
     let live = true;
+    setPriceLoading(true);
     setPriceError(null);
     api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
-      .then((res) => { if (live) setPriceOptions(res.options); })
+      .then((res) => { if (live) { setPriceOptions(res.options); setPriceLoading(false); } })
       .catch((err) => {
         if (!live) return;
         // An ApiError with a real HTTP status came from the server; anything
         // else (status 0 or no ApiError at all) means no response arrived.
         const serverError = err instanceof ApiError && err.status > 0;
         setPriceOptions(null);
+        setPriceLoading(false);
         setPriceError(serverError
           ? "Prices aren't available right now. Please try again in a moment."
           : 'Couldn\'t reach TaskBuddy. Check your connection and try again.');
@@ -334,7 +343,14 @@ export default function HOCreateJobScreen({
   // One ScrollView holds every step, so without this "Next" opened the new
   // step wherever the previous one had been scrolled to (usually the bottom).
   const scrollRef = useRef<ScrollView>(null);
+  const titleInputRef = useRef<TextInput>(null);
+  const addressInputRef = useRef<TextInput>(null);
+  const descriptionInputRef = useRef<TextInput>(null);
   const fieldPositions = useRef<Partial<Record<keyof FieldErrors, number>>>({});
+  // The order the fields appear on screen, so a failed Next scrolls to the first problem a person sees.
+  const FIELDS_TOP_TO_BOTTOM: (keyof FieldErrors)[] = [
+    'service', 'location', 'tasks', 'title', 'description', 'date', 'time', 'budget',
+  ];
   // On short screens the keyboard covers the address suggestions, which sit
   // under the field. Once the keyboard is up, scroll the Address label to the
   // top so the suggestions have room.
@@ -484,9 +500,14 @@ export default function HOCreateJobScreen({
   const validateStep = (): boolean => {
     const errors = stepErrors(step, formValues(), new Date());
     setFieldErrors(errors);
-    const first = Object.keys(errors)[0] as keyof FieldErrors | undefined;
+    // Scroll to the invalid field that sits highest on the screen, not the first key of the rules object.
+    const first = FIELDS_TOP_TO_BOTTOM.find((field) => errors[field]);
     if (first) {
       scrollRef.current?.scrollTo({ y: Math.max(0, (fieldPositions.current[first] ?? 0) - 12), animated: true });
+      // Focus it when it is a text field; a task list has nothing to type into.
+      if (first === 'location') addressInputRef.current?.focus();
+      if (first === 'title') titleInputRef.current?.focus();
+      if (first === 'description') descriptionInputRef.current?.focus();
       return false;
     }
     return true;
@@ -582,11 +603,12 @@ export default function HOCreateJobScreen({
    * Whether the step on screen is still waiting on something of its own, which
    * is not the same as the form being submitted. Only two steps ever are:
    * step 1 has nothing to choose from until the categories arrive, and step 3
-   * is handing off to the system photo picker. The other steps are pure local
-   * input and are never "loading" — giving them a spinner would be theatre.
+   * is handing off to the system photo picker. Step 4 waits on a price estimate,
+   * so a tier cannot be posted against prices that have not arrived yet. The other
+   * steps are pure local input and are never "loading" — giving them a spinner would be theatre.
    */
   const stepBusy =
-    (step === 1 && categories.loading) || (step === 3 && pickingPhotos);
+    (step === 1 && categories.loading) || (step === 3 && pickingPhotos) || (step === 4 && priceLoading);
 
   const handleNext = async () => {
     if (postInFlight.current) {
@@ -611,6 +633,7 @@ export default function HOCreateJobScreen({
   );
 
   const handleStepBack = () => {
+    if (postInFlight.current) return;
     setError(null);
     setFieldErrors({});
     if (step > 1 && step <= totalSteps) setStep((s) => s - 1);
@@ -653,9 +676,22 @@ export default function HOCreateJobScreen({
   };
 
   /**
-   * The header arrow and Android back do the same thing: one step back, and on the
-   * first step leave, asking first if anything was entered. Nothing happens while
-   * a post is in flight, and once the job is posted there is nothing to ask about.
+   * The header X leaves the flow on any step, asking first if anything was entered.
+   * Nothing happens while a post is in flight, and once the job is posted there is
+   * nothing to ask about.
+   */
+  const handleClose = () => {
+    if (postInFlight.current) return;
+    if (step === 6 || !hasProgress) {
+      onBack();
+      return;
+    }
+    setShowExitConfirmation(true);
+  };
+
+  /**
+   * Android back: one step back from step 2 on. On the first step it asks before
+   * leaving if anything was entered; after the job is posted it just leaves.
    */
   const handleBack = () => {
     if (postInFlight.current) return;
@@ -760,8 +796,9 @@ export default function HOCreateJobScreen({
         onClose={() => setPhotoIndex(null)} />
       <PostAppBar
         title="Post a job"
-        onBack={handleBack}
-        backLabel={step > 1 ? 'Previous step' : undefined}
+        onBack={handleClose}
+        backLabel="Close"
+        leading="close"
         topInset={headerTop}
       />
       {!submitting && <PostProgress step={step} total={totalSteps} label={STEP_LABELS[step - 1]} />}
@@ -842,8 +879,10 @@ export default function HOCreateJobScreen({
             <View onLayout={(event) => { fieldPositions.current.location = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Address</Text>
               <AddressField
+                ref={addressInputRef}
                 testID="create-job-address"
                 value={location}
+                resolved={!!resolvedCoordinates}
                 maxLength={LOCATION_MAX}
                 onChangeText={setLocation}
                 onResolve={handleResolvedAddress}
@@ -900,7 +939,7 @@ export default function HOCreateJobScreen({
               Pick the tasks for this job. Your provider ticks these off as they work.
             </Text>
 
-            <View style={styles.taskList}>
+            <View style={styles.taskList} onLayout={(event) => { fieldPositions.current.tasks = event.nativeEvent.layout.y; }}>
               {presets.map((preset) => (
                 <CheckRow
                   key={preset}
@@ -932,6 +971,7 @@ export default function HOCreateJobScreen({
 
             <View onLayout={(event) => { fieldPositions.current.title = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
               <TextField
+                ref={titleInputRef}
                 label="Job title"
                 placeholder="e.g. 3-bedroom apartment deep clean"
                 value={title}
@@ -949,6 +989,7 @@ export default function HOCreateJobScreen({
             <KeyboardAvoidingView onLayout={(event) => { fieldPositions.current.description = event.nativeEvent.layout.y; }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
             <View style={styles.inputGroup}>
               <TextField
+                ref={descriptionInputRef}
                 label="Description"
                 placeholder="Describe the job in detail..."
                 value={description}
@@ -1156,9 +1197,10 @@ export default function HOCreateJobScreen({
         </KeyboardAwareScrollView>
         {/* The bar lives inside the keyboard-avoiding view, so it rises above the keyboard
             instead of hiding under it. BUG-005: the bar keeps clear of the system nav bar. */}
-        {/* No Back here: the header arrow already goes back one step, so Next takes the full width. */}
+        {/* Back from step 2 on; step 1 has Next alone, full width. */}
         {!submitting && (
           <PostFooter
+            onBack={step > 1 ? handleStepBack : undefined}
             onNext={handleNext}
             nextLabel={step === totalSteps ? 'Post job' : 'Next'}
             busy={stepBusy}

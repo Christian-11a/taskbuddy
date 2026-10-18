@@ -39,6 +39,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import { AlertCircle, Check, CheckCircle2, ChevronDown, Circle, MailCheck } from 'lucide-react-native';
 import { V6Radii, V6Shadows } from '../../../src/constants/theme';
@@ -100,6 +101,8 @@ interface RegisterScreenProps {
 interface InputProps {
   label: string;
   onLayout?: (event: LayoutChangeEvent) => void;
+  /** Lets a failed submit focus this field. */
+  inputRef?: React.Ref<TextInput>;
   /** Shows a red asterisk. Only on fields the Create Account button actually checks. */
   required?: boolean;
   placeholder: string;
@@ -126,11 +129,12 @@ interface InputProps {
 /** One form field in the shared AuthField style; `onLayout` keeps the scroll-to-error position. */
 function FormInput({
   label, required, placeholder, value, onChangeText,
-  secureTextEntry, keyboardType, maxLength, error, testID, onLayout, onBlur, autoCapitalize = 'none',
+  secureTextEntry, keyboardType, maxLength, error, testID, onLayout, inputRef, onBlur, autoCapitalize = 'none',
 }: InputProps) {
   return (
     <View onLayout={onLayout} style={{ marginBottom: 16 }}>
       <AuthField
+        ref={inputRef}
         label={label}
         required={required}
         placeholder={placeholder}
@@ -200,16 +204,15 @@ type FieldErrors = {
   dataCollection?: string;
 };
 
+/** The order the fields sit on screen, so a failed submit lands on the first problem a person sees. */
+const REGISTER_FIELD_ORDER = ['name', 'email', 'password', 'confirmPassword', 'category', 'consents'] as const;
+
 export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: RegisterScreenProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const layout = useAuthLayout();
   const insets = useSafeAreaInsets();
-  const scrollRef = useRef<ScrollView>(null);
-  const cardTop = useRef(0);
-  const fieldPositions = useRef<Record<string, number>>({});
-  const locateField = (field: string) => (event: LayoutChangeEvent) => {
-    fieldPositions.current[field] = event.nativeEvent.layout.y;
-  };
+  const { scrollRef, fieldLayout: locateField, containerLayout, inputRef, scrollToFirstError } =
+    useScrollToFirstError(REGISTER_FIELD_ORDER);
   const { width } = useWindowDimensions();
   const { verifyEmailOtp } = useAuth();
   // Entrance transition — matches the mockup's `.screen{animation:fadeIn .22s ease}`
@@ -354,9 +357,9 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
     const errors = validate();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      const first = Object.keys(errors)[0];
-      const field = ['terms', 'privacy', 'dataCollection'].includes(first) ? 'consents' : first;
-      scrollRef.current?.scrollTo({ y: cardTop.current + (fieldPositions.current[field] ?? 0), animated: true });
+      // The three consent errors share one section on screen.
+      const { terms, privacy, dataCollection, ...rest } = errors;
+      scrollToFirstError({ ...rest, consents: terms ?? privacy ?? dataCollection });
       return;
     }
 
@@ -565,7 +568,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
           />
 
           {/* Form card */}
-          <View onLayout={(event) => { cardTop.current = event.nativeEvent.layout.y; }} style={[styles.card, { padding: width < 380 ? 16 : 24 }]}>
+          <View onLayout={containerLayout} style={[styles.card, { padding: width < 380 ? 16 : 24 }]}>
             <Text style={styles.title}>Create your account</Text>
             <Text style={styles.subtitle}>Let's get started!</Text>
 
@@ -581,6 +584,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               maxLength={FULL_NAME_MAX}
               onBlur={() => setFieldErrors((prev) => ({ ...prev, name: validateFullName(name) ?? undefined }))}
               onLayout={locateField('name')}
+              inputRef={inputRef('name')}
               error={fieldErrors.name}
             />
             <FormInput
@@ -596,6 +600,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
                 if (!emailTaken) setFieldErrors((prev) => ({ ...prev, email: validateEmail(email) ?? undefined }));
               }}
               onLayout={locateField('email')}
+              inputRef={inputRef('email')}
               error={fieldErrors.email}
             />
             <FormInput
@@ -608,6 +613,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               onBlur={() => setFieldErrors((prev) => ({ ...prev, password: validatePasswordRules(password) ?? undefined }))}
               secureTextEntry
               onLayout={locateField('password')}
+              inputRef={inputRef('password')}
               error={fieldErrors.password}
             />
             {/* Live password rules, the same three the server checks. */}
@@ -640,6 +646,7 @@ export default function RegisterScreen({ onRegister, onLogin, onGoogleSignIn }: 
               onChangeText={(v) => { setConfirmPassword(v); clearError('confirmPassword'); }}
               secureTextEntry
               onLayout={locateField('confirmPassword')}
+              inputRef={inputRef('confirmPassword')}
               error={fieldErrors.confirmPassword}
             />
 

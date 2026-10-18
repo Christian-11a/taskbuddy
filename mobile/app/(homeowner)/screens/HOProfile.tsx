@@ -12,6 +12,7 @@
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState, type ReactNode } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import {
   ScrollView,
@@ -25,6 +26,7 @@ import {
   Camera,
   ChevronRight,
   CircleHelp,
+  CreditCard,
   LogOut,
   Mail,
   MapPin,
@@ -64,6 +66,7 @@ function shortMonthYear(iso: string | null | undefined): string {
 export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop(4);
+  const statusInset = useSafeAreaInsets().top;
   // Coming back from Settings/Edit Profile keeps the list where it was.
   const scroll = useRetainedScroll('ho.profile');
   const { profile } = useAuth();
@@ -200,6 +203,8 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
         </View>
 
         <View style={styles.card}>
+          <MenuRow icon={CreditCard} label="Payments" onPress={() => onNavigate('Payments')} />
+          <View style={styles.divider} />
           <MenuRow icon={Settings} label="Settings" onPress={() => onNavigate('Settings')} />
           <View style={styles.divider} />
           <MenuRow icon={CircleHelp} label="Help & support" onPress={() => onNavigate('Help & Support')} />
@@ -238,6 +243,9 @@ export default function Profile({ onNavigate, onLogout, onBack }: ProfileProps) 
 
         <View style={styles.bottomGap} />
       </ScrollView>
+
+      {/* Opaque status-bar backdrop: the content scrolls under the transparent status bar, so without it rows draw under the clock and icons. */}
+      <View pointerEvents="none" style={[styles.statusBackdrop, { height: statusInset }]} />
     </View>
   );
 }
@@ -278,6 +286,7 @@ function createThemedStyles(theme: ThemePalette) {
   const styles = StyleSheet.create({
     screen: { flex: 1, backgroundColor: C.canvas },
     body: { flex: 1 },
+    statusBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: C.canvas },
     scrollContent: { paddingHorizontal: Spacing.screenH, paddingBottom: 20 },
     bottomGap: { height: 20 },
 

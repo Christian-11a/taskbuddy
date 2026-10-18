@@ -152,3 +152,15 @@ it('clears lookup progress and ignores a late suggestion after the address is er
   await act(async () => finish([{ ...point, precise: true }]));
   expect(screen.queryByTestId('address-suggestions')).toBeNull();
 });
+
+it('does not look up or show "Looking up addresses…" while the screen already holds the coordinates', async () => {
+  (api.addressSuggestions as jest.Mock).mockResolvedValue([]);
+  render(
+    <AddressField value="HSSi Building, Lipa" onChangeText={jest.fn()} onResolve={jest.fn()} resolved testID="address" />,
+  );
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(400);
+  });
+  expect(api.addressSuggestions).not.toHaveBeenCalled();
+  expect(screen.queryByText('Looking up addresses…')).toBeNull();
+});

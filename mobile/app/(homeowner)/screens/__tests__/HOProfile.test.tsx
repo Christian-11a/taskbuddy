@@ -192,3 +192,12 @@ it('every control has an accessible name: back arrow, menu rows and log out', ()
 
   expect(findUnnamedControls(screen.UNSAFE_root)).toEqual([]);
 });
+
+it('has a Payments row that navigates to Payments', () => {
+  const onNavigate = jest.fn();
+  render(<Profile onNavigate={onNavigate} onLogout={jest.fn()} />);
+
+  fireEvent.press(screen.getByLabelText('Payments'));
+
+  expect(onNavigate).toHaveBeenCalledWith('Payments');
+});

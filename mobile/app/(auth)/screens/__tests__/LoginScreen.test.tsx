@@ -1,4 +1,5 @@
 import React from 'react';
+import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import LoginScreen from '../LoginScreen';
 
@@ -140,5 +141,21 @@ describe('LoginScreen — a spaces-only password', () => {
 
     expect(screen.getByText('Please enter your password.')).toBeTruthy();
     expect(props.onLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe('LoginScreen failed sign-in', () => {
+  it('puts the cursor in the first field with a problem', () => {
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    renderLogin();
+
+    fireEvent.press(screen.getByTestId('btn-sign-in'));
+    expect(focus.mock.instances[0]).toMatchObject({ props: { testID: 'input-email' } });
+
+    focus.mockClear();
+    fireEvent.changeText(screen.getByTestId('input-email'), 'a@b.co');
+    fireEvent.press(screen.getByTestId('btn-sign-in'));
+    expect(focus.mock.instances[0]).toMatchObject({ props: { testID: 'input-password' } });
+    focus.mockRestore();
   });
 });

@@ -73,6 +73,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const emailRef = useRef<TextInput>(null);
   const newRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
 
@@ -95,6 +96,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
     const message = validateEmail(email);
     if (message) {
       setEmailError(message);
+      emailRef.current?.focus();
       return;
     }
     Keyboard.dismiss();
@@ -136,10 +138,12 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
     const passwordError = validatePasswordRules(newPassword, 'New password');
     if (passwordError) {
       setError(passwordError);
+      newRef.current?.focus();
       return;
     }
     if (newPassword !== confirmPassword) {
       setError('Those passwords do not match.');
+      confirmRef.current?.focus();
       return;
     }
     Keyboard.dismiss();
@@ -179,6 +183,7 @@ export default function ForgotPasswordScreen({ onBackToLogin }: ForgotPasswordSc
       </Text>
 
       <AuthField
+        ref={emailRef}
         label="Email"
         placeholder="sample@mail.com"
         value={email}

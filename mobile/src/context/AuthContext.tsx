@@ -457,8 +457,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token: input.token.trim(),
         new_password: input.newPassword,
       });
-      const me = await api.me(next.access_token);
+      // Persist first: the code is already consumed, so a failed /auth/me must not lose the session.
       await persistSession(next);
+      const me = await fetchProfileWithRetry(next.access_token);
       setProfile(me.profile);
       setProviderProfile(me.provider_profile);
     },
@@ -478,8 +479,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email: input.email.trim(),
         token: input.token.trim(),
       });
-      const me = await api.me(next.access_token);
+      // Persist first: the code is already consumed, so a failed /auth/me must not lose the session.
       await persistSession(next);
+      const me = await fetchProfileWithRetry(next.access_token);
       setProfile(me.profile);
       setProviderProfile(me.provider_profile);
     },

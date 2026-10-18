@@ -37,6 +37,7 @@ import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import RefreshBar from '../../../src/components/ui/RefreshBar';
 import { startDateNote } from '../../../src/lib/jobStartDate';
+import { bookedPayoutLine, feeRows, paidOutLine } from '../../../src/lib/feeBreakdown';
 import MenuSheet, { type MenuSheetItem } from '../../../src/components/ui/MenuSheet';
 import PersonCard from '../../../src/components/ui/PersonCard';
 import ProgressStepper from '../../../src/components/ui/ProgressStepper';
@@ -165,6 +166,16 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
   const paid = Number(job?.budget ?? 0) > 0;
   const isDone = isAssignedToMe && job?.status === 'completed';
+  // The fee breakdown: before proposing (open job, not mine), while booked or working, and once paid out.
+  // Every line is null when the job carries no fee, so nothing shows.
+  const fee = job?.fee ?? null;
+  const preProposalFee = job && !isAssignedToMe && (job.status === 'open' || job.status === 'recommending')
+    ? feeRows(job.budget, fee)
+    : null;
+  const bookedFee = isAssignedToMe && (job?.status === 'assigned' || job?.status === 'confirmed' || job?.status === 'in_progress')
+    ? bookedPayoutLine(fee)
+    : null;
+  const paidOutFee = isDone ? paidOutLine(job?.budget, fee) : null;
   const sentAt = myApplication ? dayAndTime(myApplication.applied_at) : null;
   const client = {
     name: clientConversation?.counterpart_name || 'Client',
@@ -434,7 +445,36 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             </View>
           )}
 
-          {isDone && paid && (
+          {preProposalFee && (
+            <View style={styles.card} accessible accessibilityLabel={preProposalFee.summary} testID="job-fee-breakdown">
+              <View style={styles.earnRow}>
+                <Text style={styles.earnLabel}>Job price</Text>
+                <Text style={styles.earnValue}>{preProposalFee.price}</Text>
+              </View>
+              <View style={styles.earnRow}>
+                <Text style={styles.earnLabel}>{preProposalFee.feeLabel}</Text>
+                <Text style={styles.earnValue}>{preProposalFee.fee}</Text>
+              </View>
+              <View style={styles.earnRow}>
+                <Text style={styles.earnLabel}>You receive</Text>
+                <Text style={styles.earnValue}>{preProposalFee.receives}</Text>
+              </View>
+            </View>
+          )}
+
+          {bookedFee && (
+            <View style={styles.card} testID="job-fee-booked">
+              <Text style={styles.feeLine}>{bookedFee}</Text>
+            </View>
+          )}
+
+          {paidOutFee && (
+            <View style={styles.card} testID="job-fee-paid-out">
+              <Text style={styles.feeLine}>{paidOutFee}</Text>
+            </View>
+          )}
+
+          {isDone && paid && !paidOutFee && (
             <View style={styles.card}>
               <View style={styles.earnRow}>
                 <Text style={styles.earnLabel}>Job price</Text>
@@ -579,6 +619,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       <ProposalModal
         visible={proposalOpen}
         jobTitle={job?.title}
+        jobBudget={job?.budget}
+        fee={fee}
         busy={busy}
         error={proposalOpen ? actionError : null}
         payoutRequired={payoutRefused}
@@ -706,6 +748,7 @@ function createThemedStyles(theme: ThemePalette) {
     earnRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
     earnLabel: { fontFamily: 'Inter', fontSize: 14, color: V6Colors.ink700 },
     earnValue: { fontFamily: 'Inter', fontSize: 15, fontWeight: '700', color: V6Colors.ink900 },
+    feeLine: { fontFamily: 'Inter', fontSize: 14, lineHeight: 20, color: V6Colors.ink900 },
     footnote: { fontFamily: 'Inter', fontSize: 12, lineHeight: 17, color: V6Colors.ink500 },
 
     photo: { width: '100%', height: 240, borderRadius: 14 },

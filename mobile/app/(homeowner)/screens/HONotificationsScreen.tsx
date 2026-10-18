@@ -1,7 +1,7 @@
 /**
  * HONotificationsScreen.tsx
  *
- * Notifications for the homeowner, grouped Today / Earlier. A row opens the job
+ * Notifications for the homeowner, grouped Today / This week / Earlier. A row opens the job
  * it is about (a new application goes to its proposals). The trash button hides
  * the row and offers Undo; the delete is sent only once that window passes.
  * Long-press a row to pick several and delete them together (see useNotificationSelection).
@@ -18,6 +18,7 @@ import EmptyCard from '../../../src/components/ui/EmptyCard';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { NOTIFICATION_ICONS } from '../../../src/components/ui/NotificationCard';
+import NotificationsMenu from '../../../src/components/NotificationsMenu';
 import { NotificationSelectBar, NotificationSelectRow } from '../../../src/components/NotificationSelection';
 import { ArrowLeft, BellRing } from 'lucide-react-native';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -167,6 +168,9 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
         <Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>Notifications</Text>
+        {!selection.selecting && notifications.length > 0 && (
+          <NotificationsMenu canMarkAllRead={unreadCount > 0} onMarkAllRead={markAllRead} onClearAll={() => setConfirmClear(true)} />
+        )}
       </View>
 
       <ConfirmationModal
@@ -211,20 +215,11 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
             onDelete={() => setConfirmDelete(true)}
           />
         )}
-        {!selection.selecting && notifications.length > 0 && (
+        {!selection.selecting && shownUnread > 0 && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryText} numberOfLines={1}>
-              {shownUnread > 0 ? `${shownUnread} unread` : ''}
+              {`${shownUnread} unread`}
             </Text>
-            {unreadCount > 0 ? (
-              <Tap onPress={markAllRead} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Mark all read">
-                <Text style={styles.linkText} numberOfLines={1} maxFontSizeMultiplier={1.15}>Mark all read</Text>
-              </Tap>
-            ) : (
-              <Tap onPress={() => setConfirmClear(true)} activeOpacity={0.8} hitSlop={LINK_HIT_SLOP} accessibilityRole="button" accessibilityLabel="Clear all notifications">
-                <Text style={styles.linkText}>Clear all</Text>
-              </Tap>
-            )}
           </View>
         )}
 
@@ -254,6 +249,7 @@ export default function HONotificationsScreen({ onBack, onOpenJob, onOpenProposa
         )}
 
         {renderGroup('Today', groups.today)}
+        {renderGroup('This week', groups.thisWeek)}
         {renderGroup('Earlier', groups.earlier)}
         <View style={{ height: 20 }} />
       </ScrollView>
@@ -286,7 +282,6 @@ function createThemedStyles(theme: ThemePalette) {
 
     summaryRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 },
     summaryText: { flex: 1, color: V6Colors.ink500, fontSize: 13, fontWeight: '600', fontFamily: 'Inter' },
-    linkText: { color: Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
     groupTitle: {
       color: V6Colors.ink500, fontSize: 13, fontWeight: '700', fontFamily: 'Inter',

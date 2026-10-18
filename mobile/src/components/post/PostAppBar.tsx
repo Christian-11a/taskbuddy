@@ -1,21 +1,25 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, X } from 'lucide-react-native';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
 import Tap from '../ui/Tap';
 
 export type PostAppBarProps = {
   title: string;
-  /** The back arrow: one step back, or leaving the job form on the first step (the screen decides whether to confirm). */
+  /** The round button: one step back, or leaving the job form on the first step (the screen decides whether to confirm). */
   onBack: () => void;
-  /** What the arrow is announced as. Defaults to "Exit job form", for the arrow that leaves. */
+  /** What the button is announced as. Defaults to "Exit job form", for the button that leaves. */
   backLabel?: string;
+  /** The icon on the button. "arrow" (default) for back; "close" (an X) for leaving the flow. */
+  leading?: 'arrow' | 'close';
   /** Space above the bar, for the status bar. */
   topInset?: number;
 };
 
 /** The top bar of the job form: a round back button, then the screen name. */
-export default function PostAppBar({ title, onBack, backLabel = 'Exit job form', topInset = 0 }: PostAppBarProps) {
+export default function PostAppBar({
+  title, onBack, backLabel = 'Exit job form', leading = 'arrow', topInset = 0,
+}: PostAppBarProps) {
   const { s, c } = useThemedStyles(createStyles);
   return (
     <View style={[s.bar, { paddingTop: topInset }]}>
@@ -26,7 +30,7 @@ export default function PostAppBar({ title, onBack, backLabel = 'Exit job form',
         accessibilityRole="button"
         accessibilityLabel={backLabel}
       >
-        <ArrowLeft size={20} color={c.icon} />
+        {leading === 'close' ? <X size={20} color={c.icon} /> : <ArrowLeft size={20} color={c.icon} />}
       </Tap>
       <Text style={s.title} numberOfLines={1} accessibilityRole="header">{title}</Text>
     </View>
