@@ -1,76 +1,76 @@
 # Backend handoff: feedback round (October 2026)
 
-For the backend owner. Read this instead of chasing links. Last updated: 2026-10-18.
-The owner of this doc updates it when a branch is pushed, merged or deployed.
+For the backend owner. Read this instead of chasing links.
+Last updated: 2026-10-18, after PRs #94, #95 and #96 were merged into `main`.
+This file is updated through small docs PRs whenever something is merged, deployed or started.
 
-## 1. What is ready for you to review and deploy
+## 1. Merged and waiting to be deployed
 
-| Branch / PR | Status | Migrations | Goes live with |
-|---|---|---|---|
-| `feedback/admin` (admin dashboard, PR #95) | PR open, ready to review and deploy | `0065` | Nothing else; independent |
-| `feedback/mobile` (PR #94) | First part pushed; fee-lock fix and newer commits being finished, then pushed | `0064`, `0066`, `0067` | A new EAS preview build |
-| `feedback/credentials-required` | In progress, not pushed | `0068` | The mobile certificate flow (C2, not started). Do NOT deploy before it |
+| PR | What | Migrations |
+|---|---|---|
+| #94 | Mobile round 1: complaints and disputed status, payout account before proposing, notification routing, early release removed | `0064` |
+| #95 | Web admin: disputed filter, failed payouts, payment records, commission figures, credentials review, chat paging | `0065` |
+| #96 | Mobile round 2: platform fee locked at hire and shown up front, provider Earnings, client Payments, review fixes, client UI | `0066`, `0067` |
 
-### `feedback/admin`: deploy steps
-1. Apply `0065_admin_bookings_disputed_filter.sql` on Supabase and record it in the migration history.
-   It only replaces `admin_list_bookings` (status filter accepts `'disputed'`; same as `0038` otherwise).
-2. Redeploy the API on Render. It also carries: credential list provider names fix, refusing approval of expired credentials.
+### Deploy steps (in this order)
+1. Apply on Supabase, in number order, and record each in the migration history (the way earlier ones were applied;
+   never a blind `supabase db push`, the remote history is out of sync):
+   - `0064_disable_early_release.sql`: switches off the two early-release functions. No data deleted.
+   - `0065_admin_bookings_disputed_filter.sql`: `admin_list_bookings` accepts the `'disputed'` status filter. Nothing else
+     changes.
+   - `0066_complaints_before_completion.sql`: complaints can only be raised before the client confirms the job is done.
+   - `0067_lock_commission_rate.sql`: the commission rate is stored when a job is hired and used at release. The database
+     computes the fee from the stored rate and ignores the fee the API sends, so a rate change after hire never changes a
+     payout. Held escrows are backfilled with the current rate.
+2. Redeploy the API on Render right after the migrations (the old API should not run long against `0067`).
 3. The admin website goes live when the owner syncs the fork (Vercel).
-Until step 2, the Bookings "Disputed" filter returns an error.
+4. New EAS preview build for testers. The old build expects the removed wallet and warranty.
 
-### `feedback/mobile` (PR #94): deploy steps
-1. Apply in number order and record each in the migration history:
-   - `0064_disable_early_release.sql`: switches off the two early-release functions; no data deleted.
-   - `0066_complaints_before_completion.sql`: complaints only before the client confirms the job is done.
-   - `0067_lock_commission_rate.sql`: the commission rate is stored when a job is hired and used at release
-     (being fixed now so SQL ignores the fee the API sends when a rate is locked, and released jobs show the stored fee).
-2. Redeploy the API right away. The old API must not run long against `0067`.
-3. New EAS preview build for testers (the old build expects the removed wallet and warranty).
-Test data to clean up: one test complaint on the job "E2E 8.2 F-S82b start inflight".
+Until step 2: the admin Bookings "Disputed" filter returns an error. Until step 4: testers on the old build may hit errors.
 
-### `feedback/credentials-required`: when it arrives
-- Rule: a provider is verified only with identity approved AND an approved, unexpired certificate (TESDA, PRC or trade)
-  for their service; each extra service also needs its own certificate.
-- `0068` recomputes `is_verified` for every provider. Verified providers without a certificate become unverified
-  (test accounts included). This cannot be undone easily: review carefully.
-- Deploy order: `0068`, then the API immediately, then the admin website, together with the new mobile build that has the
-  certificate step.
+Test data to clean up (or let the planned data wipe remove it): one test complaint on the job "E2E 8.2 F-S82b start inflight".
+
+Please tell the owner when each step is done, so this file can say so.
 
 ## 2. Tasks for you (nobody else is working on these)
 
-1. **Xendit payout final status (most important).** `escrow.service.ts` `sendQueuedPayouts` marks a payout completed as
-   soon as Xendit accepts the request. Handle Xendit's payout callback so the status becomes completed or failed from the
-   real result, and the admin "Failed payouts" page and the provider's payout list follow it.
+1. **Xendit payout final status (most important).** `escrow.service.ts` `sendQueuedPayouts` marks a payout completed as soon
+   as Xendit accepts the request. Handle Xendit's payout callback so the status becomes completed or failed from the real
+   result; the admin "Failed payouts" page and the provider's payout list then follow it.
 2. **Cleanup:**
    - 8 cancellation SQL tests fail on `main` (one: "tuple to be updated was already modified").
    - `backend/package-lock.json` is out of sync with `package.json` (`npm ci` fails).
    - 3 tsc errors in `jobs.service.spec.ts:239`, `profiles.service.spec.ts:247` and `:272`.
 3. **Follow-ups:**
-   - Admin users list: return `identity_verified` and certificate status, so the admin Users page can show exactly what a
-     provider is missing (after `0068`).
+   - Admin users list: return `identity_verified` and certificate status (after `0068`), so the admin Users page can show
+     exactly what a provider is missing.
    - Plan removing the deprecated `message_id` (complaints now attach the whole chat) once old app builds are gone.
    - Token refresh during an account switch can mix sessions (mobile `AuthContext`, rare): note only.
 
 Payouts stay ONE account per provider (GCash, Maya or bank). No multiple payout accounts.
 
-## 3. What we are still doing (avoid these areas or tell us first)
+## 3. Still in progress (avoid these areas or tell us first)
 
-| Who | Branch / folder | Working on | Backend files touched |
+| Work | Branch | Status | Backend files touched |
 |---|---|---|---|
-| Mobile session | `feedback/mobile`, `taskbuddy-mobile` | Fee-lock fix (B3 review), then provider UI round (screens only) | `0067` / possibly new `0070`, `escrow_settle`, `jobs.service.ts` fee fields, `escrow.service.ts` fee preview |
-| Admin session | `feedback/credentials-required`, `taskbuddy-credentials` | Certificate rule fixes (C1) + one Verifications review page (C3) | `0068`, `verifications.service.ts`, `credentials.service.ts`, `profiles.service.ts`, `admin.controller.ts`, `payments.scheduler.ts` (expiry check), `provider_approved_categories` |
-| Later | new mobile branch | Certificate step in Get verified (C2) | none (uses the C1 API) |
+| Certificates required for verification (backend gate + one Verifications review page in the admin) | `feedback/credentials-required` | Being finished and reviewed; separate PR later | `0068`, `verifications.service.ts`, `credentials.service.ts`, `profiles.service.ts`, `admin.controller.ts`, `payments.scheduler.ts` (expiry check), `provider_approved_categories` |
+| Mobile provider UI round (screens, schedule change requests on the existing API, onboarding and tour) | `feedback/mobile` (new commits) | In progress; separate PR later | none planned (uses existing endpoints) |
+| Mobile certificate step in Get verified | not started | Starts after the certificate backend | none (uses the certificate API) |
 
-Rules so we do not collide:
+### The certificate PR, when it arrives
+- Rule: a provider is verified only with identity approved AND an approved, unexpired certificate (TESDA, PRC or trade)
+  for their service; each extra service also needs its own certificate.
+- `0068` recomputes `is_verified` for every provider. Verified providers without a certificate become unverified (test
+  accounts included). This cannot be undone easily: review carefully.
+- Deploy together with the mobile build that has the certificate step: `0068`, then the API immediately, then the admin
+  website, then the new app build. Do NOT deploy it before the mobile certificate step exists.
+
+### Rules so we do not collide
 - Start your branch from the team's latest `main`.
-- Payout code is shared: `escrow.service.ts` and `payments.scheduler.ts` are touched by the fee-lock fix, the certificate
-  expiry check and your payout-callback task. Keep your change in its own functions, and merge after the fee-lock fix if you
-  touch the same function.
-- Migration numbers taken: `0064`, `0065`, `0066`, `0067`, `0068`; `0070` reserved for the fee-lock fix if needed.
-  Use `0071` or higher for new ones.
-- Never run `supabase db push` blindly (the remote migration history is out of sync); apply and record migrations the way
-  earlier ones were.
+- Payout code is shared: `escrow.service.ts` and `payments.scheduler.ts` are touched by the certificate expiry check and by
+  your payout-callback task. Keep your change in its own functions.
+- Migration numbers: `0064`–`0067` are in `main`; `0068` is reserved for the certificate PR. Use `0069` or higher for new
+  ones and tell us which.
 
 ## 4. Reviews already done
-Independent reviews (Codex, GPT-6.1 Sol) were run on each branch and the findings fixed or listed above.
-Full reports are kept by the owner (`docs/review-*-codex-2026-10-*.md` in the owner's local copy).
+Independent reviews (Codex, GPT-6.1 Sol) were run on each branch; the findings were fixed or are listed above.
