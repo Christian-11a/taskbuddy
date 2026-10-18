@@ -821,6 +821,12 @@ npm test            # jest unit + lifecycle specs (supabase-js mocked)
 npm run test:sql    # the real migrations on real Postgres (PGlite, in-process)
 ```
 
+`scripts/payout-audit.mjs` is a read-only check of payouts marked
+`completed` before payout results came from Xendit: it looks each one up by
+reference and lists any whose real status is not `SUCCEEDED`
+(`node --env-file=.env scripts/payout-audit.mjs --since 2026-10-16`). It
+refuses non-test Xendit keys and changes nothing.
+
 A k6 load test for the money path (post → apply → accept/escrow hold → cancel/refund)
 lives in [`load/`](./load/README.md). It is run by hand, not in CI, and **writes real rows**
 to the API it targets.
