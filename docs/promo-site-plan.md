@@ -25,7 +25,7 @@ Scope: the public promo site in `web/` (`/`, `/account/*`, `/terms`, `/privacy`,
 | Guide language | English (matches the installed Whisper model and the thesis). |
 | Guide hosting | Files on the site (720p mp4 + poster image, loaded only when played). No YouTube channel needed. |
 | Guide extras | TaskBuddy mascot on title cards; captions burned in. |
-| Offers vs proposals | Site uses "offers" (plainer word, used in the app's onboarding). Provisional until the mobile team confirms. |
+| Offers vs proposals | DECIDED: "proposals" everywhere (matches the app's screens). The T2 wording pass used "offers"; switch it. |
 | Workers | Haiku 5.5 by default; Sonnet 5.5 for important or risky tasks. |
 
 ## 2. What the mobile team is changing (do not claim on the site until shipped)
@@ -89,6 +89,35 @@ account and get paid"; client lessons gain the price options and paying at hire 
 - **Address lookups (#92):** wait up to 25 s, so posting no longer fails on detailed Lipa addresses.
 Effect on the promo site: claims A3 can now say "released when the client confirms the job is done"
 (still no warranty); providers "link a GCash, Maya or bank account before sending proposals".
+
+### 2e. FINAL APP (2026-10-18): use this, it overrides older notes above
+All of this is merged into `main` (PRs #94–#99, #98, #100–#107). Write site copy from these facts only:
+- **Two roles:** clients and providers. Wording: "client", "provider", and **"proposals"** (not "offers"; the app's screens
+  say proposals).
+- **Posting:** the client picks a service, tasks and urgency (Flexible / Normal / Urgent = "As soon as possible"), and one of
+  three estimated price options (basic / standard / premium). No typed budget. (Price ranges are still undecided: do not
+  claim ranges.)
+- **Hiring and payment:** the client pays when hiring, online through Xendit (GCash, Maya, card, online banking). The money is
+  held in escrow and **released to the provider as soon as the client confirms the job is done**. No warranty, no early
+  release, no wallet, no balance, no top-ups, no withdrawals.
+- **Provider pay:** goes automatically to their linked GCash, Maya or bank account (one payout account), minus a platform fee
+  that is **shown up front** ("Job price · Platform fee · You receive"). Do not state the percentage (admin-set).
+- **Verification (required before proposals):** ID photo, selfie, **and a certificate for each service they offer**
+  (TESDA National Certificate, PRC licence or trade certificate), then review (automated ID check + admin). A payout account
+  is also required before sending proposals. Certificates expire on their own date; providers renew them.
+- **During the job:** chat (Messages tab, photos), task checklist with **proof photos**, **schedule change requests**
+  (propose a new date and time; the other side accepts or declines).
+- **Problems:** "Report a problem" (a complaint) **before** confirming the job is done; photos and the whole chat are attached;
+  an admin reviews while the money stays held. Refunds go back to the client's payment method.
+- **History screens:** providers have **Earnings** (paid out, on its way, fees); clients have **Payments** (paid, held,
+  refunded). Records only, never "balance" or "wallet".
+- **Onboarding:** 3 slides per role and a short guided tour; sample portfolio examples for providers.
+- **Smart matching:** jobs are shown to nearby qualified providers; if nobody applies in time, TaskBuddy recommends the job to
+  best-fit providers (only those certified for that service).
+
+Cloud vs local: a cloud session can do all site code (T8 copy and claims, hiding web sign-in, Terms v3 single source,
+carousel as guide doorway, the "proposals" fix, the contrast fix, lesson scripts, film/hero-loop code changes). Emulator
+screenshots, ElevenLabs audio, Whisper timing (`D:\Downloads\Tools`) and video renders stay on the owner's PC.
 
 ---
 

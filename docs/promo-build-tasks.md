@@ -210,10 +210,38 @@ When unblocked (Sonnet, high):
 4. Re-make `web/public/og-image.jpg` with client/provider wording.
 5. Render to `web/public/film/` (same file names as today, so the page does not change).
 
-## T8. Blocked site tasks (after the mobile app is final)
-Claims table (plan A3), hiding sign-in and the account pages (A4: unlink only, keep the legal text that
-`/terms` and `/privacy` read), Terms source (A5), images (A6), feature card additions (A3b), carousel as the
-guide doorway, real lesson screenshots and audio, "Get the app" link.
+## T8. Site content for the final app (UNBLOCKED 2026-10-18)
+Source of truth: `docs/promo-site-plan.md` section **2e FINAL APP**. Never mention a wallet, balance, top-up, withdrawal,
+warranty, early release, or price ranges.
+
+Cloud-OK (no emulator, audio or rendering needed), in this order:
+- **T8a "proposals" fix** · Haiku, medium: T2 used "offers"; switch every visitor-facing "offer(s)" meaning a provider's
+  bid to "proposal(s)" in `HomePage.markup.ts`, `HomePage.tsx` replace targets, `web/public/promo/script.js`,
+  `web/src/components/pages/guideLessons.ts`, page metadata. Keep the verb "offer" (e.g. "services you offer").
+- **T8b claims and FAQ** · Sonnet, medium: rewrite the hero sub-line, "Why TaskBuddy" steps (no "budget"), feature cards
+  (plan A3b additions: chat with photos, report a problem while money is held, certified providers, fee shown up front,
+  schedule changes), and every FAQ answer from section 2e. Verification: ID, selfie and a certificate per service, then
+  review; payout account before proposals. Payment: pay at hire, held, released when the client confirms. Payouts: GCash,
+  Maya or bank, automatic, minus a platform fee shown up front (no percentage).
+- **T8c hide web sign-in** · Sonnet, medium: plan A4. Every "Join TaskBuddy" / "Sign in" / "Get Started" / "Log In"
+  entry point becomes "Get the app" (to `#download`). Keep the auth code, routes and the Terms/Privacy text that
+  `LegalPage.tsx` reads. `/account` page: replace "coming soon / we'll email you" with "Get the app".
+- **T8d Terms v3 as the single source** · Sonnet, medium: `/terms` and `/privacy` show the app's current legal text from
+  `mobile/src/lib/legalText.ts` (copy it into a shared web module, or generate from it); the modal copy in `HOME_MARKUP`
+  stops being the source. Keep the "draft, needs legal review" status visible to nobody; it is a team note.
+- **T8e carousel as guide doorway** · Haiku, high: each "Inside the app" card: one screen, one line, "Watch the guide" →
+  `/guide#<lesson-id>`. Text from 2e. Images stay as they are until T8g.
+- **T8f guide lesson scripts** · Sonnet, medium: write `promo/guides/lessons/<id>.json` (headline, body, narration per step,
+  `tapWord`) for every lesson in `guideLessons.ts`, from 2e and the real app screens' wording in `mobile/` (read the
+  screens). Update the provider lessons: Get verified includes the certificate; Get paid = automatic payouts, Earnings.
+- **T8h small fixes**: the 4.46:1 grey text on pale blue → at least 4.5:1; "Get the app" link target stays `#download` until
+  the owner gives the Android link (one constant).
+
+Local only (owner's PC, after the cloud work):
+- **T8g images**: emulator screenshots of the final app replace `web/public/film/phones/*` and story images.
+- Guide audio (ElevenLabs "Narrator - Rambutan"), Whisper timing, lesson renders; T7 film and hero loop renders.
+
+Checks for cloud tasks: web lint, tsc, tests, build; page text read back at 375 px and desktop if a browser is available.
 
 ---
 
