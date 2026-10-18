@@ -57,10 +57,16 @@ export class UploadsService {
 
   /**
    * Guard against a caller referencing an object they never uploaded. Paths are
-   * always `<profile id>/<uuid>.<ext>`, so ownership is a prefix check.
+   * always `<profile id>/<uuid>.<ext>` as createSignedUpload issues them, so
+   * the whole path must have exactly that shape: a prefix check alone would
+   * accept `<me>/../<someone else>/<uuid>.jpg`.
    */
   assertOwnedPaths(user: Profile, paths: string[]) {
-    const foreign = paths.filter((p) => !p.startsWith(`${user.id}/`));
+    const owned = new RegExp(
+      `^${user.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(jpg|png|webp)$`,
+      'i',
+    );
+    const foreign = paths.filter((p) => !owned.test(p));
     if (foreign.length > 0) {
       throw new BadRequestException(
         'Upload path does not belong to the current user',
