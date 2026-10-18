@@ -7,9 +7,10 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  * the name, bell), the next booking as a navy hero card, the availability switch,
  * search, urgency pills, and the open jobs as rows.
  *
- * A provider who is not verified yet sees the setup instead (Figma "Feed · new
- * provider", 79:2514): a progress hero, a three-step checklist (address, bio,
- * verification), and where jobs will show up once they are approved.
+ * A provider sees the setup list above the feed until every step is done (address,
+ * bio, verification, payout account). Until verified that is all they see (Figma
+ * "Feed · new provider", 79:2514): a progress hero, the checklist, and where jobs
+ * will show up once they are approved. Once verified, the feed follows the list.
  *
  * Two things run down this screen, and they are not the same thing:
  *
@@ -152,14 +153,27 @@ function heroLine(job: Job, when: Date | null): string {
   return [...parts, job.address].filter(Boolean).join(' · ');
 }
 
+/** The verified provider's hero when the payout account is the only step left. */
+const PAYOUT_LEFT_HERO = {
+  title: 'Almost there',
+  body: 'Link a payout account to send proposals.',
+};
+
+/** The verified provider's hero when a profile step other than the payout account is still open. */
+const PROFILE_LEFT_HERO = {
+  title: 'Finish your profile',
+  body: 'Add the rest of your details so clients can find you.',
+};
+
 /**
- * What an unverified provider sees instead of the feed: the setup hero (three
- * segments, one per step), the checklist with its next-step button, and the
- * note on where jobs will appear.
+ * The setup list, shown above the feed until every step is done: the hero (one
+ * segment per step), the checklist with its next-step button, and, for a provider
+ * who is not verified yet, the note on where jobs will appear.
  */
-function SetupPanel({ steps, verifyState, categoryName, onStep, setupTour }: {
+function SetupPanel({ steps, verifyState, verified, categoryName, onStep, setupTour }: {
   steps: SetupStep[];
   verifyState: VerifyState;
+  verified: boolean;
   categoryName: string | null;
   onStep: (id: SetupStepId) => void;
   setupTour: TourAnchor;
@@ -167,7 +181,10 @@ function SetupPanel({ steps, verifyState, categoryName, onStep, setupTour }: {
   const { Colors, styles } = useThemedStyles(createThemedStyles);
   const { done, total } = setupProgress(steps);
   const next = nextSetupStep(steps);
-  const copy = VERIFY_HERO[verifyState];
+  const open = steps.filter((step) => !step.done);
+  const copy = !verified
+    ? VERIFY_HERO[verifyState]
+    : open.length === 1 && open[0].id === 'payout' ? PAYOUT_LEFT_HERO : PROFILE_LEFT_HERO;
   return (
     <>
       <View testID="setup-hero" {...setupTour} style={styles.heroCard}>
@@ -237,14 +254,18 @@ function SetupPanel({ steps, verifyState, categoryName, onStep, setupTour }: {
         )}
       </View>
 
-      <SectionHeader title="Jobs near you" />
-      <EmptyCard>
-        <EmptyRow
-          icon={ShieldCheck}
-          title="Jobs show up after verification"
-          body={`We'll notify you as soon as you're approved.${categoryName ? ` Then nearby ${categoryName} jobs appear here.` : ''}`}
-        />
-      </EmptyCard>
+      {!verified && (
+        <>
+          <SectionHeader title="Jobs near you" />
+          <EmptyCard>
+            <EmptyRow
+              icon={ShieldCheck}
+              title="Jobs show up after verification"
+              body={`We'll notify you as soon as you're approved.${categoryName ? ` Then nearby ${categoryName} jobs appear here.` : ''}`}
+            />
+          </EmptyCard>
+        </>
+      )}
     </>
   );
 }
@@ -283,7 +304,6 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // so until then they are not registered and their tour steps are passed over at once.
   const availabilityTour = useTourAnchor('home.availability', isVerified);
   const feedTour = useTourAnchor('home.feed', isVerified);
-  const setupTour = useTourAnchor('home.setup', !isVerified);
   const radiusKm = providerProfile?.service_radius_km ?? DEFAULT_RADIUS_KM;
 
   // Verification is approved async by a webhook while the app may be
@@ -411,6 +431,9 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     certificate,
     identityApproved: verification?.identity !== undefined ? verification.identity === 'approved' : undefined,
   });
+  // The setup list stays up until every step is done. A payout lookup still running (null) does not hold it open.
+  const setupComplete = setupSteps.every((step) => step.done || (step.id === 'payout' && payoutLinked === null));
+  const setupTour = useTourAnchor('home.setup', !setupComplete);
   const expiring = Array.isArray(credentials) ? worstExpiry(certificateExpiry(credentials, dateKey(new Date()))) : null;
   const expiringName = expiring
     ? (credentials ?? []).find((c) => c.category_id === expiring.categoryId)?.service_categories?.name ?? null
@@ -525,15 +548,17 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               </Tap>
             </View>
           )}
-          {!isVerified ? (
+          {!setupComplete && (
             <SetupPanel
               steps={setupSteps}
               verifyState={verifyState}
+              verified={isVerified}
               categoryName={providerProfile?.service_categories?.name ?? null}
               onStep={(id) => (id === 'certificate' ? openCertificate() : onNavigate(id === 'verify' ? 'Verification' : id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
               setupTour={setupTour}
             />
-          ) : (
+          )}
+          {isVerified && (
             <>
               {expiring && (
                 <View
@@ -551,22 +576,6 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
                     onPress={() => openCertificate(expiring.categoryId)}
                   >
                     <Text style={styles.setupButtonText}>Upload renewal</Text>
-                    <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
-                  </Tap>
-                </View>
-              )}
-              {payoutLinked === false && (
-                <View testID="payout-setup-card" style={styles.payoutCard}>
-                  <Text style={styles.payoutTitle}>Link a payout account</Text>
-                  <Text style={styles.payoutBody}>Link a GCash, Maya or bank account to send proposals.</Text>
-                  <Tap
-                    style={styles.setupButton}
-                    hitSlop={4}
-                    accessibilityRole="button"
-                    accessibilityLabel="Link payout account"
-                    onPress={() => onNavigate('Payout Account')}
-                  >
-                    <Text style={styles.setupButtonText}>Link payout account</Text>
                     <ArrowRight size={16} color={Colors.onPrimary} strokeWidth={2.4} />
                   </Tap>
                 </View>
@@ -849,11 +858,6 @@ function createThemedStyles(theme: ThemePalette) {
     expiryText: { fontSize: 13.5, lineHeight: 19, fontWeight: '600', fontFamily: 'Inter' },
     expiryTextSoon: { color: Colors.warningText },
     expiryTextExpired: { color: Colors.dangerText },
-    payoutCard: {
-      backgroundColor: C.wellBg, borderRadius: 16, padding: 16, gap: 10, marginBottom: 14,
-    },
-    payoutTitle: { color: C.ink900, fontSize: 15, fontWeight: '700', lineHeight: 20, fontFamily: 'Inter' },
-    payoutBody: { color: C.ink700, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter' },
     setupButton: {
       flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
       minHeight: 48, borderRadius: 16, backgroundColor: Colors.primary,

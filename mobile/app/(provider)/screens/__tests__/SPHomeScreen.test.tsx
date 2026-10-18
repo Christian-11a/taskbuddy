@@ -722,37 +722,77 @@ describe('SPHomeScreen — saved copies of the wrong shape', () => {
   });
 });
 
-describe('SPHomeScreen - payout account setup card', () => {
+describe('SPHomeScreen - payout account is the last setup step', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearAsyncDataCache();
+    // Verified, with the address, bio and certificate saved: only the payout account is left.
     (useAuth as jest.Mock).mockReturnValue({
-      profile: { full_name: 'Ana Cruz', city: 'Cebu', latitude: null, longitude: null },
-      providerProfile: { is_available: true, service_radius_km: 25 },
+      profile: { full_name: 'Ana Cruz', address: 'Arturo Tanco Drive, Lipa', city: 'Lipa', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25, bio: 'Plumber for eight years', is_verified: true },
       isVerified: true,
       refreshProfile: jest.fn(),
     });
+    (api.myVerification as jest.Mock).mockResolvedValue({ status: 'approved', identity: 'approved', certificate: 'approved', verified: true });
     (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
     (api.assignedJobs as jest.Mock).mockResolvedValue([]);
     (api.myApplications as jest.Mock).mockResolvedValue([]);
   });
 
-  it('shows a Link payout account button that opens the Payout account screen when none is linked', async () => {
+  it('keeps the setup list open for a verified provider with no payout account, with the payout step next', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Finish setting up · 4 of 5')).toBeTruthy();
+    expect(screen.getByText('Almost there')).toBeTruthy();
+    expect(screen.getByText('Link a payout account to send proposals.')).toBeTruthy();
+    expect(screen.getByTestId('setup-badge-payout')).toBeTruthy();
+  });
+
+  it('still shows the rest of the feed below the setup list for a verified provider', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    expect(await screen.findByText('Almost there')).toBeTruthy();
+    expect(screen.getByTestId('feed-section')).toBeTruthy();
+    expect(screen.getByTestId('home-availability')).toBeTruthy();
+    expect(screen.queryByText('Jobs show up after verification')).toBeNull();
+  });
+
+  it('opens the Payout account screen from the setup list button', async () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue(null);
     const onNavigate = jest.fn();
     render(<SPHomeScreen onNavigate={onNavigate} />);
 
-    await screen.findByTestId('payout-setup-card');
-    fireEvent.press(screen.getByLabelText('Link payout account'));
+    fireEvent.press(await screen.findByRole('button', { name: 'Link payout account' }));
     expect(onNavigate).toHaveBeenCalledWith('Payout Account');
   });
 
-  it('shows no card when an account is linked', async () => {
+  it('has no separate payout card any more', async () => {
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    await screen.findByText('Almost there');
+    expect(screen.queryByTestId('payout-setup-card')).toBeNull();
+  });
+
+  it('shows no setup list once an account is linked', async () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
     render(<SPHomeScreen onNavigate={jest.fn()} />);
 
+    await screen.findByTestId('feed-section');
     await waitFor(() => expect(api.payoutAccount).toHaveBeenCalled());
-    expect(screen.queryByTestId('payout-setup-card')).toBeNull();
+    await act(async () => {});
+    expect(screen.queryByTestId('setup-hero')).toBeNull();
+    expect(screen.getByTestId('home-availability')).toBeTruthy();
+  });
+
+  it('does not show the setup list while the payout lookup is still running', async () => {
+    (api.payoutAccount as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+
+    await screen.findByTestId('feed-section');
+    expect(screen.queryByTestId('setup-hero')).toBeNull();
   });
 });
 
@@ -845,17 +885,24 @@ describe('SPHomeScreen - feed states, paging and availability', () => {
     expect(44 + 2 * (bell.props.hitSlop as number)).toBeGreaterThanOrEqual(48);
   });
 
-  it('the payout lookup is kept between visits, so the setup card does not flash back', async () => {
+  it('the payout lookup is kept between visits, so the setup list does not flash back', async () => {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { full_name: 'Ana Cruz', address: 'Arturo Tanco Drive, Lipa', city: 'Lipa', latitude: null, longitude: null },
+      providerProfile: { is_available: true, service_radius_km: 25, bio: 'Plumber for eight years', is_verified: true },
+      isVerified: true,
+      refreshProfile: jest.fn(),
+    });
+    (api.myVerification as jest.Mock).mockResolvedValue({ status: 'approved', identity: 'approved', certificate: 'approved', verified: true });
     (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
     (api.payoutAccount as jest.Mock).mockResolvedValue(null);
     const first = render(<SPHomeScreen onNavigate={jest.fn()} />);
-    await screen.findByTestId('payout-setup-card');
+    await screen.findByTestId('setup-hero');
     first.unmount();
     (api.payoutAccount as jest.Mock).mockReturnValue(new Promise(() => {}));
 
     render(<SPHomeScreen onNavigate={jest.fn()} />);
 
     // Remembered from the first visit: shown at once, while the lookup is still running.
-    expect(screen.getByTestId('payout-setup-card')).toBeTruthy();
+    expect(screen.getByTestId('setup-hero')).toBeTruthy();
   });
 });
