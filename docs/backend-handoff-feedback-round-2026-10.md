@@ -7,7 +7,7 @@ The owner of this doc updates it when a branch is pushed, merged or deployed.
 
 | Branch / PR | Status | Migrations | Goes live with |
 |---|---|---|---|
-| `feedback/admin` (admin dashboard PR) | Ready, pushed | `0065` | Nothing else; independent |
+| `feedback/admin` (admin dashboard, PR #95) | PR open, ready to review and deploy | `0065` | Nothing else; independent |
 | `feedback/mobile` (PR #94) | First part pushed; fee-lock fix and newer commits being finished, then pushed | `0064`, `0066`, `0067` | A new EAS preview build |
 | `feedback/credentials-required` | In progress, not pushed | `0068` | The mobile certificate flow (C2, not started). Do NOT deploy before it |
 
