@@ -81,11 +81,28 @@ beforeEach(() => {
   (api.myVerification as jest.Mock).mockResolvedValue(null);
   (api.myCredentials as jest.Mock).mockResolvedValue([]);
   (api.uploadImage as jest.Mock).mockResolvedValue('p1/cert.jpg');
-  (api.createCredential as jest.Mock).mockResolvedValue({ id: 'c9' });
+  (api.createCredential as jest.Mock).mockResolvedValue({ id: 'c9', category_id: 3, status: 'pending' });
   (requestAppPermission as jest.Mock).mockResolvedValue(true);
 });
 
 describe('status screen', () => {
+  it('keeps the certificate upload action hidden after submission while the verification read is stale', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue(
+      me({ identity: 'pending', status: 'pending', services: [PLUMBING('none')] }),
+    );
+    (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
+    renderScreen({ startAt: 'certificate' });
+
+    await screen.findByText('Your Plumbing certificate');
+    await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
+    fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
+
+    await waitFor(() => expect(screen.getByText('Certificate: under review')).toBeTruthy());
+    expect(screen.queryByRole('button', { name: 'Upload your certificate' })).toBeNull();
+    expect(api.myVerification).toHaveBeenCalledTimes(2);
+  });
+
   it('says "You\'re verified" only when verified, with no missing-part rows', async () => {
     (api.myVerification as jest.Mock).mockResolvedValue(
       me({ verified: true, certificate: 'approved', services: [PLUMBING('approved')] }),

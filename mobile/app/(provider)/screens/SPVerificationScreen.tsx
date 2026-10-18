@@ -238,6 +238,10 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const [certCategory, setCertCategory] = useState<number | null>(categoryId ?? null);
   /** A certificate was sent from the wizard's certificate step. */
   const [certSent, setCertSent] = useState(false);
+  /** A successful credential POST can arrive before the verification read catches up. */
+  const [submittedCertificate, setSubmittedCertificate] = useState<
+    Pick<Credential, 'category_id' | 'status'> | null
+  >(null);
   const [certBusy, setCertBusy] = useState(false);
   /** The certificate photo picked on the wizard's certificate step; the review shows it. */
   const [certAsset, setCertAsset] = useState<{ uri: string } | null>(null);
@@ -257,7 +261,23 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
   // The two-part state is only there on the new API; the old one keeps today's screens.
   const newShape = hasNewShape(verification);
-  const summary = verificationSummary(verification);
+  const serverSummary = verificationSummary(verification);
+  const primaryCategory = providerProfile?.category_id
+    ?? verification?.services?.find((item) => item.primary)?.category_id
+    ?? null;
+  const summary = submittedCertificate?.category_id === primaryCategory
+    && serverSummary.certificate === 'none'
+    ? {
+        ...serverSummary,
+        certificate: submittedCertificate.status,
+        headline: submittedCertificate.status === 'pending' && serverSummary.identity === 'approved'
+          ? 'ID approved · certificate under review'
+          : serverSummary.headline,
+        detail: submittedCertificate.status === 'pending' && serverSummary.identity === 'approved'
+          ? 'An admin is checking your certificate.'
+          : serverSummary.detail,
+      }
+    : serverSummary;
   const credentials = useAsyncData(
     useCallback(() => (newShape ? api.myCredentials() : Promise.resolve([] as Credential[])), [newShape]),
     [newShape],
@@ -627,7 +647,8 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               guidance={certificateGuidance(targetName)}
               onBusyChange={setCertBusy}
               onPhotoPicked={(uri) => setCertAsset({ uri })}
-              onSubmitted={() => {
+              onSubmitted={(created) => {
+                if (created) setSubmittedCertificate({ category_id: created.category_id, status: created.status });
                 setCertOnly(false);
                 setCertCategory(null);
                 setAwaitingReload(true);
