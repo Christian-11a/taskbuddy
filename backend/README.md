@@ -150,6 +150,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
    | `0071_oauth_handoff_binding.sql` | `oauth_handoffs.challenge` and `secret_hash`: a Google sign-in claim needs the app's verifier and the redirect's secret (audit C2). |
    | `0073_money_holds_and_sweeps.sql` | A cancelled hold can be re-held for another provider at the current price; `pass_through_balances` leaves client payments younger than 15 minutes for their hold; price-difference holds take the wallet lock and check the balance (audit H3, H5, H6). |
+   | `0074_admin_users_certificate_status.sql` | `admin_user_certificates` view (service role only): `identity_verified` and the main-service `certificate_status` (approved, pending, expired, rejected), attached to `GET /admin/users` rows. |
    | `0072_lockdown_direct_reads_and_uploads.sql` | Direct PostgREST reads: a user reads only their own profile; open jobs only by providers; `stripe_events` closed to anon/authenticated. `avatars`, `chat-attachments`, `job-photos` and `verification-docs` limited to 10 MB JPEG/PNG/WebP (audit H7, H8, M5). |
 
    On the linked project, 0001–0052 are recorded in the migration history.
@@ -553,7 +554,7 @@ The three `POST` routes carry the payments rate limit. Connect is optional: with
 | Method & path | Description |
 |---|---|
 | `GET /admin/users?search=&role=&status=&limit=&offset=` | search/filter users (`role`: client/provider/admin, `status`: active/suspended/**deleted**). Deleted accounts are excluded unless asked for, and never appear under `suspended` (migration 0023) |
-| `GET /admin/users/:id` | single user detail (from `admin_user_overview`) |
+| `GET /admin/users/:id` | single user detail (from `admin_user_overview`). Both user routes add `identity_verified` and `certificate_status` for providers (0074) |
 | `POST /admin/users/:id/suspend` | `{ duration_days?, reason }` — refuses if already suspended or if the target is an admin. Omit `duration_days` for indefinite; otherwise the suspension lifts itself the next time `deactivated_at` is checked (login), no cron job |
 | `POST /admin/users/:id/reinstate` | reactivate a suspended account |
 | `POST /admin/users/:id/send-password-reset` | admin-triggered password reset email — refuses admin targets (migration 0014) |
@@ -824,6 +825,13 @@ npm run format      # prettier
 npm test            # jest unit + lifecycle specs (supabase-js mocked)
 npm run test:sql    # the real migrations on real Postgres (PGlite, in-process)
 ```
+
+`scripts/data-wipe.sql` is the pre-release data wipe: it keeps the schema,
+migration history, configuration and admin accounts, and removes every other
+account and all marketplace data (storage files are left for the dashboard).
+It is destructive: run its first `SELECT` alone as a dry run, take a backup,
+and run the rest only on the owner's go-ahead. `test/sql/data-wipe.test.mjs`
+checks what it keeps.
 
 `scripts/payout-audit.mjs` is a read-only check of payouts marked
 `completed` before payout results came from Xendit: it looks each one up by
