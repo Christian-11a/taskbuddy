@@ -1,7 +1,7 @@
 /** Migration 0067: the platform fee is locked on the escrow when it is held. */
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase } from './harness.mjs';
+import { migratedDatabase, promoteAdmins } from './harness.mjs';
 
 let db;
 const client = '11111111-1111-1111-1111-111111111111';
@@ -16,6 +16,7 @@ before(async () => {
   for (const [id, role] of [[client, 'client'], [provider, 'provider'], [admin, 'admin']]) {
     await query('insert into auth.users(id, raw_user_meta_data) values ($1, $2)', [id, JSON.stringify({ role, full_name: role })]);
   }
+  await promoteAdmins(db);
   await query('insert into provider_profiles(profile_id, category_id, is_verified) values ($1, 1, true)', [provider]);
 });
 after(async () => { await db.close(); });

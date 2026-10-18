@@ -1,6 +1,6 @@
 import { before, after, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { migratedDatabase, readMigration } from './harness.mjs';
+import { migratedDatabase, readMigration, promoteAdmins } from './harness.mjs';
 let db;
 const provider = '22222222-2222-2222-2222-222222222222';
 const admin = '33333333-3333-3333-3333-333333333333';
@@ -11,6 +11,7 @@ before(async () => {
   for (const [id, role] of [[provider, 'provider'], [admin, 'admin'], [client, 'client']]) {
     await query('insert into auth.users(id, raw_user_meta_data) values($1,$2)', [id, JSON.stringify({ role, full_name: role })]);
   }
+  await promoteAdmins(db);
   await query('insert into provider_profiles(profile_id,category_id) values($1,1)', [provider]);
 });
 after(async () => { await db.close(); });
