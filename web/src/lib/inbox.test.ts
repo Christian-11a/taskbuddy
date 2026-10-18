@@ -51,7 +51,7 @@ describe("arrivalTitle", () => {
     expect(arrivalTitle("verifications", 1)).toBe("1 new provider verification");
     expect(arrivalTitle("disputes", 1)).toBe("1 new dispute");
     expect(arrivalTitle("disputes", 4)).toBe("4 new disputes");
-    expect(arrivalTitle("withdrawals", 2)).toBe("2 new withdrawal requests");
+    expect(arrivalTitle("withdrawals", 2)).toBe("2 new failed payouts");
     expect(arrivalTitle("skill-requests", 1)).toBe("1 new service request");
   });
 });
@@ -66,7 +66,7 @@ describe("addArrivals", () => {
     );
     expect(out).toHaveLength(2);
     expect(out).toContainEqual({ id: "a", queue: "verifications", title: "3 new provider verifications", count: 3, createdAt: T0, read: false });
-    expect(out).toContainEqual({ id: "b", queue: "withdrawals", title: "1 new withdrawal request", count: 1, createdAt: T0, read: false });
+    expect(out).toContainEqual({ id: "b", queue: "withdrawals", title: "1 new failed payout", count: 1, createdAt: T0, read: false });
   });
 
   it("keeps the newest entry first", () => {
@@ -154,7 +154,7 @@ describe("read state", () => {
 });
 
 describe("delete", () => {
-  const three = [entry({ id: "a" }), entry({ id: "b", queue: "disputes", title: "1 new dispute" }), entry({ id: "c", queue: "withdrawals", title: "1 new withdrawal request" })];
+  const three = [entry({ id: "a" }), entry({ id: "b", queue: "disputes", title: "1 new dispute" }), entry({ id: "c", queue: "withdrawals", title: "1 new failed payout" })];
 
   it("deleteEntry removes one entry; an unknown id changes nothing", () => {
     expect(deleteEntry(three, "b").map((e) => e.id)).toEqual(["a", "c"]);
@@ -193,7 +193,7 @@ describe("autoResolve", () => {
   it("keeps entries for a queue that still has work, and for a queue whose count is unknown", () => {
     const entries = [
       entry({ id: "v", queue: "verifications" }),
-      entry({ id: "w", queue: "withdrawals", title: "1 new withdrawal request" }),
+      entry({ id: "w", queue: "withdrawals", title: "1 new failed payout" }),
     ];
     const out = autoResolve(entries, counts({ verifications: 4, withdrawals: null }));
     expect(out).toEqual(entries);
@@ -224,7 +224,7 @@ describe("applyReading", () => {
   });
 
   it("keeps existing entries when a queue goes unknown", () => {
-    const entries = [entry({ id: "w", queue: "withdrawals", title: "1 new withdrawal request" })];
+    const entries = [entry({ id: "w", queue: "withdrawals", title: "1 new failed payout" })];
     const out = applyReading(entries, counts({ withdrawals: 1 }), counts({ withdrawals: null }), T0, ids("a"));
     expect(out).toBe(entries);
   });

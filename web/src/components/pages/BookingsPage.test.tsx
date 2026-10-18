@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BookingsPage } from "./BookingsPage";
 import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
+import { ApiError } from "@/lib/api/client";
 import type { AdminBookingDetail } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({
@@ -113,7 +114,7 @@ describe("BookingsPage status counts", () => {
   });
 });
 
-describe("BookingsPage warranty line", () => {
+describe("BookingsPage payment line", () => {
   const booking = {
     id: "b-1234567890",
     customerName: "Ava Cruz",
@@ -153,32 +154,129 @@ describe("BookingsPage warranty line", () => {
     vi.useRealTimers();
   });
 
-  it("shows the warranty and held payment for a completed job", async () => {
-    mockedGetBookingDetail.mockResolvedValue(bookingDetail());
+  it("shows a completed job's payment as released once escrow is released", async () => {
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ escrowStatus: "COMPLETED" }));
     const user = userEvent.setup();
     renderBookings();
 
     await user.click(await screen.findByText("Ava Cruz"));
 
-    expect(await screen.findByText("Warranty open · 2 d 14 h left")).toBeInTheDocument();
-    expect(screen.getByText("Payment is held until the warranty ends")).toBeInTheDocument();
+    expect(await screen.findByText("Released")).toBeInTheDocument();
+    expect(screen.queryByText("Held")).not.toBeInTheDocument();
     expect(mockedGetBookingDetail).toHaveBeenCalledWith("b-1234567890");
   });
 
-  it("shows no warranty line for a booking that is not completed", async () => {
+  it("shows a completed job's payment as held while its complaint is open", async () => {
+    mockedSearchBookings.mockResolvedValue({ items: [{ ...booking, displayStatus: "disputed" }], total: 1, statusCounts: counts({ completed: 1 }) });
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ escrowStatus: "DISPUTED", displayStatus: "disputed" }));
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Held while the complaint is open")).toBeInTheDocument();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
+  });
+
+  it("shows a completed job's held payment as release in progress when no complaint is open", async () => {
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ escrowStatus: "IN_ESCROW", displayStatus: "completed" }));
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Held")).toBeInTheDocument();
+    expect(screen.getByText("Release in progress")).toBeInTheDocument();
+    expect(screen.queryByText("Held while the complaint is open")).not.toBeInTheDocument();
+  });
+
+  it("shows a completed job whose escrow is DISPUTED without an open complaint as release in progress", async () => {
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ escrowStatus: "DISPUTED", displayStatus: "completed" }));
+    const user = userEvent.setup();
+    renderBookings();
+
+    await user.click(await screen.findByText("Ava Cruz"));
+
+    expect(await screen.findByText("Release in progress")).toBeInTheDocument();
+    expect(screen.queryByText("Held while the complaint is open")).not.toBeInTheDocument();
+  });
+
+  it("shows no payment line for a booking that is not completed", async () => {
     mockedSearchBookings.mockResolvedValue({
       items: [{ ...booking, status: "in_progress" }],
       total: 1,
       statusCounts: counts({ in_progress: 1 }),
     });
-    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ status: "in_progress", completedAt: null }));
+    mockedGetBookingDetail.mockResolvedValue(bookingDetail({ status: "in_progress", completedAt: null, escrowStatus: "IN_ESCROW" }));
     const user = userEvent.setup();
     renderBookings();
 
     await user.click(await screen.findByText("Ava Cruz"));
 
     expect(await screen.findByText("Clean two units")).toBeInTheDocument();
-    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
+    expect(screen.queryByText("Held")).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage disputed status", () => {
+  const booking = {
+    id: "b-1234567890",
+    customerName: "Ava Cruz",
+    providerName: "Rico Lim",
+    service: "Aircon cleaning",
+    status: "in_progress" as const,
+    scheduledDate: "2026-10-10T08:00:00Z",
+    amount: 1200,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("shows a Disputed badge in place of the status while the complaint is open", async () => {
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ ...booking, displayStatus: "disputed" }],
+      total: 1,
+      statusCounts: counts({ in_progress: 1 }),
+    });
+    renderBookings();
+
+    expect(await screen.findByText("Ava Cruz")).toBeInTheDocument();
+    const table = within(screen.getByRole("region", { name: "Bookings table" }));
+    expect(table.getByText("Disputed")).toBeInTheDocument();
+    expect(table.queryByText("In Progress")).not.toBeInTheDocument();
+  });
+
+  it("keeps the real status badge when no complaint is open", async () => {
+    mockedSearchBookings.mockResolvedValue({
+      items: [{ ...booking, displayStatus: "in_progress" }],
+      total: 1,
+      statusCounts: counts({ in_progress: 1 }),
+    });
+    renderBookings();
+
+    const table = within(await screen.findByRole("region", { name: "Bookings table" }));
+    expect(await table.findByText("In Progress")).toBeInTheDocument();
+    expect(table.queryByText("Disputed")).not.toBeInTheDocument();
+  });
+
+  it("filters on status=disputed and counts the selected Disputed option with the list total", async () => {
+    mockedSearchBookings.mockResolvedValue({ items: [], total: 0, statusCounts: counts({ completed: 2 }) });
+    const user = userEvent.setup();
+    renderBookings();
+    await screen.findByRole("option", { name: "Disputed" });
+
+    mockedSearchBookings.mockResolvedValue({ items: [{ ...booking, displayStatus: "disputed" }], total: 1, statusCounts: counts({ completed: 2 }) });
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by status" }), "Disputed");
+
+    expect(mockedSearchBookings).toHaveBeenLastCalledWith({ search: "", status: "disputed", page: 1, pageSize: 12 });
+    expect(await screen.findByRole("option", { name: "Disputed (1)" })).toBeInTheDocument();
   });
 });
 
@@ -251,5 +349,31 @@ describe("BookingsPage cancel confirmation", () => {
     expect(await screen.findByText(/not refunded automatically/)).toBeInTheDocument();
     expect(screen.getByText(/frozen in a cancellation review/)).toBeInTheDocument();
     expect(screen.getByText(/A booking with no payment is simply closed/)).toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage search input", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({ items: [], total: 0, statusCounts: counts() });
+  });
+
+  it("caps the search box at 100 characters and shows the API's 400 message under it", async () => {
+    const user = userEvent.setup();
+    renderBookings();
+    const search = await screen.findByLabelText("Search bookings");
+    expect(search).toHaveAttribute("maxLength", "100");
+
+    mockedSearchBookings.mockRejectedValueOnce(new ApiError(400, "Search is too long."));
+    await user.type(search, "x");
+
+    expect(await screen.findByText("Search is too long.")).toHaveAttribute("role", "alert");
+    expect(search).toHaveAccessibleDescription("Search is too long.");
+    expect(screen.queryByText(/may be stale/)).not.toBeInTheDocument();
   });
 });

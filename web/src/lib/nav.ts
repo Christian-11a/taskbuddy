@@ -1,5 +1,5 @@
 import {
-  AlertTriangle, BarChart3, CalendarDays, CreditCard, History, LayoutDashboard, ScrollText,
+  AlertTriangle, BarChart3, CalendarDays, CreditCard, FileBadge, History, LayoutDashboard, ScrollText,
   Settings, ShieldCheck, SlidersHorizontal, Users, WalletCards, Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -34,10 +34,11 @@ export const NAV_GROUPS: { id: NavGroupId; label: string | null }[] = [
 export const ADMIN_NAV: NavItem[] = [
   { id: "dashboard", label: "Dashboard", group: "overview", icon: LayoutDashboard, description: "Today at TaskBuddy", keywords: ["overview", "home"] },
   { id: "verifications", label: "Verifications", group: "operations", icon: ShieldCheck, description: "Review provider IDs and face scans", keywords: ["kyc", "id", "approve"] },
+  { id: "credentials", label: "Credentials", group: "operations", icon: FileBadge, description: "Review providers' TESDA, PRC and trade certificates", keywords: ["tesda", "prc", "license", "certificate", "nc"] },
   { id: "bookings", label: "Bookings", group: "operations", icon: CalendarDays, description: "Every service booking on the platform", keywords: ["jobs"] },
   { id: "disputes", label: "Disputes", group: "operations", icon: AlertTriangle, description: "Resolve payment disputes", keywords: ["escrow", "complaint"] },
   { id: "transactions", label: "Transactions", group: "operations", icon: CreditCard, description: "Escrow payments and wallet activity", keywords: ["payments", "escrow", "wallet", "credit"] },
-  { id: "withdrawals", label: "Withdrawals", group: "operations", icon: WalletCards, description: "Pay out provider withdrawal requests", keywords: ["payout", "gcash", "bank"] },
+  { id: "withdrawals", label: "Failed payouts", group: "operations", icon: WalletCards, description: "Automatic payouts to providers that did not go through", keywords: ["payout", "gcash", "maya", "bank", "retry", "withdrawals"] },
   { id: "skill-requests", label: "Service Requests", group: "operations", icon: Wrench, description: "Approve providers' new service categories", keywords: ["skills", "category"] },
   { id: "users", label: "Users", group: "operations", icon: Users, description: "Client and provider accounts", keywords: ["suspend", "accounts", "providers", "clients"] },
   { id: "activity-log", label: "Activity", group: "records", icon: History, description: "Marketplace activity by job", keywords: ["log", "events"] },

@@ -26,7 +26,7 @@ const QUEUE_PAGE: Record<QueueId, Page> = {
 const QUEUE_LABEL: Record<QueueId, string> = {
   verifications: "Verifications",
   disputes: "Disputes",
-  withdrawals: "Withdrawals",
+  withdrawals: "Failed payouts",
   "skill-requests": "Service requests",
 };
 

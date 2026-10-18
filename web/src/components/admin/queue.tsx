@@ -6,6 +6,7 @@ import { motion } from "motion/react";
 import { ArrowLeft, CheckCircle2, ChevronLeft, ChevronRight, Inbox, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ui/kbd";
+import { ApiError } from "@/lib/api/client";
 
 /* ─────────────────────────── pure helpers ─────────────────────────── */
 
@@ -171,45 +172,67 @@ export function FilterTabs<T extends string>({
   );
 }
 
+/** The API's message when a list request was rejected with HTTP 400 (a bad search
+ *  term), or null for any other error, which keeps the page's own handling. */
+export function searchErrorMessage(err: unknown): string | null {
+  return err instanceof ApiError && err.status === 400 ? err.message : null;
+}
+
 export function SearchField({
   value,
   onChange,
   placeholder,
   label,
   className,
+  maxLength,
+  error,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   label: string;
   className?: string;
+  maxLength?: number;
+  /** Server message for a rejected search, shown under the box. */
+  error?: string | null;
 }) {
+  const errorId = useId();
   return (
-    <div className={cn("relative", className)}>
-      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
-      <input
-        type="search"
-        aria-label={label}
-        placeholder={placeholder}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape" && value) {
-            e.stopPropagation();
-            onChange("");
-          }
-        }}
-        className="h-8 w-full rounded-[8px] border border-input bg-surface pl-8 pr-8 text-[12.5px] text-foreground transition-[border-color,box-shadow] placeholder:text-subtle focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 [&::-webkit-search-cancel-button]:hidden"
-      />
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-label="Clear search"
-          className="absolute right-1.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-subtle hover:bg-accent hover:text-foreground"
-        >
-          <X className="size-3" />
-        </button>
+    <div className={cn("min-w-0", className)}>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
+        <input
+          type="search"
+          aria-label={label}
+          placeholder={placeholder}
+          value={value}
+          maxLength={maxLength}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && value) {
+              e.stopPropagation();
+              onChange("");
+            }
+          }}
+          className="h-8 w-full rounded-[8px] border border-input bg-surface pl-8 pr-8 text-[12.5px] text-foreground transition-[border-color,box-shadow] placeholder:text-subtle focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20 [&::-webkit-search-cancel-button]:hidden"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            aria-label="Clear search"
+            className="absolute right-1.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-subtle hover:bg-accent hover:text-foreground"
+          >
+            <X className="size-3" />
+          </button>
+        )}
+      </div>
+      {error && (
+        <p id={errorId} role="alert" className="mt-1 text-[11.5px] text-danger">
+          {error}
+        </p>
       )}
     </div>
   );

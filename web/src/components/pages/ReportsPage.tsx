@@ -13,7 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, Panel } from "@/components/admin/Panel";
 import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
 import { BarList, ProgressRing } from "@/components/admin/meters";
-import { Delta, KpiCard, monthOverMonth } from "@/components/admin/KpiCard";
+import { Delta, KpiCard } from "@/components/admin/KpiCard";
+import { currentMonthKey, monthValue, percentChange, previousMonth, toChartSeries } from "@/lib/services/monthSeries";
 import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
 
 // Recharts loads after the page's text and tiles. Each skeleton keeps its chart's height (see the height props below).
@@ -98,6 +99,12 @@ export function ReportsPage() {
   const bookingsInRange = bookingsSeries.slice(-months);
   const revenueTotalInRange = revenueInRange.reduce((s, r) => s + r.value, 0);
   const bookingsTotalInRange = bookingsInRange.reduce((s, r) => s + r.value, 0);
+  // "vs last month" compares this calendar month (UTC) with the real previous one; a missing month counts as 0.
+  const thisMonth = currentMonthKey();
+  const lastMonth = previousMonth(thisMonth);
+  const revenueThisMonth = monthValue(revenueSeries, thisMonth);
+  const revenueLastMonth = monthValue(revenueSeries, lastMonth);
+  const revenueChange = percentChange(revenueThisMonth, revenueLastMonth);
   const categoryTotal = bookingsByCategory.reduce((s, c) => s + c.value, 0);
 
   /**
@@ -109,20 +116,22 @@ export function ReportsPage() {
     const mask = exportMasks(settings.anonymizeExports);
     const blocks = [
       toCsv(["Metric", "Value"], [
-        ["Total provider payouts", stats.totalRevenue],
-        ["Provider payouts this month", stats.monthlyRevenue],
+        ["Revenue: total commission earned", stats.totalCommission],
+        ["Revenue: commission earned this month", stats.monthlyCommission],
+        ["Total released payments (provider payout + commission)", stats.totalRevenue],
+        ["Released payments this month", stats.monthlyRevenue],
         ["Completed jobs (% of posted)", stats.completionRate],
         ["Average provider rating", ratingForCsv(stats.avgRating)],
         ["Total users", stats.totalUsers],
         ["Registered providers", stats.activeProviders],
         ["Total bookings", stats.totalBookings],
       ]),
-      toCsv(["Month", "Provider payouts"], revenueSeries.map((r) => [r.month, r.value])),
+      toCsv(["Month", "Released payments"], revenueSeries.map((r) => [r.month, r.value])),
       toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
       toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
       toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, ratingForCsv(p.rating)])),
     ];
-    const labels = ["SUMMARY", "REVENUE TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
+    const labels = ["SUMMARY", "RELEASED PAYMENTS TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
     const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
     downloadCsv(datedFilename("taskbuddy-analytics"), csv);
   }
@@ -150,14 +159,30 @@ export function ReportsPage() {
 
       {analyticsInBrowser && <AnalyticsSourceNote />}
       <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Total provider payouts" icon={<Wallet />} value={stats.totalRevenue} format={formatCurrencyCompact} footer={<span className="text-muted-foreground">All-time, after commission</span>} />
         <KpiCard
-          label="Provider payouts this month"
+          label="Revenue (commission earned)"
+          icon={<Wallet />}
+          value={stats.totalCommission}
+          format={formatCurrencyCompact}
+          footer={
+            <span className="text-[12px] text-muted-foreground" title="TaskBuddy's commission on payments released to providers">
+              <span className="font-semibold text-foreground tabular">{formatCurrency(stats.monthlyCommission)}</span> this month
+            </span>
+          }
+        />
+        <KpiCard
+          label="Released payments this month"
           icon={<TrendingUp />}
           value={stats.monthlyRevenue}
           format={formatCurrency}
           trend={revenueSeries.map((r) => r.value)}
-          footer={<Delta value={monthOverMonth(revenueSeries)} />}
+          footer={
+            <span title="Released payments = what providers received plus TaskBuddy's commission, for jobs the client confirmed done">
+              {revenueLastMonth === 0
+                ? <span className="text-[12px] text-subtle">No released payments last month</span>
+                : <Delta value={revenueChange} label="vs last month" />}
+            </span>
+          }
         />
         <Panel bodyClassName="flex items-center gap-4 pt-4">
           <ProgressRing value={stats.completionRate} size={64} stroke={7} label={`${stats.completionRate}%`} />
@@ -186,16 +211,16 @@ export function ReportsPage() {
 
       <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
         <Panel
-          title="Payout trend"
-          description={`Provider payouts released per month, after commission · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
+          title="Released payments trend"
+          description={`Provider payout plus commission, released when the client confirms the job is done · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
           action={<CalendarRange className="size-4 text-subtle" />}
         >
-          {revenueInRange.length === 0 ? (
+          {!revenueInRange.some((r) => r.value > 0) ? (
             <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">
-              No payouts yet — this fills in once a job&apos;s escrow is released to a provider.
+              No released payments yet — this fills in once a client confirms a job and its escrow is released.
             </div>
           ) : (
-            <TrendChart data={revenueInRange} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
+            <TrendChart data={toChartSeries(revenueInRange)} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
           )}
         </Panel>
         <Panel title="Service categories" description="Share of all bookings">
@@ -212,7 +237,7 @@ export function ReportsPage() {
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
         <Panel title="Monthly bookings" description={`${bookingsTotalInRange.toLocaleString()} bookings over ${months} months`}>
-          <BarTrend data={bookingsInRange} format={(n) => `${n} bookings`} color="var(--ui-chart-2)" height={240} />
+          <BarTrend data={toChartSeries(bookingsInRange)} format={(n) => `${n} bookings`} color="var(--ui-chart-2)" height={240} />
         </Panel>
         <Panel title="Top providers" description="By completed jobs">
           {topProviders.length === 0 ? (
@@ -247,7 +272,7 @@ export function ReportsPage() {
         open={confirmingExport}
         danger={false}
         title="Export to CSV?"
-        message="This downloads every section on this page — summary, payout trend, monthly bookings, categories, and top providers — as one .csv file to your device."
+        message="This downloads every section on this page — summary, released payments trend, monthly bookings, categories, and top providers — as one .csv file to your device."
         confirmLabel="Export"
         onConfirm={() => {
           setConfirmingExport(false);

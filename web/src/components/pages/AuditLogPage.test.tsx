@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AuditLogPage } from "./AuditLogPage";
 import * as services from "@/lib/services";
+import { ApiError } from "@/lib/api/client";
 import type { AuditAction } from "@/lib/domain";
 
 vi.mock("@/lib/services", () => ({ searchAuditLog: vi.fn() }));
@@ -90,6 +91,19 @@ describe("AuditLogPage server search and pagination", () => {
 
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     expect(screen.getByLabelText("Search the audit log")).toBeInTheDocument();
+  });
+
+  it("caps the search box at 200 characters and shows the API's 400 message under it", async () => {
+    const user = userEvent.setup();
+    render(<AuditLogPage />);
+    const search = await screen.findByLabelText("Search the audit log");
+    expect(search).toHaveAttribute("maxLength", "200");
+
+    mockedSearchAuditLog.mockRejectedValueOnce(new ApiError(400, "Search is too long."));
+    await user.type(search, "x");
+
+    expect(await screen.findByText("Search is too long.")).toHaveAttribute("role", "alert");
+    expect(search).toHaveAccessibleDescription("Search is too long.");
   });
 
   it("shows an error state, not 'No admin actions recorded yet.', when the first load fails", async () => {

@@ -169,6 +169,8 @@ interface AppState {
   bookings: BookingRow[];
   dashboardStats: DashboardStats | null;
   revenueSeries: MonthlyPoint[];
+  /** Released commission per month ("YYYY-MM"), for the dashboard's commission trend. */
+  commissionSeries: services.CommissionMonthPoint[];
   bookingsSeries: MonthlyPoint[];
   bookingsByCategory: CategoryShare[];
   recentActivity: ActivityEvent[];
@@ -222,7 +224,7 @@ const STATUS_TO_DOMAIN: Record<"Active" | "Suspended", UserStatus> = {
  */
 async function readCountOnlyQueues(): Promise<{ withdrawals?: number; "skill-requests"?: number }> {
   const [withdrawals, requests] = await Promise.allSettled([
-    services.getPendingWithdrawalCount(),
+    services.getFailedPayoutCount(),
     services.getPendingServiceRequestCount(),
   ]);
   return {
@@ -338,11 +340,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [domainDisputes, setDomainDisputes] = useState<Dispute[]>([]);
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [revenueSeries, setRevenueSeries] = useState<MonthlyPoint[]>([]);
+  const [commissionSeries, setCommissionSeries] = useState<services.CommissionMonthPoint[]>([]);
   const [bookingsSeries, setBookingsSeries] = useState<MonthlyPoint[]>([]);
   const [bookingsByCategory, setBookingsByCategory] = useState<CategoryShare[]>([]);
   const [recentActivity, setRecentActivity] = useState<ActivityEvent[]>([]);
   const [topProviders, setTopProviders] = useState<TopProvider[]>([]);
-  /** Withdrawal and service-request counts; the other two queues derive from the lists above. */
+  /** Failed-payout (queue id "withdrawals") and service-request counts; the other two queues derive from the lists above. */
   const [extraCounts, setExtraCounts] = useState<Pick<QueueCounts, "withdrawals" | "skill-requests">>({
     withdrawals: null,
     "skill-requests": null,
@@ -372,15 +375,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // preferences — lazily hydrated from localStorage on the client
-  // First run follows the OS setting (light if it has none). A saved
-  // preference still wins, and the account's server preference is applied
-  // after the admin session/data restore.
-  const [darkMode, setDarkModeState] = useState(() =>
-    resolveInitialTheme(
-      loadStoredPrefs()?.darkMode,
-      typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches === true,
-    ),
-  );
+  // First run is light; a saved preference still wins, and the account's
+  // server preference is applied after the session restores.
+  const [darkMode, setDarkModeState] = useState(() => resolveInitialTheme(loadStoredPrefs()?.darkMode));
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(
     () => loadStoredPrefs()?.sidebarCollapsed ?? false,
   );
@@ -559,6 +556,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       services.getBookingsSeries(),
       services.getBookingsByCategory(),
       services.getTopProviders(),
+      services.getCommissionSeries(),
     ]);
     // Started alongside the others so the two extra counts add no round trip. Never rejects (see readCountOnlyQueues).
     const countsRead = readCountOnlyQueues();
@@ -581,9 +579,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMaintenanceMessageState(maintenance.message);
         }
       }, coreFailure),
-      settle("analytics", analyticsRead, ([stats, revenue, bookVol, categories, providers]) => {
+      settle("analytics", analyticsRead, ([stats, revenue, bookVol, categories, providers, commissions]) => {
         setDashboardStats(stats);
         setRevenueSeries(revenue);
+        setCommissionSeries(commissions);
         setBookingsSeries(bookVol);
         setBookingsByCategory(categories);
         setTopProviders(providers);
@@ -594,6 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // explicit retry state.
         setDashboardStats(null);
         setRevenueSeries([]);
+        setCommissionSeries([]);
         setBookingsSeries([]);
         setBookingsByCategory([]);
         setTopProviders([]);
@@ -752,15 +752,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // A decision just changed the numbers; don't serve the cached stand-in.
     services.invalidateBrowserAnalytics();
     try {
-      const [stats, revenue, bookVol, categories, providers] = await Promise.all([
+      const [stats, revenue, bookVol, categories, providers, commissions] = await Promise.all([
         services.getDashboardStats(),
         services.getRevenueSeries(),
         services.getBookingsSeries(),
         services.getBookingsByCategory(),
         services.getTopProviders(),
+        services.getCommissionSeries(),
       ]);
       setDashboardStats(stats);
       setRevenueSeries(revenue);
+      setCommissionSeries(commissions);
       setBookingsSeries(bookVol);
       setBookingsByCategory(categories);
       setTopProviders(providers);
@@ -773,6 +775,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // must not make the UI report that the mutation itself failed.
       setDashboardStats(null);
       setRevenueSeries([]);
+      setCommissionSeries([]);
       setBookingsSeries([]);
       setBookingsByCategory([]);
       setTopProviders([]);
@@ -924,7 +927,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       disputesLoading, verificationsLoading, activityLoading, settingsLoading, analyticsLoading, countsLoading,
       refreshData, refreshLive, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
       verifications, users, transactions, disputes, bookings,
-      dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
+      dashboardStats, revenueSeries, commissionSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
       approveVerification, rejectVerification,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,
@@ -940,7 +943,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       retryLoad, analyticsUnavailable, analyticsInBrowser,
       refreshData, refreshLive, refreshCounts, refreshUsers, ensureUsers, usersLoading, lastUpdated, refreshing, refreshFailed,
       verifications, users, transactions, disputes, bookings,
-      dashboardStats, revenueSeries, bookingsSeries, bookingsByCategory,
+      dashboardStats, revenueSeries, commissionSeries, bookingsSeries, bookingsByCategory,
       recentActivity, topProviders, queueCounts,
       approveVerification, rejectVerification,
       setUserStatus, bulkSetUserStatus, sendPasswordReset, cancelBooking, resolveDispute,

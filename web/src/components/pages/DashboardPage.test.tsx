@@ -5,6 +5,7 @@ import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import type { DashboardStats } from "@/lib/domain";
 import type { QueueCounts } from "@/lib/attention";
+import { addMonths, currentMonthKey } from "@/lib/services/monthSeries";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
@@ -47,6 +48,7 @@ function setDashboardState(
   queueCounts: QueueCounts = allZeroQueues,
   revenueSeries: { month: string; value: number }[] = [],
   parts: PartFlags = {},
+  commissionSeries: { month: string; amount: number }[] = [],
 ) {
   mockedUseApp.mockReturnValue({
     ensureUsers: vi.fn(),
@@ -55,7 +57,9 @@ function setDashboardState(
     recentActivity: [],
     disputes: [],
     users: [],
+    usersLoading: false,
     revenueSeries,
+    commissionSeries,
     bookingsSeries: [],
     analyticsUnavailable: false,
     analyticsInBrowser: false,
@@ -86,7 +90,7 @@ describe("DashboardPage queue counts", () => {
     );
     render(<DashboardPage />);
 
-    const payoutQueue = screen.getByRole("link", { name: /payout requests/ });
+    const payoutQueue = screen.getByRole("link", { name: /failed payouts?/ });
     expect(within(payoutQueue).getByText("3")).toBeInTheDocument();
     const verifyQueue = screen.getByRole("link", { name: /providers to verify/ });
     expect(within(verifyQueue).getByText("2")).toBeInTheDocument();
@@ -101,7 +105,7 @@ describe("DashboardPage queue counts", () => {
     mockedGetEscrowHeld.mockResolvedValue({ count: 0, total: 0 });
     render(<DashboardPage />);
 
-    const payoutQueue = screen.getByRole("link", { name: /payout requests/ });
+    const payoutQueue = screen.getByRole("link", { name: /failed payouts?/ });
     expect(within(payoutQueue).getByText("—")).toBeInTheDocument();
     expect(within(payoutQueue).queryByText("0")).not.toBeInTheDocument();
     expect(screen.getByText("Some queue counts are unavailable.")).toBeInTheDocument();
@@ -158,14 +162,66 @@ describe("DashboardPage queue counts", () => {
   });
 });
 
+describe("DashboardPage commission headline", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedGetEscrowHeld.mockResolvedValue({ count: 2, total: 500 });
+    mockedGetBookingStatusCounts.mockResolvedValue({ open: 3, recommending: 4 } as Awaited<ReturnType<typeof services.getBookingStatusCounts>>);
+  });
+
+  /** "YYYY-MM" keys in UTC, as the Dashboard reads them. */
+  const utcKey = (offsetMonths: number) => addMonths(currentMonthKey(), offsetMonths);
+
+  it("leads the key metrics with total commission earned, then total users and the other headline figures", async () => {
+    setDashboardState({ ...stats, totalCommission: 1234.5, monthlyCommission: 300 }, allZeroQueues);
+    render(<DashboardPage />);
+
+    const metrics = screen.getByRole("region", { name: "Key metrics" });
+    const labels = within(metrics)
+      .getAllByText(/^(Total commission earned|Total users|Registered providers|Bookings this month|Released payments)$/)
+      .map((el) => el.textContent);
+    expect(labels).toEqual(["Total commission earned", "Total users", "Registered providers", "Bookings this month", "Released payments"]);
+
+    expect(await within(metrics).findByText("₱1,234.50")).toBeInTheDocument();
+    expect(within(metrics).getByText("₱300")).toBeInTheDocument();
+    // Counts up on mount, so the figure is awaited.
+    expect(await within(metrics).findByText("20")).toBeInTheDocument();
+  });
+
+  it("shows this month's commission against last month as a rise", async () => {
+    setDashboardState(
+      { ...stats, totalCommission: 500, monthlyCommission: 300 },
+      allZeroQueues,
+      [],
+      {},
+      [{ month: utcKey(-1), amount: 200 }, { month: utcKey(0), amount: 300 }],
+    );
+    render(<DashboardPage />);
+
+    const metrics = screen.getByRole("region", { name: "Key metrics" });
+    expect(within(metrics).getByText("50%")).toBeInTheDocument();
+    expect(within(metrics).getAllByText("vs last month").length).toBeGreaterThan(0);
+    expect(within(metrics).queryByText("No commission last month")).not.toBeInTheDocument();
+  });
+
+  it("says there was no commission last month instead of a percentage against zero", () => {
+    setDashboardState({ ...stats, totalCommission: 300, monthlyCommission: 300 }, allZeroQueues, [], {}, [{ month: utcKey(0), amount: 300 }]);
+    render(<DashboardPage />);
+
+    const metrics = screen.getByRole("region", { name: "Key metrics" });
+    expect(within(metrics).getByText("No commission last month")).toBeInTheDocument();
+    expect(within(metrics).queryByText("vs last month")).not.toBeInTheDocument();
+  });
+});
+
 describe("DashboardPage metric labels", () => {
   it("names each headline number for what the backend value measures", () => {
     setDashboardState(stats, allZeroQueues);
     render(<DashboardPage />);
 
     expect(screen.getByText("Registered providers")).toBeInTheDocument();
-    expect(screen.getByText("Provider payouts")).toBeInTheDocument();
-    expect(screen.getByText("Payout trend")).toBeInTheDocument();
+    expect(screen.getByText("Released payments")).toBeInTheDocument();
+    expect(screen.getByText("Released payments trend")).toBeInTheDocument();
     expect(screen.queryByText("Active providers")).not.toBeInTheDocument();
     expect(screen.queryByText("Gross merchandise value")).not.toBeInTheDocument();
   });
@@ -193,10 +249,10 @@ describe("DashboardPage console parts", () => {
     setDashboardState(null, { ...allZeroQueues, withdrawals: 3 }, [], { analyticsLoading: true });
     render(<DashboardPage />);
 
-    expect(within(screen.getByRole("link", { name: /payout requests/ })).getByText("3")).toBeInTheDocument();
+    expect(within(screen.getByRole("link", { name: /failed payouts?/ })).getByText("3")).toBeInTheDocument();
     expect(screen.getByLabelText("Loading key metrics")).toBeInTheDocument();
-    expect(screen.getByText("Payout trend")).toBeInTheDocument();
-    expect(screen.queryByText("No payouts yet")).not.toBeInTheDocument();
+    expect(screen.getByText("Released payments trend")).toBeInTheDocument();
+    expect(screen.queryByText("No released payments yet")).not.toBeInTheDocument();
     expect(screen.queryByText(/temporarily unavailable/)).not.toBeInTheDocument();
   });
 

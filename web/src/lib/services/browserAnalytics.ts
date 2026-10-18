@@ -4,7 +4,8 @@
 // endpoints that do work, using the same rules as the backend's
 // `AdminService.analyticsSummary()` so the numbers mean the same thing:
 //
-// - revenue      = completed wallet `payout` rows, by created_at month
+// - revenue      = completed wallet `payout` rows (the net paid to providers), by created_at month.
+//                  The web adds commission to it to get "released payments".
 // - commission   = released escrow `commission_amount` > 0, by released_at month
 // - bookings     = every job, by status / category name / posted_at day
 // - avg rating   = mean of provider cached_avg_rating, unrated excluded
@@ -19,6 +20,7 @@ import type {
   AdminWalletTxnApiRow,
   AnalyticsSummaryApiResponse,
 } from "@/lib/api/types";
+import { currentMonthKey } from "./monthSeries";
 
 /** Escrow rows come back as `to_jsonb(escrow)`, so these columns are present
  *  even though the list mapping doesn't use them. */
@@ -52,7 +54,8 @@ function byMonth<T>(rows: T[], amountOf: (r: T) => number, dateOf: (r: T) => str
 }
 
 export function summarizeAnalytics(input: BrowserAnalyticsInput, now: Date = new Date()): AnalyticsSummaryApiResponse {
-  const currentMonth = now.toISOString().slice(0, 7);
+  // Same calendar as the series windows (UTC), so monthly_* match the chart's current month.
+  const currentMonth = currentMonthKey(now);
 
   // The list endpoint can return a profile in more than one call (active +
   // deleted); count each once.
@@ -113,6 +116,7 @@ export function summarizeAnalytics(input: BrowserAnalyticsInput, now: Date = new
     bookings_by_category: bookingsByCategory,
     booking_trend: sortedEntries(trendByDay).map(([date, count]) => ({ date, count })),
     revenue_trend: sortedEntries(revenue.months).map(([month, amount]) => ({ month, amount: round2(amount) })),
+    commission_trend: sortedEntries(commission.months).map(([month, amount]) => ({ month, amount: round2(amount) })),
     top_providers: topProviders,
   };
 }

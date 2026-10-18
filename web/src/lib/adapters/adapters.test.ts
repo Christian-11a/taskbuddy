@@ -3,6 +3,10 @@ import {
   BOOKING_STATUS_DISPLAY,
   DISPUTE_STATUS_DISPLAY,
   formatCurrency,
+  splitPayoutFailures,
+  walletAvailableBalance,
+  owedProviders,
+  payoutHeadline,
   formatCurrencyCompact,
   formatDate,
   formatRating,
@@ -179,7 +183,8 @@ describe("row adapters", () => {
     expect(row.amountValue).toBe(850);
     expect(row.status).toBe("In Escrow");
     expect(row.statusClass).toBe("badge-processing");
-    expect(row.funding).toBe("Wallet");
+    expect(row.funding).toBe("Online payment");
+    expect(row.payoutNote).toMatch(/automatic payout/);
     // Nothing has been paid out yet, so there is nothing to say about it.
     expect(row.payout).toBe("");
     expect(row.canRetryTransfer).toBe(false);
@@ -192,7 +197,7 @@ describe("row adapters", () => {
       fundingMethod: "card", transferStatus: "transferred", stripeTransferId: "tr_1", transferError: null,
     };
     const sent = toTransactionRow(base);
-    expect(sent.funding).toBe("Card");
+    expect(sent.funding).toBe("Card (Stripe)");
     expect(sent.payout).toBe("Sent to Stripe");
     expect(sent.payoutDetail).toBe("tr_1");
     expect(sent.canRetryTransfer).toBe(false);
@@ -204,9 +209,10 @@ describe("row adapters", () => {
     expect(failed.payoutDetail).toBe("Account is restricted");
     expect(failed.canRetryTransfer).toBe(true);
 
-    // A released wallet-funded payout is a wallet credit, not a failure.
+    // A released online payment has no per-job payout state.
     const wallet = toTransactionRow({ ...base, fundingMethod: "wallet", transferStatus: "none" });
-    expect(wallet.payout).toBe("Wallet");
+    expect(wallet.payout).toBe("");
+    expect(wallet.payoutNote).toMatch(/automatic payout/);
     expect(wallet.canRetryTransfer).toBe(false);
   });
 
@@ -259,7 +265,8 @@ describe("row adapters", () => {
     };
     const row = toWalletTxnRow(t);
     expect(row.amount).toBe("+₱1,000");
-    expect(row.kindLabel).toBe("Top-up");
+    expect(row.kindLabel).toBe("Client payment");
+    expect(row.statusLabel).toBe("Completed");
   });
 
   it("maps a wallet withdrawal with a - sign", () => {
@@ -270,7 +277,28 @@ describe("row adapters", () => {
     };
     const row = toWalletTxnRow(t);
     expect(row.amount).toBe("-₱250");
-    expect(row.kindLabel).toBe("Withdrawal");
+    expect(row.kindLabel).toBe("Payout to provider");
+  });
+
+  it("labels a withdrawal titled 'Refund sent' as a client refund", () => {
+    const t: WalletTransaction = {
+      id: "wt-refund", profileName: "Client Lee", direction: "debit", kind: "withdrawal",
+      status: "completed", amount: 300, title: "Refund sent",
+      createdAt: "2026-08-09",
+    };
+    const row = toWalletTxnRow(t);
+    expect(row.kindLabel).toBe("Refund to client");
+    expect(row.amount).toBe("-₱300");
+    expect(toWalletTxnRow({ ...t, title: "Payout sent" }).kindLabel).toBe("Payout to provider");
+  });
+
+  it("labels earnings, refunds and pending/failed records", () => {
+    const base: WalletTransaction = { id: "wt-3", profileName: "Pat", direction: "credit", kind: "payout", status: "pending", amount: 10, title: "x", createdAt: "2026-08-09" };
+    expect(toWalletTxnRow(base).kindLabel).toBe("Earnings credited");
+    expect(toWalletTxnRow(base).statusLabel).toBe("Pending");
+    const refund = toWalletTxnRow({ ...base, kind: "refund", status: "failed" });
+    expect(refund.kindLabel).toBe("Refund to client");
+    expect(refund.statusLabel).toBe("Failed");
   });
 
   it("maps bookings with cancellability", () => {
@@ -286,7 +314,7 @@ describe("row adapters", () => {
   });
 });
 
-describe("cancellation, warranty and verification method in adapters", () => {
+describe("cancellation, release and verification method in adapters", () => {
   it("keeps the cancellation state and deadline on a dispute row", () => {
     const d: Dispute = {
       id: "DSP-010", jobId: "job-010", jobTitle: "Paint fence", service: "Painting",
@@ -350,5 +378,68 @@ describe("rating formatting", () => {
     expect(row.activity).toBe("12 jobs · 4.08 rating");
     expect(row.rating).toBe("4.08 rating");
     expect(row.ratingValue).toBe(4.08);
+  });
+});
+
+describe("splitPayoutFailures", () => {
+  const w = (id: string, profileId: string, createdAt: string, status = "failed", amount = 100, reviewNote: string | null = status === "failed" ? "Xendit: refused" : null) =>
+    ({ id, profileId, createdAt, status, amount, reviewNote });
+
+  it("resolves a failure when the same provider has a later completed payout", () => {
+    const r = splitPayoutFailures([w("f1", "p1", "2026-10-01")], [w("c1", "p1", "2026-10-05", "completed")]);
+    expect(r.unresolved).toEqual([]);
+    expect(r.resolved).toEqual([{ withdrawal: expect.objectContaining({ id: "f1" }), paidAt: "2026-10-05" }]);
+    expect(r.providers).toEqual([]);
+  });
+
+  it("keeps a failure unresolved when the only completed payout came before it", () => {
+    const r = splitPayoutFailures([w("f1", "p1", "2026-10-05")], [w("c1", "p1", "2026-10-01", "completed")]);
+    expect(r.unresolved.map((x) => x.id)).toEqual(["f1"]);
+    expect(r.resolved).toEqual([]);
+  });
+
+  it("lists each provider once, by their newest unresolved failure", () => {
+    const r = splitPayoutFailures([w("f1", "p1", "2026-10-01", "failed", 100), w("f2", "p1", "2026-10-03", "failed", 250)], []);
+    expect(r.unresolved.map((x) => x.id)).toEqual(["f2", "f1"]);
+    expect(r.providers.map((x) => x.id)).toEqual(["f2"]);
+  });
+
+  it("ignores another provider's completed payout and non-Xendit failures", () => {
+    const r = splitPayoutFailures(
+      [w("f1", "p1", "2026-10-01"), w("old", "p1", "2026-10-02", "failed", 100, "Rejected by admin")],
+      [w("c1", "p2", "2026-10-09", "completed")],
+    );
+    expect(r.unresolved.map((x) => x.id)).toEqual(["f1"]);
+    expect(r.providers).toHaveLength(1);
+  });
+});
+
+describe("walletAvailableBalance (mirrors wallet_available_balance)", () => {
+  const t = (direction: string, status: string, amount: number) => ({ direction, status, amount });
+
+  it("adds completed credits and subtracts completed and pending debits", () => {
+    expect(walletAvailableBalance([t("credit", "completed", 1000), t("debit", "completed", 200), t("debit", "pending", 50.25)])).toBe(749.75);
+  });
+
+  it("ignores failed debits and credits, and pending credits", () => {
+    expect(walletAvailableBalance([t("credit", "completed", 500), t("debit", "failed", 500), t("credit", "failed", 99), t("credit", "pending", 70)])).toBe(500);
+  });
+
+  it("is 0 with no rows", () => {
+    expect(walletAvailableBalance([])).toBe(0);
+  });
+});
+
+describe("owedProviders and payoutHeadline", () => {
+  const providers = [{ profileId: "p1", profileName: "A" }, { profileId: "p2", profileName: "B" }, { profileId: "p3", profileName: "C" }];
+
+  it("owes the wallet balance, not the failure amount, and skips balances of 0 or less", () => {
+    const owed = owedProviders(providers, new Map([["p1", 320.5], ["p2", 0], ["p3", -10]]));
+    expect(owed).toEqual([{ profileId: "p1", profileName: "A", owed: 320.5 }]);
+  });
+
+  it("counts owed providers and totals their balances", () => {
+    expect(payoutHeadline([{ owed: 100 }, { owed: 50.5 }])).toEqual({ count: 2, total: 150.5 });
+    expect(payoutHeadline([])).toEqual({ count: 0, total: 0 });
   });
 });

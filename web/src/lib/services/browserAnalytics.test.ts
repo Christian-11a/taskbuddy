@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { summarizeAnalytics } from "./browserAnalytics";
+import { mapBookingsSeries, mapCommissionSeries, mapRevenueSeries } from "./mapAnalytics";
 import type { AdminBookingApiRow, AdminUserApiRow, AdminWalletTxnApiRow } from "@/lib/api/types";
 
 function user(id: string, role: AdminUserApiRow["role"], extra: Partial<AdminUserApiRow> = {}): AdminUserApiRow {
@@ -46,6 +47,7 @@ describe("summarizeAnalytics", () => {
     expect(summary.revenue_trend).toEqual([{ month: "2026-08", amount: 500 }, { month: "2026-09", amount: 1000.5 }]);
     expect(summary.totals.total_commission).toBe(100.05);
     expect(summary.totals.monthly_commission).toBe(100.05);
+    expect(summary.commission_trend).toEqual([{ month: "2026-09", amount: 100.05 }]);
   });
 
   it("buckets bookings by status, category and day", () => {
@@ -53,6 +55,24 @@ describe("summarizeAnalytics", () => {
     expect(summary.bookings_by_status).toEqual({ completed: 2, open: 1 });
     expect(summary.bookings_by_category).toEqual({ Plumbing: 1, Unknown: 1, Cleaning: 1 });
     expect(summary.booking_trend).toEqual([{ date: "2026-08-30", count: 1 }, { date: "2026-09-02", count: 2 }]);
+  });
+
+  it("feeds the same zero-filled month series as the API mapping", () => {
+    const released = mapRevenueSeries(summary, now);
+    expect(released).toHaveLength(12);
+    expect(released.slice(-3)).toEqual([
+      { month: "2026-07", value: 0 },
+      { month: "2026-08", value: 500 },
+      { month: "2026-09", value: 1100.55 },
+    ]);
+    expect(mapCommissionSeries(summary, now).slice(-2)).toEqual([
+      { month: "2026-08", amount: 0 },
+      { month: "2026-09", amount: 100.05 },
+    ]);
+    expect(mapBookingsSeries(summary, now).slice(-2)).toEqual([
+      { month: "2026-08", value: 1 },
+      { month: "2026-09", value: 2 },
+    ]);
   });
 
   it("averages only rated providers and ranks top providers by completed jobs", () => {

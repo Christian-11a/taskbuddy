@@ -4,6 +4,7 @@
 // and Transactions were the last mock holdouts; migrations 0008 and 0009 gave
 // them real tables, so the in-memory mock DB is gone.
 
+import { splitPayoutFailures, owedProviders, payoutHeadline, walletAvailableBalance, type OwedProvider, type PayoutFailureSplit } from "@/lib/adapters";
 import { ApiError, client } from "@/lib/api/client";
 import {
   clearAdminSession,
@@ -16,6 +17,7 @@ import {
   mapActivity,
   mapBookingsByCategory,
   mapBookingsSeries,
+  mapCommissionSeries,
   mapCompletionRate,
   mapRevenueSeries,
   mapTopProviders,
@@ -32,6 +34,8 @@ import type {
   AdminTransactionApiRow,
   AdminUserApiRow,
   AdminVerificationApiRow,
+  AdminCredentialListResponse,
+  AdminCredentialApiRow,
   AdminSkillRequestApiRow,
   AdminWalletTxnApiRow,
   AdminWithdrawalApiRow,
@@ -44,6 +48,7 @@ import type {
   ListBookingsApiResponse,
   ListTransactionsApiResponse,
   CommissionApiResponse,
+  CommissionOverviewApiResponse,
   BroadcastApiResponse,
   PlatformIdentityApiResponse,
   JobCapacityApiResponse,
@@ -56,6 +61,7 @@ import type {
   AdminBooking,
   AdminBookingDetail,
   AdminUser,
+  BookingDisplayStatus,
   AuditAction,
   CategoryShare,
   ConversationMessage,
@@ -227,6 +233,11 @@ function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
   return "UNVERIFIED";
 }
 
+/** `display_status` when the API sent it, else derived the same way: 'disputed' while the complaint is open. */
+function bookingDisplayStatus(row: AdminBookingApiRow): BookingDisplayStatus {
+  return row.display_status ?? (row.dispute_state === "open" ? "disputed" : row.status);
+}
+
 function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
   return {
     id: row.id,
@@ -234,6 +245,7 @@ function mapBookingRow(row: AdminBookingApiRow): AdminBooking {
     providerName: row.provider?.full_name ?? "Unassigned",
     service: row.service_categories?.name ?? "Uncategorized",
     status: row.status,
+    displayStatus: bookingDisplayStatus(row),
     scheduledDate: row.posted_at,
     // Jobs posted before pricing existed (migration 0007) have no budget.
     amount: Number(row.budget ?? 0),
@@ -324,6 +336,9 @@ function mapDisputeRow(row: AdminDisputeApiRow): Dispute {
     resolvedAt: row.resolved_at,
     cancellationState: row.cancellation_state ?? null,
     cancellationDeadline: row.cancellation_deadline ?? null,
+    ...(row.photo_urls !== undefined && { photoUrls: row.photo_urls }),
+    ...(row.raised_by_profile && { raisedById: row.raised_by_profile.id }),
+    ...(row.chat !== undefined && { chatMessageCount: row.chat?.message_count ?? null }),
     // Only when the API sent the job's participant ids (the disputes query selects them).
     ...(row.jobs?.client_id !== undefined && { clientId: row.jobs.client_id }),
     ...(row.jobs?.assigned_provider_id !== undefined && { providerId: row.jobs.assigned_provider_id }),
@@ -340,6 +355,7 @@ function mapWalletTxnRow(row: AdminWalletTxnApiRow): WalletTransaction {
     amount: Number(row.amount),
     title: row.title,
     createdAt: row.created_at,
+    reviewNote: row.review_note ?? null,
   };
 }
 
@@ -608,25 +624,6 @@ export async function getPendingVerifications(): Promise<Verification[]> {
   return rows.map(mapVerificationRow).filter((v) => v.status === "PENDING");
 }
 
-/**
- * Escrow transactions, with overlapping callers sharing one request — same
- * in-flight dedup as getAnalyticsSummary below, and for the same reason.
- * (The disputes list no longer reads this; it carries its own names and amounts.)
- *
- * In-flight only, no TTL: once the batch settles the next call fetches fresh,
- * so a resolved dispute or released escrow never renders from a stale cache.
- */
-let transactionsInFlight: Promise<Transaction[]> | null = null;
-
-export async function getTransactions(): Promise<Transaction[]> {
-  transactionsInFlight ??= fetchAllRows<AdminTransactionApiRow>("/admin/transactions", "transactions")
-    .then((rows) => rows.map(mapTransactionRow))
-    .finally(() => {
-      transactionsInFlight = null;
-    });
-  return transactionsInFlight;
-}
-
 export interface PageQuery {
   search: string;
   page: number;
@@ -692,43 +689,57 @@ export async function searchWalletTransactions(query: PageQuery): Promise<{ item
   return { items: res.transactions.map(mapWalletTxnRow), total: res.total };
 }
 
+export interface PayoutFailures extends PayoutFailureSplit<AdminWithdrawal> {
+  /** Providers with an unresolved Xendit failure and a balance to send, with that balance. */
+  owed: OwedProvider[];
+}
+
 /**
- * POST /admin/wallet-transactions/recovery-credit (migration 0021) — the only
- * route that can add wallet balance without a settled Stripe charge, gated to
- * admins and audited (`docs/backend-handoff-recovery-vouchers.md`). Returns
- * void rather than a mapped row: the insert response has no joined profile
- * name (unlike GET /admin/wallet-transactions), so callers should refetch the
- * list afterward instead of trying to display this response directly —
- * same "mutations refetch" convention as suspend/reinstate/settle elsewhere.
+ * Wallet balance per profile from the rows wallet_available_balance counts.
+ * GET /admin/wallet-transactions has no profile filter, so the three relevant
+ * slices are read in full and grouped here (failed rows never count).
  */
-export async function issueRecoveryCredit(input: {
-  profileId: string;
-  amount: number;
-  title: string;
-  jobId?: string;
-}): Promise<void> {
-  await client.post("/admin/wallet-transactions/recovery-credit", {
-    profile_id: input.profileId,
-    amount: input.amount,
-    title: input.title.trim(),
-    ...(input.jobId?.trim() ? { job_id: input.jobId.trim() } : {}),
-  });
+async function getWalletBalances(profileIds: ReadonlySet<string>): Promise<Map<string, number>> {
+  const slices = await Promise.all(
+    ["direction=credit&status=completed", "direction=debit&status=completed", "direction=debit&status=pending"].map((q) =>
+      fetchAllRows<AdminWalletTxnApiRow>(`/admin/wallet-transactions?${q}`, "transactions", 100, "throw"),
+    ),
+  );
+  const byProfile = new Map<string, { direction: string; status: string; amount: number }[]>();
+  for (const row of slices.flat()) {
+    const id = row.profile?.id;
+    if (!id || !profileIds.has(id)) continue;
+    const list = byProfile.get(id) ?? [];
+    list.push({ direction: row.direction, status: row.status, amount: Number(row.amount) });
+    byProfile.set(id, list);
+  }
+  return new Map([...profileIds].map((id) => [id, walletAvailableBalance(byProfile.get(id) ?? [])]));
+}
+
+/**
+ * Xendit payouts that were refused: GET /admin/withdrawals?status=failed
+ * (wallet_transactions rows of kind 'withdrawal'; the reason is in
+ * review_note, prefixed "Xendit:") checked against ?status=completed. A later
+ * completed payout for the same provider resolves the failure. What is owed is
+ * the provider's wallet balance, which the next sweep sends.
+ */
+export async function getPayoutFailures(): Promise<PayoutFailures> {
+  const [failed, completed] = await Promise.all([getWithdrawals("failed"), getWithdrawals("completed")]);
+  const split = splitPayoutFailures(failed.items, completed.items);
+  if (split.providers.length === 0) return { ...split, owed: [] };
+  const balances = await getWalletBalances(new Set(split.providers.map((p) => p.profileId)));
+  return { ...split, owed: owedProviders(split.providers, balances) };
+}
+
+/** Same rule as the Failed payouts header: providers still owed after a refused Xendit payout. */
+export async function getFailedPayoutCount(): Promise<number> {
+  return payoutHeadline((await getPayoutFailures()).owed).count;
 }
 
 export async function getWithdrawals(status: "pending" | "completed" | "failed" = "pending"): Promise<{ items: AdminWithdrawal[]; total: number }> {
   // The count below is rows.length, so a capped list would print a wrong total.
   const rows = await fetchAllRows<AdminWithdrawalApiRow>(`/admin/withdrawals?status=${status}`, "withdrawals", 100, "throw");
   return { items: rows.map(mapWithdrawalRow), total: rows.length };
-}
-
-export async function settleWithdrawal(id: string, reference: string): Promise<AdminWithdrawal> {
-  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/settle`, { reference: reference.trim() });
-  return mapWithdrawalRow(row);
-}
-
-export async function rejectWithdrawal(id: string, reason: string): Promise<AdminWithdrawal> {
-  const row = await client.post<AdminWithdrawalApiRow>(`/admin/withdrawals/${id}/reject`, { reason: reason.trim() });
-  return mapWithdrawalRow(row);
 }
 
 export async function getCategories(): Promise<ServiceCategory[]> {
@@ -757,9 +768,24 @@ export async function revokeAdmin(id: string): Promise<AdminAccount> {
   return mapAdminRow(await client.post<AdminAccountApiRow>(`/admin/admins/${id}/revoke`));
 }
 
-export async function getCommission(): Promise<CommissionSettings> {
-  const res = await client.get<CommissionApiResponse>("/admin/commission");
-  return { rate: Number(res.commission_rate), updatedAt: res.updated_at };
+/** The rate plus the earnings the commission page leads with. */
+export interface CommissionOverview extends CommissionSettings {
+  totalEarned: number;
+  earnedThisMonth: number;
+  releasedJobs: number;
+  pendingEstimate: number;
+}
+
+export async function getCommission(): Promise<CommissionOverview> {
+  const res = await client.get<CommissionOverviewApiResponse>("/admin/commission");
+  return {
+    rate: Number(res.commission_rate),
+    updatedAt: res.updated_at,
+    totalEarned: Number(res.total_earned),
+    earnedThisMonth: Number(res.earned_this_month),
+    releasedJobs: Number(res.released_jobs),
+    pendingEstimate: Number(res.pending_estimate),
+  };
 }
 
 export async function updateCommission(rate: number): Promise<CommissionSettings> {
@@ -981,8 +1007,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     activeProviders: summary.totals.providers,
     totalBookings: summary.totals.bookings,
     pendingVerifications: summary.totals.pending_verifications,
-    totalRevenue: summary.totals.total_revenue,
-    monthlyRevenue: summary.totals.monthly_revenue,
+    // Released payments (field names kept): provider payouts (net) plus the commission withheld.
+    // Revenue proper is totalCommission / monthlyCommission below.
+    totalRevenue: Math.round((summary.totals.total_revenue + (summary.totals.total_commission ?? 0)) * 100) / 100,
+    monthlyRevenue: Math.round((summary.totals.monthly_revenue + (summary.totals.monthly_commission ?? 0)) * 100) / 100,
     completionRate: mapCompletionRate(summary),
     // Null until at least one provider has been rated.
     avgRating: summary.totals.avg_rating ?? 0,
@@ -998,6 +1026,17 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
 export async function getRevenueSeries(): Promise<MonthlyPoint[]> {
   return mapRevenueSeries(await getAnalyticsSummary());
+}
+
+/** One month of released commission. `month` is "YYYY-MM", so the trend can name last month exactly, whatever the year. */
+export interface CommissionMonthPoint {
+  month: string;
+  amount: number;
+}
+
+/** Last 12 months ending this month (UTC, like the backend), zero where no commission was released. */
+export async function getCommissionSeries(): Promise<CommissionMonthPoint[]> {
+  return mapCommissionSeries(await getAnalyticsSummary());
 }
 
 export async function getBookingsSeries(): Promise<MonthlyPoint[]> {
@@ -1039,13 +1078,27 @@ export async function searchAuditLog(query: PageQuery & { action?: string }): Pr
   return { items: res.actions.map(mapAuditRow), total: res.total };
 }
 
+export interface JobConversationPage {
+  /** Oldest first. */
+  messages: ConversationMessage[];
+  /** Messages in the whole chat, so a partial page can say how much it leaves out. */
+  total: number;
+  hasMore: boolean;
+}
+
 /** GET /admin/jobs/:jobId/conversation (migration 0014) — read-only, admins
- *  can never post into a user conversation. */
-export async function getJobConversation(jobId: string): Promise<ConversationMessage[]> {
-  const { messages } = await client.get<AdminConversationApiResponse>(
-    `/admin/jobs/${jobId}/conversation`,
+ *  can never post into a user conversation. Returns the newest page; pass
+ *  `before` (the oldest loaded message id) to get the page before it. */
+export async function getJobConversation(
+  jobId: string,
+  options: { before?: string } = {},
+): Promise<JobConversationPage> {
+  const query = options.before ? `?before=${encodeURIComponent(options.before)}` : "";
+  const res = await client.get<AdminConversationApiResponse>(
+    `/admin/jobs/${jobId}/conversation${query}`,
   );
-  return messages.map(mapMessageRow);
+  const messages = res.messages.map(mapMessageRow);
+  return { messages, total: res.total ?? messages.length, hasMore: res.has_more === true };
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
@@ -1243,6 +1296,7 @@ export async function getBookingDetail(id: string): Promise<AdminBookingDetail> 
     escrowAmount: row.escrow ? Number(row.escrow.amount) : null,
     completedAt: row.completed_at ?? null,
     status: row.status,
+    displayStatus: bookingDisplayStatus(row),
   };
 }
 
@@ -1313,4 +1367,68 @@ export async function rejectSkillRequest(id: string, note?: string): Promise<voi
 
 export async function requestDisputeClarification(id: string, body: string): Promise<void> {
   await client.post(`/admin/disputes/${id}/clarification`, { body });
+}
+
+// ─── Provider credentials (TESDA / PRC / trade certificates) ─────────────────
+
+export type CredentialStatus = "pending" | "approved" | "rejected";
+
+export interface Credential {
+  id: string;
+  providerId: string;
+  providerName: string;
+  type: AdminCredentialApiRow["credential_type"];
+  title: string;
+  issuer: string;
+  number: string | null;
+  categoryName: string;
+  issuedOn: string | null;
+  expiresOn: string | null;
+  /** "expired" is an approved credential past its expiry date. */
+  status: AdminCredentialApiRow["status"];
+  rejectionReason: string | null;
+  createdAt: string;
+  /** Signed link, valid one hour. Fetch the list again for a fresh one. */
+  documentUrl: string | null;
+}
+
+function mapCredentialRow(row: AdminCredentialApiRow): Credential {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    providerName: row.profiles?.full_name ?? "Unknown provider",
+    type: row.credential_type,
+    title: row.title,
+    issuer: row.issuer,
+    number: row.credential_number,
+    categoryName: row.service_categories?.name ?? `Category #${row.category_id}`,
+    issuedOn: row.issued_on,
+    expiresOn: row.expires_on,
+    status: row.status,
+    rejectionReason: row.rejection_reason,
+    createdAt: row.created_at,
+    documentUrl: row.document_url,
+  };
+}
+
+export async function getCredentials(query: { status: CredentialStatus; page: number; pageSize: number }): Promise<{ items: Credential[]; total: number }> {
+  const params = new URLSearchParams({
+    status: query.status,
+    limit: String(query.pageSize),
+    offset: String((query.page - 1) * query.pageSize),
+  });
+  const res = await client.get<AdminCredentialListResponse>(`/admin/credentials?${params}`);
+  if (!Array.isArray(res.credentials) || !Number.isSafeInteger(res.total) || res.total < 0) {
+    throw new Error("Credential list is unavailable. Please update the backend.");
+  }
+  return { items: res.credentials.map(mapCredentialRow), total: res.total };
+}
+
+export async function approveCredential(id: string): Promise<void> {
+  await client.post(`/admin/credentials/${id}/approve`);
+}
+
+/** The reason is required (1-500 characters) and is sent to the provider. */
+export async function rejectCredential(id: string, reason: string): Promise<void> {
+  await client.post(`/admin/credentials/${id}/reject`, { reason });
 }

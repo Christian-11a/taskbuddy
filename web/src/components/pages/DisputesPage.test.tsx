@@ -9,8 +9,11 @@ import type { DisputeRow } from "@/lib/adapters";
 import type { AdminBookingDetail, CaseEntry, ConversationMessage } from "@/lib/domain";
 
 vi.mock("@/context/AppContext", () => ({ useApp: vi.fn() }));
+const REFUND_SENTENCE = "Recorded as refunded to the client's payment method (test mode: no real refund is sent).";
+
 vi.mock("@/lib/services", () => ({
-  getJobConversation: vi.fn().mockResolvedValue([]),
+  getCommission: vi.fn().mockResolvedValue({ rate: 0.15, updatedAt: "2026-10-01T00:00:00Z", totalEarned: 0, earnedThisMonth: 0, releasedJobs: 0, pendingEstimate: 0 }),
+  getJobConversation: vi.fn().mockResolvedValue({ messages: [], total: 0, hasMore: false }),
   requestDisputeClarification: vi.fn().mockResolvedValue(undefined),
   getBookingDetail: vi.fn().mockResolvedValue({
     description: null, address: null, scheduledAt: null, photoUrls: [], escrowStatus: null, escrowAmount: null, completedAt: null, status: "completed",
@@ -32,8 +35,8 @@ function entry(kind: string, created_at: string, over: Partial<CaseEntry> = {}):
   return { id: `${kind}-${created_at}`, kind, body: `${kind} body`, created_at, author: null, message: null, attachment_url: null, ...over };
 }
 
-function booking(completedAt: string | null): AdminBookingDetail {
-  return { description: null, address: null, scheduledAt: null, photoUrls: [], escrowStatus: null, escrowAmount: null, completedAt, status: "completed" };
+function booking(completedAt: string | null, escrowStatus: AdminBookingDetail["escrowStatus"] = null): AdminBookingDetail {
+  return { description: null, address: null, scheduledAt: null, photoUrls: [], escrowStatus, escrowAmount: null, completedAt, status: "completed" };
 }
 
 function renderDisputes(disputes: DisputeRow[]) {
@@ -248,51 +251,61 @@ describe("complaint queue", () => {
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
   });
 
-  it("shows the warranty window while it is open, and does not refetch a fresh completed job on a live tick", async () => {
+  it("shows a completed job's payment as released, and does not refetch a fresh completed job on a live tick", async () => {
     vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
-    vi.mocked(services.getBookingDetail).mockResolvedValueOnce(booking("2026-10-14T12:00:00Z"));
+    vi.mocked(services.getBookingDetail).mockResolvedValueOnce(booking("2026-10-14T12:00:00Z", "COMPLETED"));
     const { rerender } = setup(false);
-    expect(await screen.findByText("Warranty open · 2 d left")).toBeInTheDocument();
-    expect(screen.getByText("A timely complaint blocks the release.")).toBeInTheDocument();
+    expect(await screen.findByText("Released")).toBeInTheDocument();
+    expect(screen.queryByText("Held while the complaint is open.")).not.toBeInTheDocument();
     liveRefresh(rerender, [row()], 2);
     expect(services.getBookingDetail).toHaveBeenCalledTimes(1);
     expect(services.getBookingDetail).toHaveBeenCalledWith("j1");
   });
 
-  it("shows the warranty window once a job that was not completed yet is completed", async () => {
+  it("shows a completed job's payment as held only while the complaint is open", async () => {
+    vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
+    vi.mocked(services.getBookingDetail).mockResolvedValueOnce(booking("2026-10-14T12:00:00Z", "DISPUTED"));
+    setup(false);
+    expect(await screen.findByText("Held while the complaint is open.")).toBeInTheDocument();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
+  });
+
+  it("shows the payment once a job that was not completed yet is completed", async () => {
     vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
     vi.mocked(services.getBookingDetail)
-      .mockResolvedValueOnce(booking(null))
-      .mockResolvedValueOnce(booking("2026-10-14T12:00:00Z"));
+      .mockResolvedValueOnce(booking(null, "IN_ESCROW"))
+      .mockResolvedValueOnce(booking("2026-10-14T12:00:00Z", "COMPLETED"));
     const { rerender } = setup(false);
     await flushRequests();
-    expect(screen.queryByText("Payment protection")).not.toBeInTheDocument();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
 
     liveRefresh(rerender, [row()], 2);
-    expect(await screen.findByText("Warranty open · 2 d left")).toBeInTheDocument();
+    expect(await screen.findByText("Released")).toBeInTheDocument();
     expect(services.getBookingDetail).toHaveBeenCalledTimes(2);
   });
 
-  it("recovers the warranty window after a failed job-detail request, on a later live refresh", async () => {
+  it("recovers the payment after a failed job-detail request, on a later live refresh", async () => {
     vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
     vi.mocked(services.getBookingDetail)
       .mockRejectedValueOnce(new Error("offline"))
-      .mockResolvedValueOnce(booking("2026-10-14T12:00:00Z"));
+      .mockResolvedValueOnce(booking("2026-10-14T12:00:00Z", "DISPUTED"));
     const { rerender } = setup(false);
     await flushRequests();
-    expect(screen.queryByText("Payment protection")).not.toBeInTheDocument();
+    expect(screen.queryByText("Held while the complaint is open.")).not.toBeInTheDocument();
     expect(screen.queryByText("offline")).not.toBeInTheDocument();
 
     liveRefresh(rerender, [row()], 2);
-    expect(await screen.findByText("Warranty open · 2 d left")).toBeInTheDocument();
+    expect(await screen.findByText("Held while the complaint is open.")).toBeInTheDocument();
     expect(services.getBookingDetail).toHaveBeenCalledTimes(2);
   });
 
-  it("says when the warranty window has closed", async () => {
+  it("shows no payment line when the escrow was refunded", async () => {
     vi.setSystemTime(new Date("2026-10-15T12:00:00Z"));
-    vi.mocked(services.getBookingDetail).mockResolvedValueOnce(booking("2026-10-01T00:00:00Z"));
+    vi.mocked(services.getBookingDetail).mockResolvedValueOnce(booking("2026-10-01T00:00:00Z", "REFUNDED"));
     setup(false);
-    expect(await screen.findByText("Warranty window closed")).toBeInTheDocument();
+    await flushRequests();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
+    expect(screen.queryByText("Held")).not.toBeInTheDocument();
   });
 
   it("shows no protection line when the booking request fails", async () => {
@@ -302,7 +315,7 @@ describe("complaint queue", () => {
     // Let the rejected request settle inside the test, before the stubs are torn down.
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     expect(screen.queryByText("Payment protection")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Warranty/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
     expect(screen.queryByText("boom")).not.toBeInTheDocument();
   });
 
@@ -325,9 +338,123 @@ function restoreProperty(name: "scrollHeight" | "scrollTop", original: PropertyD
   else delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name];
 }
 
+/** One page of the admin conversation, as services.getJobConversation returns it. */
+function page(messages: ConversationMessage[], over: { total?: number; hasMore?: boolean } = {}) {
+  return { messages, total: over.total ?? messages.length, hasMore: over.hasMore ?? false };
+}
+
+function textMessage(id: string, body: string, minute: number): ConversationMessage {
+  return { id, senderId: "c1", senderName: "Ana", body, createdAt: `2026-10-04T09:${String(minute).padStart(2, "0")}:00Z` };
+}
+
+describe("older chat messages", () => {
+  const newest = [textMessage("m3", "Third", 3), textMessage("m4", "Fourth", 4)];
+  const older = [textMessage("m1", "First", 1), textMessage("m2", "Second", 2)];
+
+  it("loads the page before the oldest message and prepends it in order, then drops the button", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation)
+      .mockResolvedValueOnce(page(newest, { total: 4, hasMore: true }))
+      .mockResolvedValueOnce(page(older, { total: 4, hasMore: false }));
+    renderDisputes([row({ clientId: "c1", providerId: "p1", chatMessageCount: 4 })]);
+    const log = await screen.findByRole("log", { name: "Job conversation" });
+    await user.click(screen.getByRole("button", { name: "Load older messages" }));
+    await waitFor(() => expect(within(log).getAllByRole("listitem")).toHaveLength(4));
+    expect(services.getJobConversation).toHaveBeenLastCalledWith("j1", { before: "m3" });
+    const bodies = within(log).getAllByRole("listitem").map((item) => item.textContent ?? "");
+    expect(bodies[0]).toContain("First");
+    expect(bodies[1]).toContain("Second");
+    expect(bodies[2]).toContain("Third");
+    expect(bodies[3]).toContain("Fourth");
+    expect(screen.queryByRole("button", { name: "Load older messages" })).not.toBeInTheDocument();
+    expect(screen.getByText("4 messages")).toBeInTheDocument();
+    expect(screen.queryByText(/showing/)).not.toBeInTheDocument();
+  });
+
+  it("shows an error with Retry when an older page fails, and keeps the newest messages", async () => {
+    const user = userEvent.setup();
+    vi.mocked(services.getJobConversation)
+      .mockResolvedValueOnce(page(newest, { total: 4, hasMore: true }))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(page(older, { total: 4, hasMore: false }));
+    renderDisputes([row({ clientId: "c1", providerId: "p1", chatMessageCount: 4 })]);
+    const log = await screen.findByRole("log", { name: "Job conversation" });
+    await user.click(screen.getByRole("button", { name: "Load older messages" }));
+    expect(await within(log).findByText("Could not load older messages.")).toBeInTheDocument();
+    expect(within(log).getAllByRole("listitem")).toHaveLength(2);
+    await user.click(within(log).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(within(log).getAllByRole("listitem")).toHaveLength(4));
+    expect(within(log).queryByText("Could not load older messages.")).not.toBeInTheDocument();
+    expect(services.getJobConversation).toHaveBeenCalledTimes(3);
+    expect(services.getJobConversation).toHaveBeenLastCalledWith("j1", { before: "m3" });
+  });
+
+  it("says how much of the chat is shown while older messages are still unloaded", async () => {
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(newest, { total: 4, hasMore: true }));
+    renderDisputes([row({ clientId: "c1", providerId: "p1", chatMessageCount: 4 })]);
+    await screen.findByRole("log", { name: "Job conversation" });
+    const card = screen.getByRole("region", { name: "Attached chat" });
+    expect(within(card).getByText("4 messages")).toBeInTheDocument();
+    expect(within(card).getByText("(showing 2 of 4)")).toBeInTheDocument();
+  });
+});
+
+describe("attached chat and complaint photos", () => {
+  it("shows the attached chat with the case's message count", async () => {
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat));
+    renderDisputes([row({ clientId: "c1", providerId: "p1", entries: [], chatMessageCount: 42 })]);
+    await screen.findByRole("log", { name: "Job conversation" });
+    const card = screen.getByRole("region", { name: "Attached chat" });
+    expect(within(card).getByText("42 messages")).toBeInTheDocument();
+  });
+
+  it("says so when the client and provider never messaged", async () => {
+    renderDisputes([row({ entries: [] })]);
+    expect(await screen.findByText("No messages between the client and provider.")).toBeInTheDocument();
+  });
+
+  const photoRow = () => row({
+    clientId: "c1", providerId: "p1", raisedById: "c1", photoUrls: ["https://signed.test/a.jpg"],
+    entries: [{ ...entry("appeal", "2026-10-05T00:00:00Z"), author: { id: "p1", full_name: "Rico", role: "provider" }, photo_urls: ["https://signed.test/b.jpg", "https://signed.test/c.jpg"] }],
+  });
+
+  it("groups complaint photos by the side that sent them", () => {
+    renderDisputes([photoRow()]);
+    const client = screen.getByRole("region", { name: "From the client" });
+    const provider = screen.getByRole("region", { name: "From the provider" });
+    expect(within(client).getAllByRole("img")).toHaveLength(1);
+    expect(within(provider).getAllByRole("img")).toHaveLength(2);
+  });
+
+  it("opens a photo in a dialog that Escape closes, returning focus", async () => {
+    const user = userEvent.setup();
+    renderDisputes([photoRow()]);
+    const thumb = screen.getByRole("button", { name: "Complaint photo 1 of 2, from the provider" });
+    await user.click(thumb);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("img", { name: "Complaint photo 1 of 2, from the provider" })).toHaveAttribute("src", "https://signed.test/b.jpg");
+    await user.click(within(dialog).getByRole("button", { name: "Next photo" }));
+    expect(within(dialog).getByRole("img")).toHaveAttribute("src", "https://signed.test/c.jpg");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(thumb).toHaveFocus());
+  });
+
+  it("replaces a photo that fails to load with a placeholder", () => {
+    renderDisputes([photoRow()]);
+    fireEvent.error(screen.getByRole("img", { name: "Complaint photo 1 of 1, from the client" }));
+    expect(screen.getByText("Photo unavailable. Refresh the case.")).toBeInTheDocument();
+  });
+
+  it("labels photos by the raiser when the job's parties are unknown", () => {
+    renderDisputes([row({ raisedById: "x", photoUrls: ["https://signed.test/a.jpg"], entries: [] })]);
+    expect(screen.getByRole("region", { name: "From the person who raised the complaint" })).toBeInTheDocument();
+  });
+});
+
 describe("job conversation panel", () => {
   it("shows a fixed-height scrolling log with a message count and each sender's role", async () => {
-    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat));
     renderDisputes([row({ clientId: "c1", providerId: "p1", entries: [] })]);
     const log = await screen.findByRole("log", { name: "Job conversation" });
     expect(log).toHaveClass("max-h-[320px]", "overflow-y-auto");
@@ -347,7 +474,7 @@ describe("job conversation panel", () => {
     Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 640 });
     Object.defineProperty(HTMLElement.prototype, "scrollTop", { configurable: true, get: () => 0, set: setTop });
     try {
-      vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+      vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat));
       renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
       await screen.findByRole("log", { name: "Job conversation" });
       await waitFor(() => expect(setTop).toHaveBeenLastCalledWith(640));
@@ -360,8 +487,8 @@ describe("job conversation panel", () => {
   it("refreshes the job chat on request", async () => {
     const user = userEvent.setup();
     vi.mocked(services.getJobConversation)
-      .mockResolvedValueOnce(chat)
-      .mockResolvedValueOnce([...chat, { id: "m4", senderId: "c1", senderName: "Ana", body: "Photo sent in chat", createdAt: "2026-10-04T12:00:00Z" }]);
+      .mockResolvedValueOnce(page(chat))
+      .mockResolvedValueOnce(page([...chat, { id: "m4", senderId: "c1", senderName: "Ana", body: "Photo sent in chat", createdAt: "2026-10-04T12:00:00Z" }]));
     renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
     await screen.findByText("The tap still leaks");
     await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
@@ -372,7 +499,7 @@ describe("job conversation panel", () => {
 
   it("keeps the last copy on screen and says so when a refresh fails", async () => {
     const user = userEvent.setup();
-    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat).mockRejectedValueOnce(new Error("offline"));
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat)).mockRejectedValueOnce(new Error("offline"));
     renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
     await screen.findByText("The tap still leaks");
     await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
@@ -382,7 +509,7 @@ describe("job conversation panel", () => {
 
   it("opens a chat photo in a dialog that Escape closes, handing focus back to the thumbnail", async () => {
     const user = userEvent.setup();
-    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat));
     renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
     const thumbnail = await screen.findByRole("button", { name: "Chat photo from Rico, Provider" });
     await user.click(thumbnail);
@@ -395,10 +522,10 @@ describe("job conversation panel", () => {
   });
 
   it("tells senders apart by name when the API sends no sender ids", async () => {
-    vi.mocked(services.getJobConversation).mockResolvedValueOnce([
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page([
       { id: "n1", senderName: "Ana", body: "Client here", createdAt: "2026-10-04T09:00:00Z" },
       { id: "n2", senderName: "Rico", body: "Provider here", createdAt: "2026-10-04T10:00:00Z" },
-    ] as ConversationMessage[]);
+    ] as ConversationMessage[]));
     renderDisputes([row({ clientName: "Ana", providerName: "Rico", entries: [] })]);
     const log = await screen.findByRole("log", { name: "Job conversation" });
     const [client, provider] = within(log).getAllByRole("listitem");
@@ -408,7 +535,7 @@ describe("job conversation panel", () => {
 
   it("does not let Escape in the photo dialog reach the queue's page shortcuts", async () => {
     const user = userEvent.setup();
-    vi.mocked(services.getJobConversation).mockResolvedValueOnce(chat);
+    vi.mocked(services.getJobConversation).mockResolvedValueOnce(page(chat));
     renderDisputes([row({ clientId: "c1", providerId: "p1" })]);
     await user.click(await screen.findByRole("button", { name: "Chat photo from Rico, Provider" }));
     await screen.findByRole("dialog");
@@ -501,7 +628,7 @@ describe("case sections and decision card", () => {
     ] });
     expect(screen.getByRole("region", { name: "Summary" })).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Activity" })).getByText("2")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Conversation" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Attached chat" })).toBeInTheDocument();
   });
 
   it("says what is missing when a case has no statements yet", () => {
@@ -517,10 +644,36 @@ describe("case sections and decision card", () => {
     expect(within(decision).getByRole("button", { name: "Request clarification" })).toBeInTheDocument();
   });
 
-  it("says in plain words what each decision does, beside its button", () => {
-    setup(false, { amount: "₱500.00", clientName: "Ana Cruz", providerName: "Rico Lim" });
-    expect(screen.getByText("Pays ₱500.00 to Rico Lim. This can't be undone.")).toBeInTheDocument();
-    expect(screen.getByText("Returns ₱500.00 to Ana Cruz. This can't be undone.")).toBeInTheDocument();
+  it("splits the release into job amount, platform fee and provider share at the current rate", async () => {
+    setup(false, { amount: "₱1,000.00", clientName: "Ana Cruz", providerName: "Rico Lim" });
+    expect(await screen.findByText("Job amount ₱1,000 · Platform fee ₱150 · Provider receives ₱850. This can't be undone.")).toBeInTheDocument();
+    expect(screen.getByText(REFUND_SENTENCE)).toBeInTheDocument();
+  });
+
+  it("rounds the platform fee half-up to centavos: ₱67 at 7.5% is ₱5.03, provider ₱61.97", async () => {
+    vi.mocked(services.getCommission).mockResolvedValueOnce({ rate: 0.075, updatedAt: "2026-10-01T00:00:00Z", totalEarned: 0, earnedThisMonth: 0, releasedJobs: 0, pendingEstimate: 0 });
+    setup(false, { amount: "₱67.00" });
+    expect(await screen.findByText("Job amount ₱67 · Platform fee ₱5.03 · Provider receives ₱61.97. This can't be undone.")).toBeInTheDocument();
+  });
+
+  it("shows only the job amount when the commission rate is not available", async () => {
+    vi.mocked(services.getCommission).mockRejectedValueOnce(new Error("offline"));
+    setup(false, { amount: "₱1,000.00" });
+    await flushRequests();
+    expect(screen.getByText("Job amount ₱1,000. This can't be undone.")).toBeInTheDocument();
+    expect(screen.queryByText(/Platform fee/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Provider receives/)).not.toBeInTheDocument();
+  });
+
+  it("describes a refund as recorded, not sent, in the decision card and the confirmation", async () => {
+    const user = userEvent.setup();
+    setup(false);
+    expect(screen.getByText(REFUND_SENTENCE)).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/Resolution or clarification note/i), "Both sides reviewed.");
+    await user.click(screen.getByRole("button", { name: /Refund client/ }));
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText("Record the refund to the client?")).toBeInTheDocument();
+    expect(within(dialog).getByText(REFUND_SENTENCE)).toBeInTheDocument();
   });
 
   it("says a recorded decision moves no money", () => {
@@ -544,7 +697,7 @@ describe("case sections and decision card", () => {
     expect(screen.queryByRole("group", { name: "Decision actions" })).not.toBeInTheDocument();
   });
 
-  it("moves the decision buttons into one sticky bottom bar when the pane is narrow", () => {
+  it("moves the decision buttons into one sticky bottom bar when the pane is narrow", async () => {
     paneWidth(480);
     setup(false);
     const bar = screen.getByRole("group", { name: "Decision actions" });
@@ -553,7 +706,7 @@ describe("case sections and decision card", () => {
     expect(screen.getAllByRole("button", { name: /Release to provider/ })).toHaveLength(1);
     const decision = screen.getByRole("complementary", { name: "Your decision" });
     expect(within(decision).queryByRole("button", { name: /Release to provider/ })).not.toBeInTheDocument();
-    expect(within(decision).getByText("Pays ₱500.00 to Provider. This can't be undone.")).toBeInTheDocument();
+    expect(await within(decision).findByText("Job amount ₱500 · Platform fee ₱75 · Provider receives ₱425. This can't be undone.")).toBeInTheDocument();
     expect(decision).not.toHaveClass("sticky");
   });
 
@@ -563,7 +716,7 @@ describe("case sections and decision card", () => {
     setup(false);
     await user.type(screen.getByLabelText(/Resolution or clarification note/i), "Both sides reviewed.");
     await user.click(within(screen.getByRole("group", { name: "Decision actions" })).getByRole("button", { name: /Refund client/ }));
-    expect(within(screen.getByRole("alertdialog")).getByText("Refund escrow to the client?")).toBeInTheDocument();
+    expect(within(screen.getByRole("alertdialog")).getByText("Record the refund to the client?")).toBeInTheDocument();
     expect(resolveDispute).not.toHaveBeenCalled();
   });
 

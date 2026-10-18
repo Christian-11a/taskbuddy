@@ -46,11 +46,11 @@ function makeStats(overrides: Partial<DashboardStats> = {}): DashboardStats {
   };
 }
 
-function setReportState(opts: { stats?: DashboardStats; providers?: TopProvider[] } = {}) {
+function setReportState(opts: { stats?: DashboardStats; providers?: TopProvider[]; revenueSeries?: { month: string; value: number }[]; bookingsSeries?: { month: string; value: number }[] } = {}) {
   mockedUseApp.mockReturnValue({
     dashboardStats: opts.stats ?? makeStats(),
-    revenueSeries: [{ month: "Jan", value: 1000 }],
-    bookingsSeries: [{ month: "Jan", value: 5 }],
+    revenueSeries: opts.revenueSeries ?? [{ month: "Jan", value: 1000 }],
+    bookingsSeries: opts.bookingsSeries ?? [{ month: "Jan", value: 5 }],
     bookingsByCategory: [{ label: "Plumbing", value: 100 }],
     topProviders: opts.providers ?? [
       { name: "Pat Cruz", jobs: 21, rating: 4.9 },
@@ -123,6 +123,15 @@ describe("ReportsPage — CSV export", () => {
     expect(csv).not.toContain("4.0833");
   });
 
+  it("labels the money rows as revenue and released payments, never payouts or top-ups", async () => {
+    setReportState({ stats: makeStats({ totalCommission: 500, monthlyCommission: 50 }) });
+    const csv = await exportAndGetCsv();
+    expect(csv).toContain("Revenue: total commission earned,500\r\n");
+    expect(csv).toContain("Total released payments (provider payout + commission),125000\r\n");
+    expect(csv).toContain("RELEASED PAYMENTS TREND\r\nMonth,Released payments\r\nJan,1000");
+    expect(csv).not.toMatch(/top-?up|wallet/i);
+  });
+
   it("writes provider ratings rounded and leaves unrated providers blank", async () => {
     setReportState({
       providers: [
@@ -133,6 +142,16 @@ describe("ReportsPage — CSV export", () => {
     const csv = await exportAndGetCsv();
     expect(csv).toContain("Pat Cruz,21,4.83\r\n");
     expect(csv).toMatch(/\r\nLee Tan,9,(\r\n|$)/);
+  });
+
+  it("writes month keys with the year, zero-filled months included", async () => {
+    setReportState({
+      revenueSeries: [{ month: "2026-12", value: 0 }, { month: "2027-01", value: 80 }],
+      bookingsSeries: [{ month: "2026-12", value: 0 }, { month: "2027-01", value: 3 }],
+    });
+    const csv = await exportAndGetCsv();
+    expect(csv).toContain("RELEASED PAYMENTS TREND\r\nMonth,Released payments\r\n2026-12,0\r\n2027-01,80\r\n");
+    expect(csv).toContain("MONTHLY BOOKINGS\r\nMonth,Bookings\r\n2026-12,0\r\n2027-01,3\r\n");
   });
 });
 
@@ -145,8 +164,8 @@ describe("ReportsPage — metric labels", () => {
     setReportState({ stats: makeStats({ completionRate: 40, activeProviders: 7 }) });
     render(<ReportsPage />);
 
-    expect(screen.getByText("Total provider payouts")).toBeInTheDocument();
-    expect(screen.getByText("Provider payouts this month")).toBeInTheDocument();
+    expect(screen.getByText("Revenue (commission earned)")).toBeInTheDocument();
+    expect(screen.getByText("Released payments this month")).toBeInTheDocument();
     expect(screen.getByText("Completed jobs")).toBeInTheDocument();
     expect(screen.getByText("Share of all posted jobs that finished")).toBeInTheDocument();
     expect(screen.getByText("Across 7 registered providers")).toBeInTheDocument();
@@ -165,7 +184,7 @@ describe("ReportsPage — chart loading", () => {
     setReportState({ stats: makeStats() });
     const { container } = render(<ReportsPage />);
 
-    expect(screen.getByText("Total provider payouts")).toBeInTheDocument();
+    expect(screen.getByText("Revenue (commission earned)")).toBeInTheDocument();
     // recharts loads on its own chunk; until then each chart keeps its slot.
     expect(container.querySelector('[style*="height: 260px"]')).not.toBeNull();
     expect(container.querySelector('[style*="height: 240px"]')).not.toBeNull();

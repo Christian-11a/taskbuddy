@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { motion } from "motion/react";
-import { Check, Clock, FileText, Gavel, History, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
+import { Check, Clock, FileText, Gavel, History, ImageOff, Images, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import * as services from "@/lib/services";
 import type { ConversationMessage } from "@/lib/domain";
-import type { DisputeRow } from "@/lib/adapters";
+import { formatCurrency, type DisputeRow } from "@/lib/adapters";
 import { NOTE_MAX_LENGTH } from "@/lib/validation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useToast } from "@/components/ui/Toast";
@@ -40,12 +40,13 @@ import {
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useBookingDetailCache } from "@/hooks/useBookingDetailCache";
 import { byUrgency, caseSignals, type CaseKind, type CaseSignals } from "@/lib/caseSignals";
-import { formatHoursLeft, warrantyStatus } from "@/lib/warranty";
 import { cn } from "@/lib/utils";
 
 type Filter = "needs-decision" | "waiting" | "cancellations" | "appeals" | "resolved" | "all";
 type Resolution = "RELEASED_TO_PROVIDER" | "REFUNDED_TO_CLIENT" | "REVIEWED";
-type ConversationState = ConversationMessage[] | "error";
+/** The chat as loaded so far: the newest page, plus any older pages the admin asked for. */
+type ConversationState = services.JobConversationPage | "error";
+const NO_MESSAGES: ConversationMessage[] = [];
 type Signalled = { row: DisputeRow; signals: CaseSignals };
 type SenderRole = "client" | "provider" | "system" | "unknown";
 /** The two sides of a job, as the chat and the case show them. */
@@ -116,9 +117,11 @@ function statusTone(d: DisputeRow) {
 /** Plain-words names for a recorded decision. Anything unknown is shown as stored. */
 const RESOLUTION_LABEL: Record<Resolution, string> = {
   RELEASED_TO_PROVIDER: "Released to provider",
-  REFUNDED_TO_CLIENT: "Refunded to client",
+  REFUNDED_TO_CLIENT: "Recorded as refunded",
   REVIEWED: "Decision recorded",
 };
+/** What a refund decision does in this build: it is recorded, and no money is sent back. */
+const REFUND_RECORDED = "Recorded as refunded to the client's payment method (test mode: no real refund is sent).";
 const NEXT_STEP_COLOUR: Record<NextStepTone, string> = {
   danger: "text-danger",
   warn: "text-warn",
@@ -154,6 +157,41 @@ function cancellationStateLabel(state: string): string {
   return Object.prototype.hasOwnProperty.call(CANCELLATION_STATE_LABEL, state) ? CANCELLATION_STATE_LABEL[state] : state;
 }
 
+/** The peso figure in a row's display text ("₱1,000.00" → 1000); null when there is none ("Unknown"). */
+function pesoValue(text: string): number | null {
+  const digits = text.replace(/[^0-9.]/g, "");
+  if (!digits) return null;
+  const value = Number(digits);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Fee in centavos: round-half-up of amount × rate, the way PostgreSQL round(x, 2) rounds numeric values.
+ * Done in BigInt on scaled integers (centavos, rate in millionths) so float error cannot push a
+ * half-centavo the wrong way: ₱67 × 7.5% = 5.025 → 503 centavos, not 502.
+ */
+function feeCentavos(amountCentavos: number, rate: number): number {
+  const rateMillionths = BigInt(Math.round(rate * 1000000));
+  const scaled = BigInt(amountCentavos) * rateMillionths; // centavos × millionths
+  const halfUp = BigInt(500000); // half of 1,000,000 millionths
+  return Number((scaled + halfUp) / BigInt(1000000));
+}
+
+/**
+ * The release split at the current commission rate. The platform fee is round-half-up to centavos (see feeCentavos)
+ * and the provider gets the rest. Without a rate, only the job amount is shown.
+ */
+function releaseSplit(amountText: string, rate: number | null): string {
+  const amount = pesoValue(amountText);
+  if (amount === null) return `Job amount ${amountText}`;
+  if (rate === null) return `Job amount ${formatCurrency(amount)}`;
+  const amountCentavos = Math.round(amount * 100);
+  const feeCents = feeCentavos(amountCentavos, rate);
+  const fee = feeCents / 100;
+  const provider = (amountCentavos - feeCents) / 100;
+  return `Job amount ${formatCurrency(amount)} · Platform fee ${formatCurrency(fee)} · Provider receives ${formatCurrency(provider)}`;
+}
+
 export function DisputesPage() {
   const { disputes, resolveDispute, refreshData, refreshCounts, disputesLoading } = useApp();
   const { showToast } = useToast();
@@ -181,6 +219,24 @@ export function DisputesPage() {
   // when a case is opened and cached by job id.
   const [conversations, setConversations] = useState<Record<string, ConversationState>>({});
   const [refreshingJobId, setRefreshingJobId] = useState<string | null>(null);
+  // Loading or failed state of the "Load older messages" request, per job.
+  const [olderStatus, setOlderStatus] = useState<Record<string, "loading" | "error">>({});
+  // The current commission rate for the release split. Null while loading or if the request fails: no fee or provider figure is shown then.
+  const [commissionRate, setCommissionRate] = useState<number | null>(null);
+  useEffect(() => {
+    let active = true;
+    services
+      .getCommission()
+      .then((overview) => {
+        if (active && Number.isFinite(overview.rate)) setCommissionRate(overview.rate);
+      })
+      .catch(() => {
+        /* Keep the job amount only. */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const signalled = useMemo<Signalled[]>(
     () =>
@@ -232,22 +288,46 @@ export function DisputesPage() {
     requested.current.add(selectedJobId);
     services
       .getJobConversation(selectedJobId)
-      .then((messages) => setConversations((prev) => ({ ...prev, [selectedJobId]: messages })))
+      .then((page) => setConversations((prev) => ({ ...prev, [selectedJobId]: page })))
       .catch(() => setConversations((prev) => ({ ...prev, [selectedJobId]: "error" })));
   }, [selectedJobId, retryTick]);
 
   function retryConversation(jobId: string) {
     requested.current.delete(jobId);
     setConversations((prev) => omit(prev, jobId));
+    setOlderStatus((prev) => omit(prev, jobId));
     setRetryTick((n) => n + 1);
   }
 
-  /** The "Refresh conversation" button: fetches the chat again and keeps the last copy if that fails. */
+  /** "Load older messages": prepends the page before the oldest loaded message. */
+  function loadOlderConversation(jobId: string) {
+    const current = conversations[jobId];
+    if (!current || current === "error" || !current.hasMore || current.messages.length === 0) return;
+    const before = current.messages[0].id;
+    setOlderStatus((prev) => ({ ...prev, [jobId]: "loading" }));
+    services
+      .getJobConversation(jobId, { before })
+      .then((page) => {
+        setConversations((prev) => {
+          const cur = prev[jobId];
+          // A refresh moved the chat to a newer page while this one loaded; these older messages no longer join on.
+          if (!cur || cur === "error" || cur.messages[0]?.id !== before) return prev;
+          const loaded = new Set(cur.messages.map((m) => m.id));
+          const older = page.messages.filter((m) => !loaded.has(m.id));
+          return { ...prev, [jobId]: { messages: [...older, ...cur.messages], total: page.total, hasMore: page.hasMore } };
+        });
+        setOlderStatus((prev) => omit(prev, jobId));
+      })
+      .catch(() => setOlderStatus((prev) => ({ ...prev, [jobId]: "error" })));
+  }
+
+  /** The "Refresh conversation" button: fetches the newest page again and keeps the last copy if that fails. */
   async function refreshConversation(jobId: string) {
     setRefreshingJobId(jobId);
     try {
-      const messages = await services.getJobConversation(jobId);
-      setConversations((prev) => ({ ...prev, [jobId]: messages }));
+      const page = await services.getJobConversation(jobId);
+      setConversations((prev) => ({ ...prev, [jobId]: page }));
+      setOlderStatus((prev) => omit(prev, jobId));
     } catch {
       showToast("Could not refresh the conversation. The last copy is still shown.", "error");
     } finally {
@@ -256,14 +336,21 @@ export function DisputesPage() {
   }
 
   // Payment protection only applies where there is a payment to hold. Job detail
-  // (for the warranty window) is refreshed on live ticks; see useBookingDetailCache.
+  // (for the completed job and its escrow) is refreshed on live ticks; see useBookingDetailCache.
   const bookingJobId = selected && selected.hasPayment !== false ? selected.jobId : undefined;
   const booking = useBookingDetailCache(bookingJobId);
-  const warranty = booking && booking !== "error" ? warrantyStatus(booking.completedAt, now) : null;
+  // Released once a completed job's escrow is released; held only while a complaint is open.
+  const paymentStatus =
+    booking && booking !== "error" && booking.status === "completed" && (booking.escrowStatus === "COMPLETED" || booking.escrowStatus === "IN_ESCROW" || booking.escrowStatus === "DISPUTED")
+      ? booking.escrowStatus
+      : null;
   // The evidence cards' counts: the case facts the summary lists, and the chat's message count once it has loaded.
-  const summaryCount = 1 + (signals?.kind === "cancellation" ? 2 : 0) + (warranty && warranty.state !== "none" ? 1 : 0);
+  const summaryCount = 1 + (signals?.kind === "cancellation" ? 2 : 0) + (paymentStatus ? 1 : 0);
   const chat = selected ? conversations[selected.jobId] : undefined;
-  const chatCount = Array.isArray(chat) ? chat.length : undefined;
+  // The whole chat's size: the case's message count, else the server's total (never just the loaded part).
+  const chatCount = typeof selected?.chatMessageCount === "number" ? selected.chatMessageCount : chat && chat !== "error" ? chat.total : undefined;
+  const photoGroups = selected ? complaintPhotoGroups(selected) : [];
+  const photoCount = photoGroups.reduce((n, g) => n + g.urls.length, 0);
 
   async function handleResolve(id: string, resolution: Resolution) {
     setResolvingId(id);
@@ -275,7 +362,7 @@ export function DisputesPage() {
       void refreshCounts();
       setSelectedId(neighborAfterRemoval(ids, id));
       showToast(
-        resolution === "REVIEWED" ? "Admin decision recorded. No money was moved." : resolution === "RELEASED_TO_PROVIDER" ? "Escrow released to the provider." : "Escrow refunded to the client.",
+        resolution === "REVIEWED" ? "Admin decision recorded. No money was moved." : resolution === "RELEASED_TO_PROVIDER" ? "Escrow released to the provider." : REFUND_RECORDED,
       );
     } catch {
       showToast("Could not resolve that dispute. Please try again.", "error");
@@ -495,15 +582,15 @@ export function DisputesPage() {
                           </Field>
                         </>
                       )}
-                      {warranty && warranty.state !== "none" && (
-                        <Field label="72 h warranty">
-                          {warranty.state === "open" ? (
-                            <>
-                              <span>{`Warranty open · ${formatHoursLeft(warranty.hoursLeft)}`}</span>
-                              <span className="mt-1 block font-normal text-muted-foreground">A timely complaint blocks the release.</span>
-                            </>
+                      {paymentStatus && (
+                        <Field label="Payment">
+                          {paymentStatus === "COMPLETED" ? (
+                            <Badge tone="ok" dot>Released</Badge>
                           ) : (
-                            <span>Warranty window closed</span>
+                            <>
+                              <Badge tone="danger" dot>Held</Badge>
+                              <span className="mt-1 block font-normal text-muted-foreground">Held while the complaint is open.</span>
+                            </>
                           )}
                         </Field>
                       )}
@@ -519,11 +606,20 @@ export function DisputesPage() {
                     />
                   </CaseCard>
 
-                  <CaseCard title="Conversation" icon={MessagesSquare} count={chatCount}>
+                  {photoCount > 0 && (
+                    <CaseCard title="Complaint photos" icon={Images} count={photoCount}>
+                      <ComplaintPhotos key={selected.id} groups={photoGroups} />
+                    </CaseCard>
+                  )}
+
+                  <CaseCard title="Attached chat" icon={MessagesSquare} count={chatCount}>
                     <Conversation
+                      total={chatCount}
                       state={chat}
                       parties={{ clientId: selected.clientId ?? null, providerId: selected.providerId ?? null, clientName: selected.clientName, providerName: selected.providerName }}
                       refreshing={refreshingJobId === selected.jobId}
+                      olderStatus={olderStatus[selected.jobId]}
+                      onLoadOlder={() => loadOlderConversation(selected.jobId)}
                       onRetry={() => retryConversation(selected.jobId)}
                       onRefresh={() => void refreshConversation(selected.jobId)}
                     />
@@ -595,7 +691,7 @@ export function DisputesPage() {
                         <section aria-labelledby="decision-step-decide" className="space-y-3 border-t border-border pt-5">
                           <StepTitle id="decision-step-decide" number={2} title="Decide" />
                           {selected.paymentSettled && (
-                            <p className="text-[12.5px] text-muted-foreground">Payment already settled. Record your decision here; use Transactions → Issue Credit if compensation is approved.</p>
+                            <p className="text-[12.5px] text-muted-foreground">Payment already settled. Record your decision here.</p>
                           )}
                           <ReasonField
                             value={note}
@@ -607,13 +703,13 @@ export function DisputesPage() {
                           <div className="space-y-3">
                             <OutcomeRow
                               tone="ok"
-                              text={recordOnly ? "Saves the decision and note. No money moves." : `Pays ${selected.amount} to ${selected.providerName}. This can't be undone.`}
+                              text={recordOnly ? "Saves the decision and note. No money moves." : `${releaseSplit(selected.amount, commissionRate)}. This can't be undone.`}
                               button={twoColumns ? decideButton : undefined}
                             />
                             {!recordOnly && (
                               <OutcomeRow
                                 tone="danger"
-                                text={`Returns ${selected.amount} to ${selected.clientName}. This can't be undone.`}
+                                text={REFUND_RECORDED}
                                 button={twoColumns ? refundButton : undefined}
                               />
                             )}
@@ -631,6 +727,7 @@ export function DisputesPage() {
                         {selected.resolution ? (
                           <>
                             <p className="font-medium">{[resolutionLabel(selected.resolution), selected.resolvedAt].filter(Boolean).join(" · ")}</p>
+                            {selected.resolution === "REFUNDED_TO_CLIENT" && <p className="leading-relaxed text-muted-foreground">{REFUND_RECORDED}</p>}
                             {selected.resolutionNote && <p className="leading-relaxed text-muted-foreground">{selected.resolutionNote}</p>}
                           </>
                         ) : (
@@ -662,13 +759,13 @@ export function DisputesPage() {
 
       <ConfirmDialog
         open={confirmOpen}
-        title={confirming?.resolution === "REVIEWED" ? "Record the admin decision?" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release escrow to the provider?" : "Refund escrow to the client?"}
+        title={confirming?.resolution === "REVIEWED" ? "Record the admin decision?" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release escrow to the provider?" : "Record the refund to the client?"}
         message={
           !confirmTarget || !confirming
             ? ""
-            : confirming.resolution === "REVIEWED" ? "This case has no unsettled payment. Save the decision note without moving money. Any compensation must use the existing Issue Credit action." : confirming.resolution === "RELEASED_TO_PROVIDER"
-              ? `Pay ${confirmTarget.amount} to ${confirmTarget.providerName}. This can't be undone.`
-              : `Refund ${confirmTarget.amount} to ${confirmTarget.clientName}. This can't be undone.`
+            : confirming.resolution === "REVIEWED" ? "This case has no unsettled payment. Save the decision note without moving money." : confirming.resolution === "RELEASED_TO_PROVIDER"
+              ? `${releaseSplit(confirmTarget.amount, commissionRate)}. This can't be undone.`
+              : REFUND_RECORDED
         }
         confirmLabel={confirming?.resolution === "REVIEWED" ? "Save decision" : confirming?.resolution === "RELEASED_TO_PROVIDER" ? "Release payment" : "Refund client"}
         danger={false}
@@ -734,6 +831,15 @@ function DeadlineValue({ iso, hoursToDeadline, open }: { iso: string | null; hou
   );
 }
 
+/** "5 h left", "2 d 4 h left", "2 d left", "under 1 h left" (the cancellation response countdown). */
+function formatHoursLeft(hours: number): string {
+  if (hours < 1) return "under 1 h left";
+  if (hours < 24) return `${Math.floor(hours)} h left`;
+  const days = Math.floor(hours / 24);
+  const rest = Math.floor(hours % 24);
+  return rest === 0 ? `${days} d left` : `${days} d ${rest} h left`;
+}
+
 function omit<T>(record: Record<string, T>, key: string): Record<string, T> {
   const next = { ...record };
   delete next[key];
@@ -793,27 +899,48 @@ function senderRole(message: ConversationMessage, parties: Parties): SenderRole 
 }
 
 function Conversation({
+  total,
   state,
   parties,
   refreshing,
+  olderStatus,
+  onLoadOlder,
   onRetry,
   onRefresh,
 }: {
+  /** The whole chat's size (`chat.message_count`, else the server total), or undefined to count the transcript. */
+  total?: number;
   state: ConversationState | undefined;
   parties: Parties;
   refreshing: boolean;
+  /** Whether the "Load older messages" request is running or has failed. */
+  olderStatus: "loading" | "error" | undefined;
+  onLoadOlder: () => void;
   onRetry: () => void;
   onRefresh: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const count = Array.isArray(state) ? state.length : 0;
-  const lastId = Array.isArray(state) && state.length > 0 ? state[state.length - 1].id : "";
+  const messages = state && state !== "error" ? state.messages : NO_MESSAGES;
+  const firstId = messages[0]?.id ?? "";
+  const lastId = messages[messages.length - 1]?.id ?? "";
+  // The scroll bookkeeping: the first and last message ids and the box height as of the last render.
+  const seen = useRef({ firstId: "", lastId: "", height: 0 });
   // Opens at the newest message, and moves there again when a new one arrives.
+  // Older messages prepended above the reader keep the reader on the same message.
   // A refresh that brings nothing new leaves the reader where they were.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [count, lastId]);
+    if (el) {
+      const prev = seen.current;
+      const prevFirstIndex = prev.firstId ? messages.findIndex((m) => m.id === prev.firstId) : -1;
+      if (prevFirstIndex > 0 && lastId === prev.lastId) {
+        el.scrollTop += el.scrollHeight - prev.height;
+      } else if (lastId !== prev.lastId) {
+        el.scrollTop = el.scrollHeight;
+      }
+      seen.current = { firstId, lastId, height: el.scrollHeight };
+    }
+  }, [firstId, lastId, olderStatus, messages]);
 
   if (state === undefined) {
     return (
@@ -834,19 +961,22 @@ function Conversation({
       </div>
     );
   }
+  const whole = total ?? messages.length;
+  const partial = state.hasMore && messages.length < whole;
   return (
     <div className="space-y-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="tabular text-[12px] text-muted-foreground">
-          {state.length} {state.length === 1 ? "message" : "messages"}
+          {whole} {whole === 1 ? "message" : "messages"}
+          {partial && <span className="text-subtle"> (showing {messages.length} of {whole})</span>}
         </span>
         <Button size="sm" variant="outline" onClick={onRefresh} disabled={refreshing}>
           <RefreshCw className={cn(refreshing && "motion-safe:animate-spin")} aria-hidden /> Refresh conversation
         </Button>
       </div>
-      {state.length === 0 ? (
+      {messages.length === 0 ? (
         <div className="flex items-center gap-2 rounded-[10px] border border-dashed border-border-strong px-3.5 py-3 text-[12.5px] text-muted-foreground">
-          <MessagesSquare className="size-4" /> No messages in this job&apos;s chat.
+          <MessagesSquare className="size-4" /> No messages between the client and provider.
         </div>
       ) : (
         // A fixed-height box: a long chat scrolls inside it and never grows the page.
@@ -857,8 +987,27 @@ function Conversation({
           tabIndex={0}
           className="max-h-[320px] overflow-y-auto overscroll-contain rounded-[10px] border border-border bg-surface-2/50 p-3"
         >
+          {state.hasMore &&
+            (olderStatus === "error" ? (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-[10px] border border-danger/25 bg-danger-soft px-3 py-2 text-[12.5px] text-danger">
+                Could not load older messages.
+                <Button size="sm" variant="ghost" className="text-danger hover:bg-danger/10" onClick={onLoadOlder}>
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mb-3 w-full"
+                onClick={onLoadOlder}
+                disabled={olderStatus === "loading"}
+              >
+                {olderStatus === "loading" ? "Loading older messages…" : "Load older messages"}
+              </Button>
+            ))}
           <ol className="space-y-3">
-            {state.map((m) => (
+            {messages.map((m) => (
               <ChatMessage key={m.id} message={m} parties={parties} />
             ))}
           </ol>
@@ -947,5 +1096,109 @@ function ChatAttachment({ url, label }: { url: string; label: string }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+type PhotoGroup = { key: string; label: string; urls: string[] };
+
+/** The complaint's own photos plus those on each statement or appeal, grouped by the side that sent them. */
+function complaintPhotoGroups(d: DisputeRow): PhotoGroup[] {
+  const buckets: Record<"client" | "provider" | "raiser" | "other", string[]> = { client: [], provider: [], raiser: [], other: [] };
+  for (const url of d.photoUrls ?? []) {
+    if (d.raisedById && d.raisedById === d.clientId) buckets.client.push(url);
+    else if (d.raisedById && d.raisedById === d.providerId) buckets.provider.push(url);
+    else buckets.raiser.push(url);
+  }
+  for (const e of d.entries ?? []) {
+    const side =
+      e.author?.role === "client" || (e.author && e.author.id === d.clientId) ? "client"
+      : e.author?.role === "provider" || (e.author && e.author.id === d.providerId) ? "provider"
+      : "other";
+    buckets[side].push(...(e.photo_urls ?? []));
+  }
+  const groups: PhotoGroup[] = [
+    { key: "client", label: "From the client", urls: buckets.client },
+    { key: "provider", label: "From the provider", urls: buckets.provider },
+    { key: "raiser", label: "From the person who raised the complaint", urls: buckets.raiser },
+    { key: "other", label: "From another sender", urls: buckets.other },
+  ];
+  return groups.filter((g) => g.urls.length > 0);
+}
+
+/** Photo thumbnails per sender. One dialog shows the chosen photo larger, with previous and next. */
+function ComplaintPhotos({ groups }: { groups: PhotoGroup[] }) {
+  const [broken, setBroken] = useState<Set<string>>(() => new Set());
+  const [openAt, setOpenAt] = useState<{ group: number; index: number } | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const markBroken = (url: string) => setBroken((prev) => new Set(prev).add(url));
+  const current = openAt ? groups[openAt.group] : undefined;
+  const url = current && openAt ? current.urls[openAt.index] : undefined;
+  const photoLabel = (label: string, i: number, n: number) => `Complaint photo ${i + 1} of ${n}, ${label.toLowerCase()}`;
+
+  return (
+    <div className="space-y-3">
+      {groups.map((g, gi) => (
+        <section key={g.key} aria-label={g.label}>
+          <h4 className="mb-1.5 text-[12px] font-medium text-muted-foreground">{g.label}</h4>
+          <ul className="flex flex-wrap gap-2">
+            {g.urls.map((u, i) => (
+              <li key={`${u}-${i}`}>
+                {broken.has(u) ? (
+                  <div role="note" className="flex size-20 flex-col items-center justify-center gap-1 rounded-[8px] border border-dashed border-border-strong p-1.5 text-center text-[10.5px] leading-tight text-muted-foreground">
+                    <ImageOff className="size-4" aria-hidden />
+                    Photo unavailable. Refresh the case.
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      opener.current = event.currentTarget;
+                      setOpenAt({ group: gi, index: i });
+                    }}
+                    className="block overflow-hidden rounded-[8px] border border-border bg-surface focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a Next image source */}
+                    <img src={u} alt={photoLabel(g.label, i, g.urls.length)} loading="lazy" onError={() => markBroken(u)} className="size-20 object-cover" />
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+      <Dialog open={openAt !== null} onOpenChange={(o) => !o && setOpenAt(null)}>
+        {/* Escape closes only this dialog; focus goes back to the thumbnail that opened it. */}
+        <DialogContent
+          className="max-w-[min(94vw,880px)] p-4"
+          onEscapeKeyDown={(event) => event.stopPropagation()}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            opener.current?.focus();
+          }}
+        >
+          <DialogTitle className="text-[14px]">{current?.label}</DialogTitle>
+          <DialogDescription className="sr-only">Enlarged complaint photo. Press Escape to close.</DialogDescription>
+          {current && openAt && url && (
+            broken.has(url) ? (
+              <p className="mt-3 text-[13px] text-muted-foreground">Photo unavailable. Refresh the case.</p>
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a Next image source
+              <img src={url} alt={photoLabel(current.label, openAt.index, current.urls.length)} onError={() => markBroken(url)} className="mt-3 max-h-[72vh] w-full object-contain" />
+            )
+          )}
+          {current && openAt && current.urls.length > 1 && (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <Button size="sm" variant="outline" disabled={openAt.index === 0} onClick={() => setOpenAt({ ...openAt, index: openAt.index - 1 })}>
+                Previous photo
+              </Button>
+              <span className="tabular text-[12px] text-muted-foreground">{openAt.index + 1} of {current.urls.length}</span>
+              <Button size="sm" variant="outline" disabled={openAt.index === current.urls.length - 1} onClick={() => setOpenAt({ ...openAt, index: openAt.index + 1 })}>
+                Next photo
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

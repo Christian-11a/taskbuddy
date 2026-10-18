@@ -86,6 +86,11 @@ export interface AdminBookingApiRow {
   service_categories: { name: string } | null;
   client: { id: string; full_name: string } | null;
   provider: { id: string; full_name: string } | null;
+  /** Complaint state on the job (migration 0063). 'open' means disputed. */
+  dispute_state?: "open" | "resolved" | null;
+  /** Set by the job detail view (backend jobs.service withReview). Admin list rows from
+   *  admin_list_bookings do not carry it, so the web derives it from dispute_state. */
+  display_status?: JobStatusApi | "disputed";
 }
 
 export interface ListBookingsApiResponse {
@@ -118,6 +123,8 @@ export interface AnalyticsSummaryApiResponse {
   bookings_by_category: Record<string, number>;
   booking_trend: { date: string; count: number }[];
   revenue_trend: { month: string; amount: number }[];
+  /** Released commission per month, "YYYY-MM" (backend admin.service.ts). Optional only so older fixtures still type-check. */
+  commission_trend?: { month: string; amount: number }[];
   top_providers: {
     profile_id: string;
     cached_avg_rating: number | null;
@@ -232,6 +239,10 @@ export interface AdminDisputeApiRow {
   /** Set only for cancellation reviews; an unknown value is passed through. */
   cancellation_state?: string | null;
   cancellation_deadline?: string | null;
+  /** Signed URLs for the complaint's own photos. */
+  photo_urls?: string[];
+  /** The job chat attached to every case; null when the lookup failed. */
+  chat?: { conversation_id: string | null; message_count: number } | null;
 }
 
 export interface ListDisputesApiResponse {
@@ -269,7 +280,7 @@ export interface AdminBookingDetailApiResponse extends AdminBookingApiRow {
   scheduled_at: string | null;
   photo_urls: string[] | null;
   escrow: { amount: number | string; status: EscrowStatusApi } | null;
-  /** When the job was completed; starts the 72-hour warranty window. */
+  /** When the job was completed; the payment is released when the client confirms it is done. */
   completed_at?: string | null;
 }
 
@@ -318,6 +329,8 @@ export interface AdminWalletTxnApiRow {
   amount: number | string;
   title: string;
   created_at: string;
+  /** Sent by the API (select *); carries the Xendit marker on a withdrawal. */
+  review_note?: string | null;
   profile: { id: string; full_name: string } | null;
 }
 
@@ -360,6 +373,18 @@ export interface CommissionApiResponse {
   updated_at: string;
 }
 
+/** GET /admin/commission: the rate plus the earnings figures (backend AdminPlatformService.getCommission). PATCH returns only CommissionApiResponse. */
+export interface CommissionOverviewApiResponse extends CommissionApiResponse {
+  /** Commission on released escrows, all time. */
+  total_earned: number;
+  /** Commission on escrows released in the current calendar month. */
+  earned_this_month: number;
+  /** Number of released escrows that carried a commission. */
+  released_jobs: number;
+  /** Held escrow total times the current rate: what it would yield if released today. */
+  pending_estimate: number;
+}
+
 export interface BroadcastApiResponse {
   sent: number;
   failed: number;
@@ -393,8 +418,13 @@ export interface AdminMessageApiRow {
   created_at: string;
 }
 
+/** One page of GET /admin/jobs/:jobId/conversation: oldest first. `before` pages further back. */
 export interface AdminConversationApiResponse {
   messages: AdminMessageApiRow[];
+  /** Every message in the job's chat, not just this page. */
+  total: number;
+  /** True when older messages exist; pass the oldest loaded message id as `before` for them. */
+  has_more: boolean;
 }
 
 // ─── Skill requests (migration 0034) ──────────────────────────────────────────
@@ -410,4 +440,34 @@ export interface AdminSkillRequestApiRow {
   created_at: string;
   category?: { id: number; name: string } | null;
   provider?: { full_name: string | null } | null;
+}
+
+// ─── Provider credentials (GET /admin/credentials) ───────────────────────────
+
+export type AdminCredentialType = "tesda_nc" | "prc_license" | "trade_certificate" | "other";
+
+export interface AdminCredentialApiRow {
+  id: string;
+  provider_id: string;
+  category_id: number;
+  credential_type: AdminCredentialType;
+  title: string;
+  issuer: string;
+  credential_number: string | null;
+  issued_on: string | null;
+  expires_on: string | null;
+  /** An approved credential past its expiry date reads "expired". */
+  status: "pending" | "approved" | "rejected" | "expired";
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  /** Signed download link, valid for one hour; null if signing failed. */
+  document_url: string | null;
+  service_categories?: { id: number; name: string } | null;
+  profiles?: { full_name: string | null } | null;
+}
+
+export interface AdminCredentialListResponse {
+  credentials: AdminCredentialApiRow[];
+  total: number;
 }

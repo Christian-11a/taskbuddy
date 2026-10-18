@@ -12,6 +12,7 @@ const withdrawals = [
   { id: "w2", profile_id: "u7", profile: { id: "u7", full_name: "Maria Garcia" }, amount: "1820.50", title: "Withdrawal to bank", withdrawal_destination: "BPI · ****4410 · Maria Garcia", status: "pending", created_at: daysAgo(1), reviewed_at: null, reviewed_by: null, review_note: null, direction: "debit", kind: "withdrawal" },
   { id: "w3", profile_id: "u3", profile: { id: "u3", full_name: "Juan Dela Cruz" }, amount: "900.00", title: "Withdrawal to GCash", withdrawal_destination: "GCash · 0917 555 0113", status: "completed", created_at: daysAgo(6), reviewed_at: daysAgo(5), reviewed_by: "admin-1", review_note: "Ref 8812 3301", direction: "debit", kind: "withdrawal" },
   { id: "w4", profile_id: "u4", profile: { id: "u4", full_name: "Rico Bautista" }, amount: "5000.00", title: "Withdrawal to GCash", withdrawal_destination: null, status: "failed", created_at: daysAgo(9), reviewed_at: daysAgo(8), reviewed_by: "admin-1", review_note: "No destination on file", direction: "debit", kind: "withdrawal" },
+  { id: "w5", profile_id: "u2", profile: { id: "u2", full_name: "Mark Santos" }, amount: "2400.00", title: "Payout for Deep clean 2BR condo", withdrawal_destination: null, status: "failed", created_at: daysAgo(1, 2), reviewed_at: null, reviewed_by: null, review_note: "Xendit: Account number is not valid for this channel", direction: "debit", kind: "withdrawal" },
 ];
 
 const skillRequests = [
@@ -81,6 +82,8 @@ const bookings = Array.from({ length: 23 }, (_, i) => {
     scheduled_at: daysAgo(i - 2),
     photo_urls: ["/promo/taskbuddy-mascot.webp"],
     escrow: i % 3 === 0 ? { amount: 1450, status: "held" } : null,
+    // Admin list rows carry dispute_state, not display_status (the web derives "disputed" from it).
+    dispute_state: i === 5 ? "open" : null,
   };
 });
 const escrowStatuses = ["released", "held", "disputed", "refunded", "released"];
@@ -94,9 +97,9 @@ const transactions = Array.from({ length: 17 }, (_, i) => ({
   client: person(`c${i}`, clients[i % clients.length]),
   provider: person(`p${i}`, pros[i % 4]!),
   funding_method: i % 2 ? "card" : "wallet",
-  transfer_status: i === 0 ? "failed" : i % 5 === 0 ? "transferred" : "none",
-  stripe_transfer_id: i % 5 === 0 && i ? "tr_1Q2w3E4r5T" : null,
-  transfer_last_error: i === 0 ? "Account is restricted" : null,
+  transfer_status: i === 0 ? "failed" : i === 10 ? "not_eligible" : i % 5 === 0 ? "transferred" : "none",
+  stripe_transfer_id: i % 5 === 0 && i && i !== 10 ? "tr_1Q2w3E4r5T" : null,
+  transfer_last_error: i === 0 ? "Account is restricted" : i === 10 ? "Provider has not linked a payout account" : null,
 }));
 const walletKinds = ["topup", "withdrawal", "payout", "refund", "recovery_credit"];
 const wallet = Array.from({ length: 19 }, (_, i) => {
@@ -108,10 +111,15 @@ const wallet = Array.from({ length: 19 }, (_, i) => {
     kind,
     amount: String(200 + ((i * 457) % 5000)),
     title: kind === "topup" ? "GCash top-up" : kind === "withdrawal" ? "Withdrawal to GCash" : kind === "payout" ? "Payout for Deep clean 2BR condo" : kind === "refund" ? "Refund for cancelled job" : "Dispute resolution credit",
-    created_at: daysAgo(i * 0.8),
+    // Recent rows stay inside the current-era window; i=5 is a pre-cutoff row the Payment records tab hides.
+    created_at: i === 5 ? "2026-10-01T10:00:00.000Z" : daysAgo(Math.min(i * 0.8, 1.5)),
+    // Xendit marker on every withdrawal except i=6, which has none and is hidden as a legacy payout.
+    review_note: kind === "withdrawal" && i !== 6 ? `XENDIT-mock-${i}` : null,
     profile: person(`u${i}`, [...clients, "Mark Santos", "Maria Garcia"][i % 6]),
   };
 });
+// Mark Santos's balance: what the refused Xendit payout above would send next.
+wallet.push({ id: "wt-balance-u2", direction: "credit", status: "completed", kind: "payout", amount: "2400", title: "Payout for Deep clean 2BR condo", created_at: daysAgo(2), review_note: null, profile: person("u2", "Mark Santos") });
 const activity = Array.from({ length: 34 }, (_, i) => ({
   id: i,
   old_status: jobStatuses[(i + 2) % 6],
@@ -132,10 +140,11 @@ const audit = Array.from({ length: 26 }, (_, i) => ({
   actor: person("admin-1", i % 4 ? "Ana Cruz" : "Platform Owner"),
 }));
 
-// Job detail for the dispute and cancellation sample cases (Disputes and Transactions read the warranty from here).
+// Job detail for the dispute and cancellation sample cases (Disputes and Transactions read the payment state from here).
+// A completed job's escrow is released on completion; only a job with an open complaint keeps it disputed.
 const disputeJobs: Record<string, { status: string; completed_at: string | null; escrow: { amount: number; status: string } | null }> = {
-  j1057: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 850, status: "held" } },
-  j1066: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 3100, status: "held" } },
+  j1057: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 850, status: "disputed" } },
+  j1066: { status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 3100, status: "disputed" } },
   j1049: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 1200, status: "released" } },
   j1019: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 950, status: "released" } },
   j0988: { status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 2000, status: "released" } },
@@ -166,7 +175,9 @@ const routes: [RegExp, string, Handler][] = [
   [/^\/admin\/bookings$/, "GET", (u) => {
     const status = u.searchParams.get("status");
     const q = u.searchParams.get("search");
-    const rows = bookings.filter((b) => (!status || b.status === status) && matches(q, b.id, b.client?.full_name, b.service_categories.name));
+    const rows = bookings.filter(
+      (b) => (!status || (status === "disputed" ? b.dispute_state === "open" : b.status === status)) && matches(q, b.id, b.client?.full_name, b.service_categories.name),
+    );
     return { bookings: paged(rows, u), total: rows.length };
   }],
   [/^\/admin\/bookings\/[^/]+$/, "GET", (u) => {
@@ -174,9 +185,10 @@ const routes: [RegExp, string, Handler][] = [
     const index = bookings.findIndex((b) => b.id === id);
     if (index === -1) return jobDetail(id, disputeJobs[id] ?? { status: "in_progress", completed_at: null, escrow: { amount: 1450, status: "held" } });
     const booking = bookings[index];
-    // Every third job is completed 10 h ago with the escrow still held (inside the warranty window);
-    // the second is completed 5 days ago (warranty closed) with the escrow released.
-    if (index % 3 === 0) return { ...booking, status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 1450, status: "held" } };
+    // A completed job with an open complaint keeps its escrow held (drawer: "Held while the complaint is open").
+    if (booking.dispute_state === "open") return { ...booking, completed_at: daysAgo(2, 0), escrow: { amount: 1300, status: "disputed" } };
+    // Every third job is completed 10 h ago with the escrow released; the second is completed 5 days ago, also released.
+    if (index % 3 === 0) return { ...booking, status: "completed", completed_at: daysAgo(0, 10), escrow: { amount: 1450, status: "released" } };
     if (index === 1) return { ...booking, status: "completed", completed_at: daysAgo(5, 0), escrow: { amount: 900, status: "released" } };
     return booking;
   }],
@@ -186,7 +198,13 @@ const routes: [RegExp, string, Handler][] = [
     const rows = transactions.filter((t) => (!status || t.status === status) && matches(q, t.id, t.client.full_name, t.provider.full_name));
     return { transactions: paged(rows, u), total: rows.length };
   }],
-  [/^\/admin\/wallet-transactions$/, "GET", () => ({ transactions: wallet, total: wallet.length })],
+  [/^\/admin\/escrow\/[^/]+\/retry-transfer$/, "POST", () => ({ outcome: "transferred" })],
+  [/^\/admin\/wallet-transactions$/, "GET", (u) => {
+    const direction = u.searchParams.get("direction");
+    const status = u.searchParams.get("status");
+    const rows = wallet.filter((t) => (!direction || t.direction === direction) && (!status || t.status === status));
+    return { transactions: rows, total: rows.length };
+  }],
   [/^\/admin\/activity$/, "GET", (u) => {
     const q = u.searchParams.get("search");
     const rows = activity.filter((a) => matches(q, a.jobs.title));
@@ -199,7 +217,14 @@ const routes: [RegExp, string, Handler][] = [
     { id: "admin-2", email: "owner@example.com", full_name: "Platform Owner", role: "admin", created_at: daysAgo(320) },
     { id: "admin-3", email: "former@example.com", full_name: "Former Admin", role: "admin", created_at: daysAgo(280), deactivated_at: daysAgo(40) },
   ]],
-  [/^\/admin\/commission$/, "GET", () => ({ commission_rate: "0.10", updated_at: daysAgo(30) })],
+  [/^\/admin\/commission$/, "GET", () => ({
+    commission_rate: "0.10",
+    updated_at: daysAgo(30),
+    total_earned: 4250,
+    earned_this_month: 589,
+    released_jobs: 38,
+    pending_estimate: 1275,
+  })],
   [/^\/admin\/withdrawals$/, "GET", (u) => {
     const rows = withdrawals.filter((w) => w.status === (u.searchParams.get("status") ?? "pending"));
     return { withdrawals: rows, total: rows.length };
@@ -226,7 +251,8 @@ const routes: [RegExp, string, Handler][] = [
   }],
   [/^\/admin\/jobs\/[^/]+\/conversation$/, "GET", (u) => {
     const jobId = u.pathname.split("/")[3];
-    return { messages: jobId === "j1057" ? sampleCaseConversation : conversation };
+    const messages = jobId === "j1057" ? sampleCaseConversation : conversation;
+    return { messages, total: messages.length, has_more: false };
   }],
 ];
 
