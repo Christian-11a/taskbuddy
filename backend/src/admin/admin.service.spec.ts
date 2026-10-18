@@ -97,11 +97,48 @@ describe('AdminService', () => {
 
       const result = await service.listUsers({ search: 'ali' });
 
-      expect(result).toEqual({ users: rows, total: 1 });
+      expect(result).toEqual({
+        users: [
+          { ...rows[0], identity_verified: null, certificate_status: null },
+        ],
+        total: 1,
+      });
       const orCall = calls.find((c) => c.method === 'or');
       expect(orCall?.args[0]).toBe(
         'full_name.ilike."%ali%",email.ilike."%ali%"',
       );
+    });
+
+    it('adds identity and certificate status from admin_user_certificates (0074)', async () => {
+      const { supabase } = createSupabaseMock({
+        admin_user_overview: [
+          { data: [{ id: 'p1', role: 'provider' }], error: null, count: 1 },
+        ],
+        admin_user_certificates: [
+          {
+            data: [
+              {
+                id: 'p1',
+                identity_verified: true,
+                certificate_status: 'pending',
+              },
+            ],
+            error: null,
+          },
+        ],
+      });
+      const service = new AdminService(supabase, createAdminActionsMock().mock);
+
+      const result = await service.listUsers({});
+
+      expect(result.users).toEqual([
+        {
+          id: 'p1',
+          role: 'provider',
+          identity_verified: true,
+          certificate_status: 'pending',
+        },
+      ]);
     });
 
     it('keeps filter syntax in the search term literal', async () => {

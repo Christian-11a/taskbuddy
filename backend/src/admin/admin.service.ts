@@ -127,7 +127,60 @@ export class AdminService {
     }
     const { data, error, count } = await builder;
     if (error) throw new BadRequestException(error.message);
-    return { users: data ?? [], total: count ?? 0 };
+    return {
+      users: await this.withCertificates(
+        (data ?? []) as Record<string, unknown>[],
+      ),
+      total: count ?? 0,
+    };
+  }
+
+  /**
+   * Adds `identity_verified` and `certificate_status` (main service) to user
+   * rows from admin_user_certificates (0074), so the Users page can say what a
+   * provider is missing. Non-providers get nulls. A failed lookup leaves the
+   * rows as they are rather than failing the list.
+   */
+  private async withCertificates<T extends Record<string, unknown>>(
+    users: T[],
+  ): Promise<
+    (T & {
+      identity_verified: boolean | null;
+      certificate_status: string | null;
+    })[]
+  > {
+    const ids = users.map((u) => u.id as string);
+    let byId = new Map<
+      string,
+      { identity_verified: boolean | null; certificate_status: string | null }
+    >();
+    if (ids.length > 0) {
+      const { data, error } = await this.supabase.admin
+        .from('admin_user_certificates')
+        .select('id, identity_verified, certificate_status')
+        .in('id', ids);
+      if (error) {
+        this.logger.warn(`Certificate status not read: ${error.message}`);
+      } else {
+        byId = new Map(
+          (
+            (data ?? []) as {
+              id: string;
+              identity_verified: boolean | null;
+              certificate_status: string | null;
+            }[]
+          ).map((row) => [row.id, row]),
+        );
+      }
+    }
+    return users.map((u) => {
+      const row = byId.get(u.id as string);
+      return {
+        ...u,
+        identity_verified: row?.identity_verified ?? null,
+        certificate_status: row?.certificate_status ?? null,
+      };
+    });
   }
 
   async getUser(userId: string) {
@@ -138,7 +191,10 @@ export class AdminService {
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     if (!data) throw new NotFoundException('User not found');
-    return data;
+    const [user] = await this.withCertificates([
+      data as Record<string, unknown>,
+    ]);
+    return user;
   }
 
   async suspend(admin: Profile, userId: string, dto: SuspendUserDto) {
