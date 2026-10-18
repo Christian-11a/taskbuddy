@@ -30,14 +30,15 @@ export const K = {
   pBooked: 594, pStart: 636,
   // 6. chat
   chat: 648,
-  // 7. tasks ticked, client confirms
-  work: 748, pTick1: 768, pTick2: 782, doneFly: 790, doneLand: 806, cConfirm: 826,
+  // 7. tasks ticked (each needs a proof photo), client confirms
+  work: 748, pTick1: 742, pTick2Tap: 758, proofSheet: 762, proofAdd: 774, proofDone: 788, pTick2: 792,
+  doneFly: 796, doneLand: 812, cConfirm: 832,
   // 8. payment released
-  paid: 832, coinFly: 834, coinLand: 856,
+  paid: 838, coinFly: 840, coinLand: 862,
   // 9. review
-  cLeaveReview: 898, review: 904, stars: [918, 923, 928, 933, 938], chip1: 946, chip2: 952, typeA: 958, typeB: 982, submit: 992,
-  starFly: 994, starLand: 1002,
-  end: 1044,
+  cLeaveReview: 904, review: 910, stars: [924, 929, 934, 939, 944], chip1: 952, chip2: 958, typeA: 964, typeB: 988, submit: 998,
+  starFly: 1000, starLand: 1008,
+  end: 1050,
 };
 
 export const CHAT = [

@@ -23,11 +23,11 @@ export const pal = (tone: Tone) => tone === 'provider'
 export const DW = 411;
 export const DH = 914;
 
-export const Phone: React.FC<{ w: number; children: React.ReactNode }> = ({ w, children }) => {
+export const Phone: React.FC<{ w: number; children: React.ReactNode; flat?: boolean }> = ({ w, children, flat }) => {
   const pad = w * 0.022;
   const k = (w - pad * 2) / DW;
   return (
-    <div style={{ width: w, height: DH * k + pad * 2, borderRadius: w * 0.12, background: '#0B1220', padding: pad, position: 'relative', boxShadow: `0 ${w * 0.07}px ${w * 0.18}px rgba(6,20,34,0.34)` }}>
+    <div style={{ width: w, height: DH * k + pad * 2, borderRadius: w * 0.12, background: '#0B1220', padding: pad, position: 'relative', boxShadow: flat ? undefined : `0 ${w * 0.07}px ${w * 0.18}px rgba(6,20,34,0.34)` }}>
       <div style={{ width: DW * k, height: DH * k, borderRadius: w * 0.1, overflow: 'hidden', position: 'relative', background: T.canvas }}>
         <div style={{ width: DW, height: DH, transform: `scale(${k})`, transformOrigin: '0 0', position: 'absolute', fontFamily: INTER, color: T.ink900 }}>{children}</div>
         <div style={{ position: 'absolute', top: 14 * k, left: '50%', width: 20 * k, height: 20 * k, marginLeft: -10 * k, borderRadius: 20 * k, background: '#0B1220', zIndex: 20 }} />

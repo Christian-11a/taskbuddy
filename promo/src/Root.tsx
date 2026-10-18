@@ -11,6 +11,8 @@ import { StoryClip, storyClipMetadata } from './v2/StoryClip';
 import { PhoneStill, PHONE_STILL } from './v2/PhoneStill';
 import { OgImage } from './OgImage';
 import { HeroStill } from './v2/HeroLoop';
+import { CarouselClip, CarouselPoster, carouselMetadata } from './hero/Carousel';
+import { PhoneShot, SHOT_H, SHOT_W } from './hero/PhoneShot';
 import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAMES } from './guide/GuideLesson';
 
 export const Root: React.FC = () => (
@@ -18,6 +20,9 @@ export const Root: React.FC = () => (
     <Still id="HeroStill" component={HeroStill} width={1920} height={1080} defaultProps={{ at: 60 }} />
     <Composition id="TaskBuddy60" component={PromoV2} durationInFrames={TOTAL60} fps={FPS} width={1920} height={1080} />
     <Composition id="HeroLoop" component={HeroLoop} durationInFrames={HERO_LOOP_FRAMES} fps={FPS} width={1920} height={1080} />
+    <Still id="PhoneShot" component={PhoneShot} width={SHOT_W} height={SHOT_H} defaultProps={{ role: 'customer' as const }} />
+    <Still id="CarouselPoster" component={CarouselPoster} width={1080} height={1080} defaultProps={{ role: 'customer' as const, step: 1 }} />
+    <Composition id="CarouselClip" component={CarouselClip} durationInFrames={100} fps={FPS} width={1080} height={1080} defaultProps={{ role: 'customer' as const, step: 1 }} calculateMetadata={carouselMetadata} />
     <Composition id="StoryClip" component={StoryClip} durationInFrames={100} fps={FPS} width={1080} height={1080} defaultProps={{ role: 'customer' as const, step: 1 }} calculateMetadata={storyClipMetadata} />
     <Composition id="PhoneStill" component={PhoneStill} durationInFrames={1} fps={FPS} width={PHONE_STILL.w} height={PHONE_STILL.h} defaultProps={{ role: 'customer' as const, film: 300 }} />
     <Composition id="TaskBuddyPromo" component={Promo} durationInFrames={TOTAL} fps={FPS} width={W} height={H} />

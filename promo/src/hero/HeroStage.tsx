@@ -27,9 +27,9 @@ export const CAPS: Cap[] = [
   { at: 490, out: 586, a: 'Pay when', b: 'you hire.' },
   { at: 594, out: 640, a: 'Booking', b: 'confirmed.' },
   { at: 650, out: 740, a: 'Chat in', b: 'real time.' },
-  { at: 750, out: 826, a: 'Tick off', b: 'each task.' },
-  { at: 834, out: 896, a: 'Paid when', b: 'you confirm.' },
-  { at: 906, out: 1032, a: 'Rate', b: 'the work.' },
+  { at: 750, out: 832, a: 'Tick off', b: 'each task.' },
+  { at: 840, out: 902, a: 'Paid when', b: 'you confirm.' },
+  { at: 912, out: 1038, a: 'Rate', b: 'the work.' },
 ];
 
 const Caption: React.FC<{ f: number; c: Cap }> = ({ f, c }) => {

@@ -2092,7 +2092,7 @@ html.motion-override-off .film-modal:not([hidden]) .film-modal__panel { animatio
    frame has no visible edge at any panel shape. Colours sampled from the clips. */
 .story-media { padding: 1.25rem 0 1rem; }
 .story-media::before { display: none; }
-.story--customer .story-media { background: #e0f3f9; }
+.story--customer .story-media { background: #075985; }
 .story--provider .story-media { background: #0d1a2a; }
 .story-capture img.story-image-layer,
 .story-capture video.story-video {
@@ -2112,7 +2112,8 @@ html.motion-override-off .film-modal:not([hidden]) .film-modal__panel { animatio
   transition: opacity 240ms var(--ease-out);
 }
 .story-capture video.story-video.is-visible { opacity: 1; }
-.story--provider .story-capture figcaption { color: color-mix(in oklch, white 72%, transparent); }
+.story--customer .story-capture figcaption,
+.story--provider .story-capture figcaption { color: color-mix(in oklch, white 78%, transparent); }
 /* Phones/tablets: the carousel grows to fit its copy (it used to clip the last
    lines at a fixed height), the clip gets a taller area, and the caption that
    repeats the step title gives its row to the phone. */

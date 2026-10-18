@@ -43,7 +43,7 @@
         {
           image: "/film/story/customer-1.jpg",
           video: "/film/story/customer-1.mp4",
-          alt: "TaskBuddy client home screen with services and the Post button",
+          alt: "TaskBuddy sign-up: choosing Client, entering details and verifying the email",
           caption: "Create your account.",
           title: "Create your account.",
           body: "Sign up in the app and verify your email to start posting jobs.",
@@ -51,9 +51,9 @@
           lessonTitle: "Create your account"
         },
         {
-          image: "/film/story/customer-1.jpg",
-          video: "/film/story/customer-1.mp4",
-          alt: "TaskBuddy client home screen with services and the Post button",
+          image: "/film/story/customer-2.jpg",
+          video: "/film/story/customer-2.mp4",
+          alt: "TaskBuddy client home screen with the Post a job card",
           caption: "Start with what you need.",
           title: "Start with what you need.",
           body: "Find a service, check your active jobs, and take the next step.",
@@ -61,9 +61,9 @@
           lessonTitle: "Your Home screen"
         },
         {
-          image: "/film/story/customer-2.jpg",
-          video: "/film/story/customer-2.mp4",
-          alt: "Client posting a job: service, tasks, urgency, and price options",
+          image: "/film/story/customer-3.jpg",
+          video: "/film/story/customer-3.mp4",
+          alt: "Client posting a job: service, address, tasks, urgency and a price option",
           caption: "Tell providers what you need.",
           title: "Tell providers what you need.",
           body: "Pick a service, its tasks and urgency, then choose one of three estimated price options.",
@@ -71,19 +71,19 @@
           lessonTitle: "Post a job"
         },
         {
-          image: "/film/story/customer-3.jpg",
-          video: "/film/story/customer-3.mp4",
-          alt: "Client comparing three proposals and hiring a verified provider",
+          image: "/film/story/customer-4.jpg",
+          video: "/film/story/customer-4.mp4",
+          alt: "Client reviewing a proposal, hiring the provider and paying",
           caption: "Compare proposals, then hire.",
           title: "Compare proposals, then hire.",
-          body: "Compare each proposal’s price and rating side by side, then hire to open payment.",
+          body: "Check each provider’s rating, certificate and message, then hire and pay safely.",
           lesson: "compare-proposals-and-hire",
           lessonTitle: "Compare proposals and hire"
         },
         {
-          image: "/film/story/customer-4.jpg",
-          video: "/film/story/customer-4.mp4",
-          alt: "Client tracking the job checklist with proof photos",
+          image: "/film/story/customer-5.jpg",
+          video: "/film/story/customer-5.mp4",
+          alt: "Client confirming the job is done and rating the provider",
           caption: "Follow the job, then confirm and review.",
           title: "Follow the job, then confirm and review.",
           body: "Follow the checklist and proof photos, confirm the job is done or report a problem, then leave a review.",
@@ -101,7 +101,7 @@
         {
           image: "/film/story/provider-1.jpg",
           video: "/film/story/provider-1.mp4",
-          alt: "Provider feed of jobs near you with a new job arriving",
+          alt: "TaskBuddy sign-up as a provider with a skill category and email code",
           caption: "Create your provider account.",
           title: "Create your provider account.",
           body: "Sign up as a provider and set up your profile.",
@@ -111,7 +111,7 @@
         {
           image: "/film/story/provider-2.jpg",
           video: "/film/story/provider-2.mp4",
-          alt: "Provider setup: ID photo, selfie, certificates, and payout account",
+          alt: "Provider setup: ID photo, selfie, certificate and review",
           caption: "Finish your setup first.",
           title: "Finish your setup first.",
           body: "Add your ID, a selfie, a certificate for each service, and a payout account before you send proposals.",
@@ -119,8 +119,8 @@
           lessonTitle: "Get verified and set up payouts"
         },
         {
-          image: "/film/story/provider-1.jpg",
-          video: "/film/story/provider-1.mp4",
+          image: "/film/story/provider-3.jpg",
+          video: "/film/story/provider-3.mp4",
           alt: "Provider feed of jobs near you with a new job arriving",
           caption: "Find jobs that fit your skills.",
           title: "Find jobs that fit your skills.",
@@ -141,7 +141,7 @@
         {
           image: "/film/story/provider-5.jpg",
           video: "/film/story/provider-5.mp4",
-          alt: "Provider doing the job with proof photos after being hired",
+          alt: "Provider starting the job and adding a proof photo for each task",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
           body: "Do the tasks and add proof photos, then wait for the client to confirm.",
@@ -149,9 +149,9 @@
           lessonTitle: "Do the job"
         },
         {
-          image: "/film/story/provider-3.jpg",
-          video: "/film/story/provider-3.mp4",
-          alt: "Provider Earnings screen listing what was paid out and what is on its way",
+          image: "/film/story/provider-6.jpg",
+          video: "/film/story/provider-6.mp4",
+          alt: "Provider Earnings screen with a payment released to GCash",
           caption: "Get paid automatically.",
           title: "Get paid automatically.",
           body: "Once the client confirms, your pay arrives in your payout account automatically, listed in Earnings.",

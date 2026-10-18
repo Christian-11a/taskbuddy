@@ -350,7 +350,7 @@ const Detail = (f: number, mode: Mode) => {
                 {working ? <Box on={ticks[i]} f={f} at={i ? K.pTick2 : K.pTick1} tone="provider" size={24} /> : <div style={{ width: 24, display: 'grid', placeItems: 'center' }}><div style={{ width: 6, height: 6, borderRadius: 3, background: T.ink500 }} /></div>}
                 <span style={{ fontSize: 15, fontWeight: 500, lineHeight: '20px', color: working && ticks[i] ? T.ink500 : T.ink900, textDecoration: working && ticks[i] ? 'line-through' : undefined }}>{t}</span>
               </div>
-            ))}
+            )).flatMap((row, i) => (working && ticks[i] ? [row, <div key={`ph${i}`} style={{ marginLeft: 36, marginTop: -4, transform: `scale(${i ? pop(f, K.pTick2) : 1})`, transformOrigin: 'left center' }}><ProofThumb s={44} k={i} /></div>] : [row]))}
           </div>
         </div>
         {mode !== 'new' && <Stepper n={mode === 'sent' ? 0 : mode === 'booked' ? 1 : 2} tone="provider" />}
@@ -360,8 +360,43 @@ const Detail = (f: number, mode: Mode) => {
       {footer}
       <Tap f={f} at={K.pSendTap} x={205} y={851} />
       <Tap f={f} at={K.pStart} x={205} y={825} />
-      <Tap f={f} at={K.pTick1} x={46} y={640} />
-      <Tap f={f} at={K.pTick2} x={46} y={688} />
+      <Tap f={f} at={K.pTick2Tap} x={46} y={736} />
+    </div>
+  );
+};
+
+const ProofThumb: React.FC<{ s: number; k?: number }> = ({ s, k = 0 }) => (
+  <div style={{ width: s, height: s, borderRadius: s * 0.2, overflow: 'hidden', position: 'relative', background: k ? 'linear-gradient(160deg, #CBD5E1, #94A3B8)' : 'linear-gradient(160deg, #D6DEE6, #A3B1BF)' }}>
+    <div style={{ position: 'absolute', left: '18%', right: '18%', bottom: '22%', height: '16%', borderRadius: 4, background: '#E2E8F0' }} />
+    <div style={{ position: 'absolute', left: '44%', top: '18%', width: '12%', height: '44%', borderRadius: 3, background: '#64748B' }} />
+    <div style={{ position: 'absolute', left: '30%', top: '18%', width: '40%', height: '10%', borderRadius: 3, background: '#64748B' }} />
+  </div>
+);
+const ProofSheet = (f: number) => {
+  const p = sp(f, K.proofSheet, { damping: 18, stiffness: 190, mass: 0.7 }) * tw(f, K.proofDone + 2, K.proofDone + 8, 1, 0);
+  const has = f >= K.proofAdd + 2;
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      {Detail(f, 'working')}
+      <Sheet p={p}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>Show the finished task</div>
+          <div style={{ alignSelf: 'flex-start', padding: '6px 12px', borderRadius: 999, background: T.ink100, color: T.ink700, fontSize: 14, fontWeight: 600, marginTop: -8 }}>{JOB.tasks[1]}</div>
+          <div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {has && <div style={{ position: 'relative', transform: `scale(${pop(f, K.proofAdd + 2)})` }}><ProofThumb s={68} k={1} /><div style={{ position: 'absolute', top: -6, right: -6, width: 22, height: 22, borderRadius: 11, background: T.ink900, color: T.white, display: 'grid', placeItems: 'center', fontSize: 12 }}>×</div></div>}
+              <div style={{ width: 68, height: 68, borderRadius: 14, border: `1.5px dashed ${T.field}`, display: 'grid', placeItems: 'center', background: T.surface, transform: `scale(${1 - hit(f, K.proofAdd, 3) * 0.08})` }}><Camera size={22} color={N.link} /></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 13, color: T.ink500 }}><span>Add 1 to 4 photos</span><span>{has ? 1 : 0} / 4</span></div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {!has && <div style={{ fontSize: 13, color: T.ink500, textAlign: 'center' }}>Add a photo to continue</div>}
+            <div style={{ borderRadius: 14, padding: '16px 0', textAlign: 'center', background: has ? N.primary : T.line, color: has ? T.white : T.ink500, fontSize: 15, fontWeight: 700, transform: `scale(${1 - hit(f, K.proofDone, 3) * 0.04})` }}>Mark as done</div>
+          </div>
+        </div>
+      </Sheet>
+      <Tap f={f} at={K.proofAdd} x={58} y={758} />
+      <Tap f={f} at={K.proofDone} x={205} y={860} />
     </div>
   );
 };
@@ -490,6 +525,8 @@ export const ProviderPhone: React.FC<{ f: number }> = ({ f }) => (
         { at: K.pBooked, render: (g) => Detail(g, 'booked'), kind: 'fade' },
         { at: K.chat, render: (g) => ChatScreen(g, 'p') },
         { at: K.work, render: (g) => Detail(g, 'working') },
+        { at: K.proofSheet, render: ProofSheet, kind: 'none' },
+        { at: K.proofDone + 8, render: (g) => Detail(g, 'working'), kind: 'none' },
         { at: K.paid + 2, render: Earnings },
         { at: K.review, render: Profile, kind: 'up' },
       ])}

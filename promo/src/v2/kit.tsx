@@ -265,8 +265,11 @@ export const Toast: React.FC<{ f: number; at: number; out?: number; title: strin
 };
 
 // ── Tap indicator: finger glides in, presses at `at`, ripple ───────────────
+/** Set to false to hide the finger (poster frames). */
+export const ShowTaps = React.createContext(true);
 export const Tap: React.FC<{ f: number; at: number; x: number; y: number; from?: [number, number] }> = ({ f, at, x, y, from = [60, 90] }) => {
-  if (f < at - 12 || f > at + 14) return null;
+  const show = React.useContext(ShowTaps);
+  if (!show || f < at - 12 || f > at + 14) return null;
   const m = tw(f, at - 12, at - 1, 0, 1, expoOut);
   const press = hit(f, at, 3);
   const ring = tw(f, at, at + 12, 0, 1, expoOut);
