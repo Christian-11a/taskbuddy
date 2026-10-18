@@ -149,6 +149,7 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
    | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
    | `0071_oauth_handoff_binding.sql` | `oauth_handoffs.challenge` and `secret_hash`: a Google sign-in claim needs the app's verifier and the redirect's secret (audit C2). |
+   | `0073_money_holds_and_sweeps.sql` | A cancelled hold can be re-held for another provider at the current price; `pass_through_balances` leaves client payments younger than 15 minutes for their hold; price-difference holds take the wallet lock and check the balance (audit H3, H5, H6). |
    | `0072_lockdown_direct_reads_and_uploads.sql` | Direct PostgREST reads: a user reads only their own profile; open jobs only by providers; `stripe_events` closed to anon/authenticated. `avatars`, `chat-attachments`, `job-photos` and `verification-docs` limited to 10 MB JPEG/PNG/WebP (audit H7, H8, M5). |
 
    On the linked project, 0001–0052 are recorded in the migration history.

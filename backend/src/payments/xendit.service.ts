@@ -225,6 +225,43 @@ export class XenditService {
   }
 
   /**
+   * Confirms a paid-invoice callback against Xendit itself: the invoice must
+   * exist, be PAID or SETTLED, and carry the same external id and amount. The
+   * callback token proves the sender knows the token; this proves the money.
+   * Throws when Xendit cannot be asked, so the callback is retried.
+   */
+  async confirmPaidInvoice(paid: XenditPaidInvoice): Promise<boolean> {
+    this.assertTestMode();
+    const response = await fetch(
+      `${API}/v2/invoices/${encodeURIComponent(paid.invoiceId)}`,
+      {
+        headers: {
+          authorization: `Basic ${Buffer.from(`${this.secretKey}:`).toString('base64')}`,
+        },
+      },
+    );
+    if (response.status === 404) return false;
+    if (!response.ok) {
+      throw new XenditRequestError(
+        `Xendit invoice lookup failed (${response.status})`,
+        response.status,
+      );
+    }
+    const invoice = (await response.json()) as {
+      external_id?: string;
+      status?: string;
+      paid_amount?: number;
+      amount?: number;
+    };
+    const amount = Number(invoice.paid_amount ?? invoice.amount ?? NaN);
+    return (
+      invoice.external_id === paid.externalId &&
+      (invoice.status === 'PAID' || invoice.status === 'SETTLED') &&
+      Math.round(amount * 100) === paid.amountCentavos
+    );
+  }
+
+  /**
    * The payout Xendit holds for one of our references, or null when it has
    * none (the request never reached it). Throws when Xendit cannot be asked.
    */
