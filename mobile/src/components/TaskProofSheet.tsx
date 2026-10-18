@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useThemedStyles, type Palette } from '../context/ThemeContext';
 import SheetFrame from './ui/SheetFrame';
 import Tap from './ui/Tap';
@@ -50,39 +50,49 @@ export default function TaskProofSheet({
 
   return (
     <SheetFrame visible={taskLabel !== null} onClose={busy ? undefined : onClose} contentStyle={s.sheet}>
-      <Text style={s.title} accessibilityRole="header">Proof the task is done</Text>
-      <Text style={s.task}>{taskLabel}</Text>
+      <Text style={s.title} accessibilityRole="header">Show the finished task</Text>
+      <View style={s.taskChip}>
+        <Text style={s.task} numberOfLines={2}>{taskLabel}</Text>
+      </View>
       <EvidencePhotoPicker
         testID="task-proof-picker"
         photos={photos}
         onChange={setPhotos}
         max={TASK_PROOF_MAX}
-        label="Photos (required)"
-        helper="Add at least one photo of the finished task. The client sees it."
+        min={1}
         disabled={busy}
       />
       {!!error && <Text style={s.error} accessibilityLiveRegion="polite">{error}</Text>}
-      <Tap
-        style={[s.button, !ready && s.buttonOff]}
-        disabled={!ready}
-        onPress={() => void submit()}
-        accessibilityRole="button"
-        accessibilityLabel="Mark as done"
-        accessibilityState={{ disabled: !ready }}
-      >
-        {busy ? <ActivityIndicator color={c.onPrimary} /> : <Text style={[s.buttonText, !ready && s.buttonTextOff]}>Mark as done</Text>}
-      </Tap>
+      <View style={s.footer}>
+        {photos.length === 0 && <Text style={s.hint}>Add a photo to continue</Text>}
+        <Tap
+          style={[s.button, !ready && !busy && s.buttonOff]}
+          disabled={!ready}
+          onPress={() => void submit()}
+          accessibilityRole="button"
+          accessibilityLabel="Mark as done"
+          accessibilityState={{ disabled: !ready, busy }}
+        >
+          {busy ? <ActivityIndicator color={c.onPrimary} /> : <Text style={[s.buttonText, !ready && s.buttonTextOff]}>Mark as done</Text>}
+        </Tap>
+      </View>
     </SheetFrame>
   );
 }
 
 const createStyles = ({ Colors, V6Colors }: Palette) => ({
   s: StyleSheet.create({
-    sheet: { gap: 12 },
-    title: { color: V6Colors.ink900, fontSize: 18, fontWeight: '800', fontFamily: 'Inter' },
-    task: { color: V6Colors.ink700, fontSize: 15, fontFamily: 'Inter' },
+    sheet: { gap: 16, paddingHorizontal: 24, paddingBottom: 24 },
+    title: { color: V6Colors.ink900, fontSize: 20, fontWeight: '800', fontFamily: 'Inter' },
+    taskChip: {
+      alignSelf: 'flex-start', maxWidth: '100%', backgroundColor: V6Colors.ink100,
+      borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginTop: -8,
+    },
+    task: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    footer: { gap: 8 },
+    hint: { color: V6Colors.ink500, fontSize: 13, textAlign: 'center', fontFamily: 'Inter' },
     error: { color: Colors.dangerText, fontSize: 14, fontFamily: 'Inter' },
-    button: { backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+    button: { backgroundColor: Colors.primary, borderRadius: 14, paddingVertical: 16, alignItems: 'center', alignSelf: 'stretch' },
     buttonOff: { backgroundColor: V6Colors.line },
     buttonText: { color: Colors.onPrimary, fontSize: 15, fontWeight: '700', fontFamily: 'Inter' },
     buttonTextOff: { color: V6Colors.ink500 },

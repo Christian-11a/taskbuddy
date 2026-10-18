@@ -1,96 +1,136 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, CreditCard, Landmark, Smartphone, Trash2 } from 'lucide-react-native';
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import TextField from '../../../src/components/ui/TextField';
+import ConfirmationModal from '../../../src/components/ConfirmationModal';
 import { api, type PayoutAccount, type PayoutMethod } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
-import { peso, shortDate } from '../../../src/lib/format';
-import { payoutStatus, payoutTitle } from '../../../src/lib/payoutLabels';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
+import {
+  digitsOnly, formatPayoutNumber, maskedNumber, payoutErrors, payoutNumberHelper, payoutNumberLabel,
+  payoutStatus, payoutTitle, type PayoutFormErrors,
+} from '../../../src/lib/payoutLabels';
+import { cleanText } from '../../../src/lib/textRules';
 
 export { payoutStatus, payoutTitle };
-import { cleanText, textLength } from '../../../src/lib/textRules';
 
-export const PAYOUT_METHODS: { key: PayoutMethod; label: string; numberLabel: string }[] = [
-  { key: 'gcash', label: 'GCash', numberLabel: 'GCash mobile number' },
-  { key: 'maya', label: 'Maya', numberLabel: 'Maya mobile number' },
-  { key: 'bank', label: 'Bank', numberLabel: 'Account number' },
+export const PAYOUT_METHODS: { key: PayoutMethod; label: string }[] = [
+  { key: 'gcash', label: 'GCash' },
+  { key: 'maya', label: 'Maya' },
+  { key: 'bank', label: 'Bank' },
 ];
+
+const FIELD_ORDER = ['bank', 'name', 'number'] as const;
+
+function methodName(account: Pick<PayoutAccount, 'method' | 'bank_name'>): string {
+  return account.method === 'bank' ? account.bank_name ?? 'Bank' : account.method === 'gcash' ? 'GCash' : 'Maya';
+}
 
 /** How a linked account reads: "GCash ••••4567", "BPI ••••0123". */
 export function accountLabel(account: Pick<PayoutAccount, 'method' | 'bank_name' | 'account_last4'>): string {
-  const name = account.method === 'bank' ? account.bank_name ?? 'Bank' : account.method === 'gcash' ? 'GCash' : 'Maya';
-  return `${name} ••••${account.account_last4}`;
-}
-
-/** The first thing wrong with the form, or null. */
-export function payoutProblem(input: { method: PayoutMethod; bankCode: string; accountName: string; accountNumber: string }): string | null {
-  if (input.method === 'bank' && !input.bankCode) return 'Choose your bank.';
-  if (textLength(input.accountName) < 2) return 'Enter the account holder name.';
-  const digits = input.accountNumber.replace(/\D/g, '');
-  if (digits.length < 6 || digits.length > 20) return 'Enter a number of 6 to 20 digits.';
-  return null;
+  return `${methodName(account)} ••••${account.account_last4}`;
 }
 
 /**
- * Where a provider's payouts are sent: a GCash, Maya or bank account. Payouts
+ * Where a provider's payouts are sent: one GCash, Maya or bank account. Payouts
  * go out through Xendit's sandbox, so no real money moves.
  */
-export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }) {
-  const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
+export default function SPPayoutAccountScreen({ onBack, onOpenEarnings }: { onBack: () => void; onOpenEarnings?: () => void }) {
+  const { styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   const account = useAsyncData(() => api.payoutAccount(), []);
-  const history = useAsyncData(() => api.paymentHistory(), []);
   const banks = useAsyncData(() => api.payoutBanks(), []);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
   const [method, setMethod] = useState<PayoutMethod>('gcash');
   const [bankCode, setBankCode] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<PayoutFormErrors>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
-  useEffect(() => {
-    if (!account.data) return;
-    setMethod(account.data.method);
-    setAccountName(account.data.account_name);
-  }, [account.data]);
+  const linked = account.data ?? null;
+  const showForm = linked ? changing : account.data === null && !account.loading;
+
+  const touch = () => {
+    setSaved(false);
+    setSubmitError(null);
+  };
+  const clearError = (key: keyof PayoutFormErrors) => setErrors((prev) => (prev[key] ? { ...prev, [key]: undefined } : prev));
+
+  const startChange = () => {
+    if (!linked) return;
+    setMethod(linked.method);
+    setAccountName(linked.account_name);
+    setAccountNumber('');
+    const wanted = (linked.bank_name ?? '').trim().toLowerCase();
+    const match = linked.method === 'bank' && wanted ? (banks.data ?? []).find((b) => b.name.trim().toLowerCase() === wanted) : undefined;
+    setBankCode(match?.code ?? '');
+    setErrors({});
+    touch();
+    setChanging(true);
+  };
+
+  const chooseMethod = (next: PayoutMethod) => {
+    touch();
+    setMethod(next);
+    setAccountNumber('');
+    setErrors({});
+  };
 
   const save = async () => {
-    const problem = payoutProblem({ method, bankCode, accountName, accountNumber });
-    if (problem) {
-      setError(problem);
-      return;
-    }
+    const found = payoutErrors({ method, bankCode, accountName, accountNumber });
+    setErrors(found);
+    if (scrollToFirstError(found)) return;
     setBusy(true);
-    setError(null);
+    setSubmitError(null);
     setSaved(false);
     try {
       await api.linkPayoutAccount({
         method,
         bank_code: method === 'bank' ? bankCode : undefined,
         account_name: cleanText(accountName),
-        account_number: accountNumber.replace(/\D/g, ''),
+        account_number: digitsOnly(accountNumber),
       });
       setAccountNumber('');
+      setChanging(false);
       setSaved(true);
       account.reload();
-      history.reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save this account.');
+      setSubmitError(e instanceof Error ? e.message : 'Could not save this account.');
     } finally {
       setBusy(false);
     }
   };
 
-  const payouts = (history.data ?? []).filter((row) => row.direction === 'debit' && row.kind === 'withdrawal');
-  const numberLabel = PAYOUT_METHODS.find((m) => m.key === method)!.numberLabel;
+  const remove = async () => {
+    setBusy(true);
+    setSubmitError(null);
+    try {
+      await api.unlinkPayoutAccount();
+      setConfirmRemove(false);
+      setChanging(false);
+      setSaved(false);
+      account.reload();
+    } catch (e) {
+      setConfirmRemove(false);
+      setSubmitError(e instanceof Error ? e.message : 'Could not remove this account.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const MethodIcon = linked?.method === 'bank' ? Landmark : linked?.method === 'maya' ? CreditCard : Smartphone;
 
   return (
     <View style={styles.screen}>
@@ -100,7 +140,7 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
         </Tap>
         <Text style={styles.headerTitle} accessibilityRole="header">Payout account</Text>
       </View>
-      <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
           When a client releases a payment, it is sent to this account, less the platform fee. TaskBuddy does not keep
           a balance for you. Prototype: payouts go through Xendit's test mode and no real money moves.
@@ -108,105 +148,156 @@ export default function SPPayoutAccountScreen({ onBack }: { onBack: () => void }
 
         {account.loading && !account.data && <ContentSkeleton variant="list" />}
         {!!account.error && <LoadErrorCard title="Couldn't load your account" message={account.error} onRetry={account.reload} />}
-        {account.data && (
+
+        {linked && (
           <View style={styles.card} testID="linked-account">
-            <Text style={styles.cardLabel}>Payouts go to</Text>
-            <Text style={styles.cardValue}>{accountLabel(account.data)}</Text>
-            <Text style={styles.cardMeta}>{account.data.account_name}</Text>
+            <View style={styles.cardTop}>
+              <View style={styles.methodIcon}><MethodIcon size={22} color={V6Colors.ink700} /></View>
+              <View style={styles.cardText}>
+                <Text style={styles.cardValue}>{methodName(linked)}</Text>
+                <Text style={styles.cardMeta}>{linked.account_name}</Text>
+                <Text style={styles.cardNumber} testID="masked-number">{maskedNumber(linked.account_last4)}</Text>
+              </View>
+            </View>
+            <Text style={styles.goesHere}>Payouts go here</Text>
+            {!changing && (
+              <View style={styles.cardActions}>
+                <Tap onPress={startChange} disabled={busy} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Change account">
+                  <Text style={styles.actionText}>Change account</Text>
+                </Tap>
+                <Tap onPress={() => setConfirmRemove(true)} disabled={busy} style={[styles.actionBtn, styles.actionDanger]} accessibilityRole="button" accessibilityLabel="Remove">
+                  <Trash2 size={16} color={V6Colors.dangerText} />
+                  <Text style={[styles.actionText, styles.actionTextDanger]}>Remove</Text>
+                </Tap>
+              </View>
+            )}
           </View>
         )}
+        {saved && <Text accessibilityLiveRegion="polite" style={styles.savedText}>Account saved.</Text>}
+        {!showForm && !!submitError && <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text>}
+
         {account.data === null && !account.loading && (
-          <Text style={styles.warning} testID="no-account">
-            No account linked yet. Payouts wait until you add one.
-          </Text>
+          <View style={styles.card} testID="no-account">
+            <Text style={styles.cardValue}>No payout account yet</Text>
+            <Text style={styles.cardMeta}>
+              Payouts go to your GCash, Maya or a bank account when the client confirms the job is done. Add one below.
+            </Text>
+          </View>
         )}
 
-        <Text style={styles.label}>{account.data ? 'Change account' : 'Link an account'}</Text>
-        <View style={styles.chips} accessibilityRole="radiogroup">
-          {PAYOUT_METHODS.map((item) => {
-            const selected = method === item.key;
-            return (
-              <Tap
-                key={item.key}
-                disabled={busy}
-                accessibilityRole="radio"
-                accessibilityLabel={item.label}
-                accessibilityState={{ selected }}
-                onPress={() => setMethod(item.key)}
-                style={[styles.chip, selected && styles.chipOn]}
-              >
-                <Text style={[styles.chipText, selected && styles.chipTextOn]}>{item.label}</Text>
-              </Tap>
-            );
-          })}
-        </View>
-        {method === 'bank' && (
+        {showForm && (
           <>
-            <Text style={styles.label}>Bank</Text>
-            {!!banks.error && <LoadErrorCard title="Couldn't load the bank list" message={banks.error} onRetry={banks.reload} />}
+            <Text style={styles.label}>{linked ? 'Change account' : 'Link an account'}</Text>
             <View style={styles.chips} accessibilityRole="radiogroup">
-              {(banks.data ?? []).map((bank) => {
-                const selected = bankCode === bank.code;
+              {PAYOUT_METHODS.map((item) => {
+                const selected = method === item.key;
                 return (
                   <Tap
-                    key={bank.code}
+                    key={item.key}
                     disabled={busy}
                     accessibilityRole="radio"
-                    accessibilityLabel={bank.name}
+                    accessibilityLabel={item.label}
                     accessibilityState={{ selected }}
-                    onPress={() => setBankCode(bank.code)}
+                    onPress={() => chooseMethod(item.key)}
                     style={[styles.chip, selected && styles.chipOn]}
                   >
-                    <Text style={[styles.chipText, selected && styles.chipTextOn]}>{bank.name}</Text>
+                    <Text style={[styles.chipText, selected && styles.chipTextOn]}>{item.label}</Text>
                   </Tap>
                 );
               })}
             </View>
+            {method === 'bank' && (
+              <View style={styles.field} onLayout={fieldLayout('bank')}>
+                <Text style={styles.label}>Bank</Text>
+                {!!banks.error && <LoadErrorCard title="Couldn't load the bank list" message={banks.error} onRetry={banks.reload} />}
+                <View style={styles.chips} accessibilityRole="radiogroup">
+                  {(banks.data ?? []).map((bank) => {
+                    const selected = bankCode === bank.code;
+                    return (
+                      <Tap
+                        key={bank.code}
+                        disabled={busy}
+                        accessibilityRole="radio"
+                        accessibilityLabel={bank.name}
+                        accessibilityState={{ selected }}
+                        onPress={() => { touch(); clearError('bank'); setBankCode(bank.code); }}
+                        style={[styles.chip, selected && styles.chipOn]}
+                      >
+                        <Text style={[styles.chipText, selected && styles.chipTextOn]}>{bank.name}</Text>
+                      </Tap>
+                    );
+                  })}
+                </View>
+                {!!errors.bank && <Text accessibilityRole="alert" style={styles.errorText}>{errors.bank}</Text>}
+              </View>
+            )}
+            <View onLayout={fieldLayout('name')}>
+              <TextField
+                ref={inputRef('name')}
+                label="Account holder name"
+                value={accountName}
+                onChangeText={(text) => { touch(); clearError('name'); setAccountName(text); }}
+                error={errors.name}
+                submitted
+                maxLength={120}
+                editable={!busy}
+                keyboardAppearance={appearance}
+              />
+            </View>
+            <View onLayout={fieldLayout('number')}>
+              <TextField
+                ref={inputRef('number')}
+                label={payoutNumberLabel(method)}
+                value={accountNumber}
+                onChangeText={(text) => { touch(); clearError('number'); setAccountNumber(formatPayoutNumber(method, text)); }}
+                helper={payoutNumberHelper(method)}
+                error={errors.number}
+                submitted
+                keyboardType="number-pad"
+                maxLength={method === 'bank' ? 16 : 13}
+                editable={!busy}
+                keyboardAppearance={appearance}
+              />
+            </View>
+            {!!submitError && <Text accessibilityRole="alert" style={styles.errorText}>{submitError}</Text>}
+            {changing && (
+              <Tap onPress={() => { setChanging(false); setErrors({}); setSubmitError(null); }} disabled={busy} style={styles.actionBtn} accessibilityRole="button" accessibilityLabel="Cancel">
+                <Text style={styles.actionText}>Cancel</Text>
+              </Tap>
+            )}
           </>
         )}
-        <TextField label="Account holder name" value={accountName} onChangeText={setAccountName} maxLength={120} editable={!busy} keyboardAppearance={appearance} />
-        <TextField
-          label={numberLabel}
-          value={accountNumber}
-          onChangeText={(text) => setAccountNumber(text.replace(/\D/g, ''))}
-          keyboardType="number-pad"
-          maxLength={20}
-          editable={!busy}
-          keyboardAppearance={appearance}
-        />
-        {!!error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
-        {saved && <Text accessibilityLiveRegion="polite" style={styles.savedText}>Account saved.</Text>}
 
-        <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">Payouts sent</Text>
-        {history.data && payouts.length === 0 && <Text style={styles.intro}>No payouts yet.</Text>}
-        {payouts.map((row) => {
-          const status = payoutStatus(row.status);
-          const statusColor = status.tone === 'success' ? V6Colors.successText
-            : status.tone === 'warning' ? V6Colors.warningText
-            : status.tone === 'danger' ? V6Colors.dangerText
-            : V6Colors.ink500;
-          return (
-            <View key={row.id} style={styles.payout}>
-              <View style={styles.payoutText}>
-                <View style={styles.payoutHead}>
-                  <Text style={styles.cardValue}>{peso(row.amount)}</Text>
-                  <Text style={[styles.statusText, { color: statusColor }]} testID="payout-status">{status.label}</Text>
-                </View>
-                <Text style={styles.cardMeta}>{payoutTitle(row.title)}</Text>
-                <Text style={styles.cardMeta}>
-                  {[row.withdrawal_destination, shortDate(row.created_at), row.review_note].filter(Boolean).join(' · ')}
-                </Text>
-              </View>
-            </View>
-          );
-        })}
+        <Tap
+          onPress={() => onOpenEarnings?.()}
+          style={styles.linkRow}
+          accessibilityRole="button"
+          accessibilityLabel="See your earnings and payouts"
+        >
+          <Text style={styles.linkText}>See your earnings and payouts</Text>
+          <ChevronRight size={18} color={V6Colors.ink500} />
+        </Tap>
       </KeyboardAwareScrollView>
 
-      <BottomActionBar
-        primaryLabel={busy ? 'Saving…' : 'Save account'}
-        onPrimary={() => void save()}
+      {showForm && (
+        <BottomActionBar
+          primaryLabel={busy ? 'Saving…' : 'Save account'}
+          onPrimary={() => void save()}
+          busy={busy}
+          primaryDisabled={busy}
+        />
+      )}
+
+      <ConfirmationModal
+        visible={confirmRemove}
+        title="Remove payout account?"
+        message="Payouts will wait until you add a new account."
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        destructive
         busy={busy}
-        primaryDisabled={busy}
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirmRemove(false)}
       />
     </View>
   );
@@ -232,6 +323,28 @@ function createThemedStyles(theme: ThemePalette) {
     warning: { color: Colors.dangerText, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
     label: { color: V6Colors.ink700, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     listTitle: { marginTop: 8, fontSize: 15, color: V6Colors.ink900 },
+    field: { gap: 8 },
+    cardTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    cardText: { flex: 1, gap: 2 },
+    methodIcon: {
+      width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: V6Colors.canvas, borderWidth: 1, borderColor: V6Colors.line,
+    },
+    cardNumber: { color: V6Colors.ink900, fontSize: 15, fontWeight: '600', letterSpacing: 1, fontFamily: 'Inter' },
+    goesHere: { color: Colors.primary, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 4 },
+    cardActions: { flexDirection: 'row', gap: 10, marginTop: 8 },
+    actionBtn: {
+      minHeight: 44, paddingHorizontal: 16, borderRadius: 12, flexDirection: 'row', gap: 6,
+      alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: V6Colors.line,
+    },
+    actionDanger: { borderColor: V6Colors.dangerText },
+    actionText: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    actionTextDanger: { color: V6Colors.dangerText },
+    linkRow: {
+      minHeight: 52, paddingHorizontal: 16, borderRadius: 14, flexDirection: 'row', alignItems: 'center',
+      justifyContent: 'space-between', borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+    linkText: { color: V6Colors.ink900, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
     card: {
       padding: 16, borderRadius: 16, gap: 2,
       borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,

@@ -1,6 +1,6 @@
 import type { Dispute, Job, JobTask } from '../api';
 import { timeOfDay } from '../format';
-import { homeownerJobView, type Action, type JobView } from '../jobDetailView';
+import { homeownerJobView, showsChecklist, type Action, type JobView } from '../jobDetailView';
 
 const DAY = 86_400_000;
 // Fri, Oct 9 2026 at noon, local time. Every date below is built from local time so the day names match in any zone.
@@ -95,7 +95,7 @@ describe('homeownerJobView: open or recommending', () => {
         tone: 'attention',
         overline: 'NEEDS YOU',
         title: '2 proposals waiting',
-        body: 'Compare offers and hire someone. The job is not booked yet.',
+        body: 'Compare proposals and hire someone. The job is not booked yet.',
       },
       step: 'posted',
       main: { kind: 'reviewProposals', count: 2 },
@@ -110,7 +110,7 @@ describe('homeownerJobView: open or recommending', () => {
         tone: 'attention',
         overline: 'NEEDS YOU',
         title: '1 proposal waiting',
-        body: 'Compare offers and hire someone. The job is not booked yet.',
+        body: 'Compare proposals and hire someone. The job is not booked yet.',
       },
       step: 'posted',
       main: { kind: 'reviewProposals', count: 1 },
@@ -124,7 +124,7 @@ describe('homeownerJobView: open or recommending', () => {
       card: {
         tone: 'action',
         overline: 'OPEN',
-        title: 'Waiting for offers',
+        title: 'Waiting for proposals',
         body: "Providers near you can apply. We'll notify you.",
       },
       step: 'posted',
@@ -144,12 +144,12 @@ describe('homeownerJobView: open or recommending', () => {
 
 describe('homeownerJobView: open, and the proposals lookup failed', () => {
   // A failed lookup leaves the count unknown: the card claims no number and no "waiting", and the offers stay reachable.
-  it('open job: find providers is the main action, View offers is the link, and the card claims no count', () => {
+  it('open job: find providers is the main action, View proposals is the link, and the card claims no count', () => {
     expect(viewFor({ pending: null })).toEqual({
       card: {
         tone: 'action',
         overline: 'OPEN',
-        title: 'Open for offers',
+        title: 'Open for proposals',
         body: "Providers near you can apply. We'll notify you.",
       },
       step: 'posted',
@@ -161,7 +161,7 @@ describe('homeownerJobView: open, and the proposals lookup failed', () => {
 
   it('recommending counts the same as open', () => {
     const view = viewFor({ job: { status: 'recommending' }, pending: null });
-    expect(view.card.title).toBe('Open for offers');
+    expect(view.card.title).toBe('Open for proposals');
     expect(view.main).toEqual({ kind: 'findProviders' });
     expect(view.link).toEqual({ kind: 'viewOffers' });
   });
@@ -173,7 +173,7 @@ describe('homeownerJobView: open, and the proposals lookup failed', () => {
     expect(view.card.body).toBe("Providers near you can apply. We'll notify you. Complaint awaiting admin review.");
   });
 
-  it('a job that is no longer open never offers View offers, whatever the lookup did', () => {
+  it('a job that is no longer open never offers View proposals, whatever the lookup did', () => {
     for (const status of ['assigned', 'in_progress', 'completed', 'cancelled', 'expired'] as const) {
       const view = viewFor({ job: { status, assigned_provider_id: 'p1' }, pending: null });
       expect(reachable(view).some((action) => action.kind === 'viewOffers')).toBe(false);
@@ -385,7 +385,7 @@ describe('homeownerJobView: expired', () => {
         tone: 'closed',
         overline: 'EXPIRED · Oct 1',
         title: 'No one was hired in time',
-        body: 'No one was hired within 24 hours of posting. Post it again to get new offers.',
+        body: 'No one was hired within 24 hours of posting. Post it again to get new proposals.',
       },
       step: 'posted',
       main: { kind: 'postAgain', categoryId: 7 },
@@ -397,7 +397,7 @@ describe('homeownerJobView: expired', () => {
   it('a date that cannot be read: no date in the overline or body', () => {
     const view = viewFor({ job: { status: 'expired', posted_at: 'not a date' } });
     expect(view.card.overline).toBe('EXPIRED');
-    expect(view.card.body).toBe('No one was hired within 24 hours of posting. Post it again to get new offers.');
+    expect(view.card.body).toBe('No one was hired within 24 hours of posting. Post it again to get new proposals.');
   });
 
   it('a complaint on an expired job still reaches its case, from the menu', () => {
@@ -694,5 +694,28 @@ describe('homeownerJobView while disputed', () => {
     expect(v.banner).toBeUndefined();
     expect(v.card.tone).toBe('action');
     expect(v.card.overline).toBe('YOUR TURN');
+  });
+});
+
+describe('showsChecklist: checkboxes only once the work is under way', () => {
+  const ticked = { id: 't1', job_id: 'job-1', label: 'Fix tap', is_done: true, position: 1, completed_at: null };
+  const open = { ...ticked, id: 't2', is_done: false };
+
+  it('is off before the work starts, whatever the status', () => {
+    for (const status of ['open', 'recommending', 'assigned', 'confirmed', 'expired'] as const) {
+      expect(showsChecklist(status, [ticked, open])).toBe(false);
+    }
+    expect(showsChecklist(undefined, [ticked])).toBe(false);
+    expect(showsChecklist(null, [ticked])).toBe(false);
+  });
+
+  it('is on from in_progress and on a completed job', () => {
+    expect(showsChecklist('in_progress', [open])).toBe(true);
+    expect(showsChecklist('completed', [open])).toBe(true);
+  });
+
+  it('is on for a cancelled job only when a task had been ticked', () => {
+    expect(showsChecklist('cancelled', [open])).toBe(false);
+    expect(showsChecklist('cancelled', [ticked, open])).toBe(true);
   });
 });

@@ -19,17 +19,20 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../context/The
 import Tap from '../ui/Tap';
 import { V6Shadows } from '../../constants/theme';
 import { haptic } from '../ui/motion';
-import { finishCard, type ChecklistState, type FinishAction, type WelcomeRole } from '../../lib/tourContent';
+import { finishCard, type CertificateState, type ChecklistState, type FinishAction, type WelcomeRole } from '../../lib/tourContent';
 import Confetti from './Confetti';
 
 type TourFinishCardProps = {
   role: WelcomeRole;
   /** A provider's real verification status; the client ignores it. */
   verified: boolean;
-  /** Whether a provider's profile is ready to verify (address and bio); the client ignores it. */
-  hasServiceProfile?: boolean;
-  /** Whether a verified provider has linked a payout account; defaults to true, the client ignores it. */
-  hasPayoutAccount?: boolean;
+  /** A provider's saved address and bio; the client ignores them. */
+  hasAddress?: boolean;
+  hasBio?: boolean;
+  /** A provider's certificate: pending or approved counts as done. The client ignores it. */
+  certificate?: CertificateState;
+  /** Whether a provider has linked a payout account; defaults to true, the client ignores it. */
+  hasPayoutAccount?: boolean | null;
   firstName: string;
   /** A brand-new account's first walkthrough: confetti and one light tap. Never on a replay. */
   firstRun: boolean;
@@ -44,12 +47,12 @@ const noop = () => {};
 /** The 18 dp link plus 15 dp above and below makes the 48 dp target. The gap above the link is 16 dp, so the slop never reaches the main button. */
 const SECONDARY_HIT_SLOP = { top: 15, bottom: 15, left: 12, right: 12 } as const;
 
-export default function TourFinishCard({ role, verified, hasServiceProfile = true, hasPayoutAccount = true, firstName, firstRun, onAction }: TourFinishCardProps) {
+export default function TourFinishCard({ role, verified, hasAddress = true, hasBio = true, certificate = 'approved', hasPayoutAccount = true, firstName, firstRun, onAction }: TourFinishCardProps) {
   const { Colors, C, styles } = useThemedStyles(createThemedStyles);
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
   const reduced = useReducedMotion();
-  const content = finishCard({ role, verified, hasServiceProfile, hasPayoutAccount, firstName });
+  const content = finishCard({ role, verified, hasAddress, hasBio, certificate, hasPayoutAccount, firstName });
   const { secondary } = content;
 
   // One light tap when a first run's card appears, and none on a replay.
@@ -98,19 +101,22 @@ export default function TourFinishCard({ role, verified, hasServiceProfile = tru
                   <View
                     key={item.label}
                     accessible
-                    accessibilityLabel={`${item.label}, ${STATE_WORD[item.state]}`}
+                    accessibilityLabel={`${item.label}, ${STATE_WORD[item.state]}${item.note ? `, ${item.note.toLowerCase()}` : ''}`}
                     style={[styles.row, item.state === 'next' && styles.rowNext]}
                   >
                     <Mark state={item.state} />
-                    <Text
-                      style={[
-                        styles.rowText,
-                        item.state === 'next' && styles.rowTextNext,
-                        item.state === 'later' && styles.rowTextLater,
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
+                    <View style={styles.rowTextWrap}>
+                      <Text
+                        style={[
+                          styles.rowText,
+                          item.state === 'next' && styles.rowTextNext,
+                          item.state === 'later' && styles.rowTextLater,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                      {item.note ? <Text style={styles.rowNote}>{item.note}</Text> : null}
+                    </View>
                   </View>
                 ))}
               </View>
@@ -202,7 +208,9 @@ function createThemedStyles(theme: ThemePalette) {
       borderWidth: 1, borderColor: C.line,
     },
     rowNext: { borderColor: Colors.primary, backgroundColor: Colors.primaryTonal },
-    rowText: { flex: 1, color: C.ink700, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
+    rowTextWrap: { flex: 1 },
+    rowNote: { color: C.ink500, fontSize: 13, fontFamily: 'Inter', marginTop: 2 },
+    rowText: { color: C.ink700, fontSize: 15, fontWeight: '600', fontFamily: 'Inter' },
     rowTextNext: { color: C.ink900, fontWeight: '700' },
     rowTextLater: { color: C.ink500, fontWeight: '500' },
     mark: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },

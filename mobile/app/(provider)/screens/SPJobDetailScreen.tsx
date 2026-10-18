@@ -17,6 +17,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View
 import {
   ArrowLeft,
   CalendarDays,
+  CalendarClock,
   Check,
   EllipsisVertical,
   FileWarning,
@@ -37,6 +38,7 @@ import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import RefreshBar from '../../../src/components/ui/RefreshBar';
 import { startDateNote } from '../../../src/lib/jobStartDate';
+import { showsChecklist } from '../../../src/lib/jobDetailView';
 import { bookedPayoutLine, feeRows, paidOutLine } from '../../../src/lib/feeBreakdown';
 import MenuSheet, { type MenuSheetItem } from '../../../src/components/ui/MenuSheet';
 import PersonCard from '../../../src/components/ui/PersonCard';
@@ -51,7 +53,10 @@ import { useAuth } from '../../../src/context/AuthContext';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { SPScreen } from '../../../src/types/navigation';
-import { api, ApiError, type Job, type JobTask } from '../../../src/lib/api';
+import { api, ApiError, type Job, type JobChangeRequest, type JobTask } from '../../../src/lib/api';
+import ScheduleChangeCard from '../../../src/components/ScheduleChangeCard';
+import ScheduleChangeSheet from '../../../src/components/ScheduleChangeSheet';
+import { canProposeScheduleChange, pendingScheduleChange } from '../../../src/lib/scheduleChange';
 import { distanceLabel, peso, timeOfDay, urgencyMeta } from '../../../src/lib/format';
 import { dayHeading } from '../../../src/lib/jobCalendar';
 import { dateKeyOf } from '../../../src/lib/localDate';
@@ -106,23 +111,33 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const { data: job, loading, error, reload } = useAsyncData(() => {
     if (!jobId) return Promise.reject(new Error('No job selected.'));
     return api.getJob(jobId);
-  }, [jobId]);
+  }, [jobId], `sp-job-${jobId}`);
   const { data: myApps, loading: appsLoading, reload: reloadApps } = useAsyncData(
     () => api.myApplications() as Promise<MyApplication[]>,
     [],
     'sp-applications',
   );
-  // Proposals are refused without a payout account. A failed lookup counts as linked (the server decides),
-  // and the check runs again when the app returns to the foreground.
+  // Proposals are refused without a payout account. A failed lookup is not cached as "linked" (the fetcher
+  // throws, so nothing is stored under the key Home shares) and does not block Send proposal: the server decides.
+  // The check runs again when the app returns to the foreground.
   const { data: payoutLink, reload: reloadPayout } = useAsyncData<{ linked: boolean }>(async () => {
-    try { return { linked: !!(await api.payoutAccount()) }; } catch { return { linked: true }; }
+    return { linked: !!(await api.payoutAccount()) };
   }, [], 'sp-payout-linked');
   useRefreshOnForeground(reloadPayout, true);
   const { data: dispute } = useAsyncData(
     () => jobId && job?.assigned_provider_id === profile?.id ? api.jobDispute(jobId) : Promise.resolve(null),
     [jobId, job?.assigned_provider_id, profile?.id],
+    `sp-dispute-${jobId}`,
   );
   const isAssignedToMe = job?.assigned_provider_id === profile?.id;
+  // Date/time change requests (in memory only); only asked for when this provider is on the job.
+  const { data: changes, reload: reloadChanges } = useAsyncData<JobChangeRequest[]>(
+    async () => (jobId && isAssignedToMe ? api.jobChangeRequests(jobId).catch(() => []) : []),
+    [jobId, isAssignedToMe],
+    `job-changes-${jobId}`,
+  );
+  const [changeOpen, setChangeOpen] = useState(false);
+  const pendingChange = isAssignedToMe ? pendingScheduleChange(changes) : null;
   // Non-blocking. Cached across visits, so the client's name is there at once. While the job is not
   // ours yet (or not loaded), the lookup rejects instead of resolving an empty list: a failed lookup
   // keeps the list already on screen, so the name never flashes back to "Client" during a reload.
@@ -153,6 +168,8 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const isWorking = isAssignedToMe && job?.status === 'in_progress';
   // Ticking is only meaningful while the job is being worked on.
   const tasksEditable = isWorking;
+  // Checkboxes from in_progress and on a completed job; before that the tasks are a plain list.
+  const checklist = showsChecklist(job?.status, tasks);
   const pending = !isAssignedToMe && myApplication?.status === 'pending';
   // Wait for the applications list too, or "Send proposal" could show for a job already applied to.
   const applicationsSettling = appsLoading && myApps === null;
@@ -166,16 +183,20 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
   const urgency = job ? urgencyMeta(job.urgency, V6Colors) : null;
   const paid = Number(job?.budget ?? 0) > 0;
   const isDone = isAssignedToMe && job?.status === 'completed';
-  // The fee breakdown: before proposing (open job, not mine), while booked or working, and once paid out.
-  // Every line is null when the job carries no fee, so nothing shows.
+  // The fee breakdown. Figures are null when the job carries no fee, so nothing shows then.
   const fee = job?.fee ?? null;
-  const preProposalFee = job && !isAssignedToMe && (job.status === 'open' || job.status === 'recommending')
-    ? feeRows(job.budget, fee)
+  const figures = job ? feeRows(job.budget, fee) : null;
+  const notStarted = isAssignedToMe && (job?.status === 'assigned' || job?.status === 'confirmed');
+  const working = isAssignedToMe && job?.status === 'in_progress';
+  // The same three rows before proposing, once booked, while working, and once completed.
+  const figuresShown = !!figures && (
+    (!isAssignedToMe && (job?.status === 'open' || job?.status === 'recommending')) || notStarted || working || isDone
+  );
+  // The timing line under the rows: what the provider gets once confirmed, or what was paid out.
+  const feeTiming = !figures ? null
+    : isDone ? paidOutLine(job?.budget, fee)
+    : notStarted || working ? bookedPayoutLine(fee)
     : null;
-  const bookedFee = isAssignedToMe && (job?.status === 'assigned' || job?.status === 'confirmed' || job?.status === 'in_progress')
-    ? bookedPayoutLine(fee)
-    : null;
-  const paidOutFee = isDone ? paidOutLine(job?.budget, fee) : null;
   const sentAt = myApplication ? dayAndTime(myApplication.applied_at) : null;
   const client = {
     name: clientConversation?.counterpart_name || 'Client',
@@ -361,12 +382,17 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
     }
   };
 
+  const canChangeDate = !!job && isAssignedToMe
+    && canProposeScheduleChange(job, profile?.id, job.client_id, job.assigned_provider_id, pendingChange);
   const menuItems: MenuSheetItem[] = job && view
-    ? view.menu.map((action) => ({
-        label: labelFor(action, pending),
-        icon: action.kind === 'viewCase' ? FileWarning : Flag,
-        onPress: () => run(action, job),
-      }))
+    ? [
+        ...(canChangeDate ? [{ label: 'Change date or time', icon: CalendarClock, onPress: () => setChangeOpen(true) }] : []),
+        ...view.menu.map((action) => ({
+          label: labelFor(action, pending),
+          icon: action.kind === 'viewCase' ? FileWarning : Flag,
+          onPress: () => run(action, job),
+        })),
+      ]
     : [];
 
   return (
@@ -393,7 +419,6 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
       {/* The skeleton only stands in for a job not loaded yet; a reload keeps the job and shows the bar. */}
       {((loading && !job) || applicationsSettling) && <ContentSkeleton variant="detail" />}
-      {loading && !!job && <RefreshBar />}
       {/* F7: an unavailable job (e.g. hired by someone else) gets a real
           error card instead of a bare grey line on an empty page. */}
       {!!error && !loading && (
@@ -408,6 +433,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
       {job && view && (
         <ScrollView style={styles.body} contentContainerStyle={styles.bodyContent} showsVerticalScrollIndicator={false}>
+          {loading && !!job && <RefreshBar />}
           <View style={styles.hero}>
             <Text style={styles.kicker}>{(job.service_categories?.name ?? 'Job').toUpperCase()}</Text>
             <Text style={styles.title}>{job.title}</Text>
@@ -433,6 +459,14 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
               <Text style={styles.disputeBannerLink}>View case</Text>
             </Pressable>
           )}
+          {pendingChange && (
+            <ScheduleChangeCard
+              request={pendingChange}
+              userId={profile?.id}
+              otherName={clientConversation?.counterpart_name}
+              onDecided={() => { reload(); reloadChanges(); }}
+            />
+          )}
           <StatusCard tone={view.card.tone} overline={view.card.overline} title={view.card.title} body={view.card.body} />
 
           {pending && myApplication && (
@@ -445,36 +479,35 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
             </View>
           )}
 
-          {preProposalFee && (
-            <View style={styles.card} accessible accessibilityLabel={preProposalFee.summary} testID="job-fee-breakdown">
+          {figuresShown && figures && (
+            <View
+              style={styles.card}
+              accessible
+              accessibilityLabel={feeTiming ? `${figures.summary}. ${feeTiming}` : figures.summary}
+              testID="job-fee-breakdown"
+            >
               <View style={styles.earnRow}>
                 <Text style={styles.earnLabel}>Job price</Text>
-                <Text style={styles.earnValue}>{preProposalFee.price}</Text>
+                <Text style={styles.earnValue}>{figures.price}</Text>
               </View>
               <View style={styles.earnRow}>
-                <Text style={styles.earnLabel}>{preProposalFee.feeLabel}</Text>
-                <Text style={styles.earnValue}>{preProposalFee.fee}</Text>
+                <Text style={styles.earnLabel}>{figures.feeLabel}</Text>
+                <Text style={styles.earnValue}>{figures.fee}</Text>
               </View>
               <View style={styles.earnRow}>
                 <Text style={styles.earnLabel}>You receive</Text>
-                <Text style={styles.earnValue}>{preProposalFee.receives}</Text>
+                <Text style={styles.earnValue}>{figures.receives}</Text>
               </View>
+              {feeTiming && (
+                <>
+                  <View style={styles.divider} />
+                  <Text style={styles.feeLine} testID={isDone ? 'job-fee-paid-out' : 'job-fee-booked'}>{feeTiming}</Text>
+                </>
+              )}
             </View>
           )}
 
-          {bookedFee && (
-            <View style={styles.card} testID="job-fee-booked">
-              <Text style={styles.feeLine}>{bookedFee}</Text>
-            </View>
-          )}
-
-          {paidOutFee && (
-            <View style={styles.card} testID="job-fee-paid-out">
-              <Text style={styles.feeLine}>{paidOutFee}</Text>
-            </View>
-          )}
-
-          {isDone && paid && !paidOutFee && (
+          {isDone && paid && !figures && (
             <View style={styles.card}>
               <View style={styles.earnRow}>
                 <Text style={styles.earnLabel}>Job price</Text>
@@ -491,7 +524,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                 {isWorking && <Text style={styles.blockMeta}>{doneCount}/{tasks.length} done</Text>}
               </View>
               <View style={styles.card}>
-                {tasks.map((task) => (
+                {checklist ? tasks.map((task) => (
                   <View key={task.id}>
                     <Tap
                       testID={`task-row-${task.id}`}
@@ -516,6 +549,13 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
                         <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
                       </View>
                     )}
+                  </View>
+                )) : tasks.map((task) => (
+                  <View key={task.id} testID={`task-item-${task.id}`} style={styles.bulletRow}>
+                    <View style={styles.bulletBox}>
+                      <View style={styles.bulletDot} />
+                    </View>
+                    <Text style={styles.taskLabel}>{task.label}</Text>
                   </View>
                 ))}
               </View>
@@ -596,6 +636,16 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           busy={busy}
           secondaryLabel={link ? labelFor(link, pending) : undefined}
           onSecondary={link ? () => run(link, job) : undefined}
+        />
+      )}
+
+      {!!job && (
+        <ScheduleChangeSheet
+          visible={changeOpen}
+          jobId={job.id}
+          currentScheduledAt={job.scheduled_at}
+          onClose={() => setChangeOpen(false)}
+          onSent={() => reloadChanges()}
         />
       )}
 
@@ -726,6 +776,9 @@ function createThemedStyles(theme: ThemePalette) {
 
     taskRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 36 },
     taskPhotos: { marginLeft: 36 },
+    bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 24 },
+    bulletBox: { width: 24, alignItems: 'center' },
+    bulletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: V6Colors.ink500 },
     taskBox: {
       width: 24, height: 24, flexShrink: 0, borderRadius: 6, borderWidth: 1.5, borderColor: V6Colors.line,
       backgroundColor: V6Colors.surface, alignItems: 'center', justifyContent: 'center',

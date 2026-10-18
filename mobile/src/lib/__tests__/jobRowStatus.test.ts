@@ -12,8 +12,8 @@ describe('jobRowStatus', () => {
   });
 
   it('marks open jobs without pending proposals as waiting, including while the count is unknown', () => {
-    expect(jobRowStatus(job('open'), 0)).toEqual({ tone: 'waiting', meta: 'Open · waiting for offers' });
-    expect(jobRowStatus(job('recommending'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for offers' });
+    expect(jobRowStatus(job('open'), 0)).toEqual({ tone: 'waiting', meta: 'Open · waiting for proposals' });
+    expect(jobRowStatus(job('recommending'))).toEqual({ tone: 'waiting', meta: 'Open · waiting for proposals' });
   });
 
   it('shows booked jobs as confirmed or in progress', () => {

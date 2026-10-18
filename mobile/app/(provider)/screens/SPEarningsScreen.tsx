@@ -1,7 +1,7 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ArrowLeft } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ArrowDownLeft, ArrowLeft } from 'lucide-react-native';
 import Tap from '../../../src/components/ui/Tap';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
@@ -9,18 +9,26 @@ import { api } from '../../../src/lib/api';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { peso, shortDate } from '../../../src/lib/format';
-import { payoutStatus, payoutTitle } from '../../../src/lib/payoutLabels';
-import { payoutRows, sentRows, summarizeEarnings } from '../../../src/lib/earningsSummary';
+import { maskDestination, payoutStatus, payoutTitle } from '../../../src/lib/payoutLabels';
+import { groupReleasedByMonth, payoutRows, sentRows, spokenPesos, summarizeEarnings } from '../../../src/lib/earningsSummary';
 
 /** What the provider has been paid, what is on its way, and each payout. History only. */
 export default function SPEarningsScreen({ onBack, onOpenJob }: { onBack: () => void; onOpenJob: (jobId: string) => void }) {
-  const { styles, V6Colors } = useThemedStyles(createThemedStyles);
+  const { styles, V6Colors, Colors } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const history = useAsyncData(() => api.paymentHistory(), []);
-  const jobs = useAsyncData(() => api.assignedJobs(), []);
+  const [refreshing, setRefreshing] = useState(false);
+  // reload() is fire-and-forget, so the spinner stops when the fetch itself settles, on success or failure.
+  const history = useAsyncData(() => api.paymentHistory().finally(() => setRefreshing(false)), [], 'payment-history');
+  const jobs = useAsyncData(() => api.assignedJobs(), [], 'sp-assigned');
+  const onRefresh = () => {
+    setRefreshing(true);
+    history.reload();
+    jobs.reload();
+  };
 
   const now = new Date();
   const payouts = payoutRows(history.data);
+  const groups = groupReleasedByMonth(payouts);
   const sends = sentRows(history.data);
   const summary = summarizeEarnings(history.data, jobs.data ?? [], now);
   const jobTitles = new Map((jobs.data ?? []).map((job) => [job.id, job.title]));
@@ -28,6 +36,7 @@ export default function SPEarningsScreen({ onBack, onOpenJob }: { onBack: () => 
   const jobsOk = !!jobs.data && !jobs.error;
   const error = history.error;
   const loading = history.loading && !history.data;
+  const successColor = Colors.successText;
 
   const cards: { key: string; label: string; value: number }[] = [
     { key: 'month', label: 'Released to you this month', value: summary.paidThisMonth },
@@ -44,7 +53,13 @@ export default function SPEarningsScreen({ onBack, onOpenJob }: { onBack: () => 
         </Tap>
         <Text style={styles.headerTitle} accessibilityRole="header">Earnings</Text>
       </View>
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
+        }
+      >
         <Text style={styles.intro}>
           Payouts go to your GCash, Maya or bank account automatically when the client confirms the job is done.
         </Text>
@@ -68,33 +83,48 @@ export default function SPEarningsScreen({ onBack, onOpenJob }: { onBack: () => 
                 </View>
               ))}
             </View>
+            {jobsOk && summary.onHold > 0 && (
+              <Text style={styles.holdText} testID="on-hold">On hold: complaint open {peso(summary.onHold)}</Text>
+            )}
 
             <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">Released to you</Text>
             {payouts.length === 0 && <Text style={styles.intro}>No payouts yet.</Text>}
-            {payouts.map((row) => {
-              const title = (row.job_id && jobTitles.get(row.job_id)) || payoutTitle(row.title);
-              const jobId = row.job_id;
-              return (
-                <Tap
-                  key={row.id}
-                  disabled={!jobId}
-                  onPress={() => jobId && onOpenJob(jobId)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${title}, ${peso(row.amount)}`}
-                  style={styles.payout}
-                  testID="payout-row"
-                >
-                  <View style={styles.payoutText}>
-                    <Text style={styles.cardValue}>{peso(row.amount)}</Text>
-                    <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
-                    <Text style={styles.cardMeta}>{shortDate(row.created_at)}</Text>
-                    {row.commission_amount != null && (
-                      <Text style={styles.cardMeta} testID="payout-fee">Platform fee {peso(row.commission_amount)}</Text>
-                    )}
-                  </View>
-                </Tap>
-              );
-            })}
+            {groups.map((group) => (
+              <View key={group.key} style={styles.group}>
+                <View>
+                  <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">{group.title}</Text>
+                  <Text style={styles.cardMeta}>{group.summary}</Text>
+                </View>
+                {group.rows.map((row) => {
+                  const title = (row.job_id && jobTitles.get(row.job_id)) || payoutTitle(row.title);
+                  const jobId = row.job_id;
+                  const hasFee = row.commission_amount != null;
+                  return (
+                    <Tap
+                      key={row.id}
+                      disabled={!jobId}
+                      onPress={() => jobId && onOpenJob(jobId)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${title}. Released ${spokenPesos(row.amount)} to you${hasFee ? `. Platform fee ${spokenPesos(row.commission_amount as number)}` : ''}`}
+                      style={styles.payout}
+                      testID="payout-row"
+                    >
+                      <View style={styles.payoutText}>
+                        <View style={styles.payoutHead}>
+                          <Text style={styles.rowTitle} numberOfLines={2}>{title}</Text>
+                          <ArrowDownLeft size={16} color={successColor} />
+                          <Text style={[styles.cardValue, { color: successColor }]} testID="payout-amount">+{peso(row.amount)}</Text>
+                        </View>
+                        <Text style={styles.cardMeta}>{shortDate(row.created_at)}</Text>
+                        {hasFee && (
+                          <Text style={styles.cardMeta} testID="payout-fee">Platform fee −{peso(row.commission_amount as number)}</Text>
+                        )}
+                      </View>
+                    </Tap>
+                  );
+                })}
+              </View>
+            ))}
 
             <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">Sent to your account</Text>
             <Text style={styles.intro}>Released money is sent in batches, so these are not matched to single jobs.</Text>
@@ -106,14 +136,17 @@ export default function SPEarningsScreen({ onBack, onOpenJob }: { onBack: () => 
                 : status.tone === 'danger' ? V6Colors.dangerText
                 : V6Colors.ink500;
               return (
-                <View key={row.id} style={styles.payout} testID="send-row">
+                <View key={row.id} style={styles.payout} testID="send-row" accessible
+                  accessibilityLabel={`${spokenPesos(row.amount)} sent to your account, ${status.label}`}>
                   <View style={styles.payoutText}>
                     <View style={styles.payoutHead}>
                       <Text style={styles.cardValue}>{peso(row.amount)}</Text>
-                      <Text style={[styles.statusText, { color: statusColor }]} testID="send-status">{status.label}</Text>
+                      <View style={[styles.pill, { borderColor: statusColor }]}>
+                        <Text style={[styles.statusText, { color: statusColor }]} testID="send-status">{status.label}</Text>
+                      </View>
                     </View>
                     <Text style={styles.cardMeta}>
-                      {[row.withdrawal_destination, shortDate(row.created_at)].filter(Boolean).join(' · ')}
+                      {[maskDestination(row.withdrawal_destination), shortDate(row.created_at)].filter(Boolean).join(' · ')}
                     </Text>
                   </View>
                 </View>
@@ -153,13 +186,16 @@ function createThemedStyles(theme: ThemePalette) {
     cardLabel: { color: V6Colors.ink500, fontSize: 13, fontFamily: 'Inter' },
     cardValue: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
     cardMeta: { color: V6Colors.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter' },
-    rowTitle: { color: V6Colors.ink700, fontSize: 14, fontWeight: '600', lineHeight: 19, fontFamily: 'Inter' },
+    rowTitle: { flex: 1, color: V6Colors.ink900, fontSize: 14, fontWeight: '600', lineHeight: 19, fontFamily: 'Inter' },
     payout: {
       flexDirection: 'row', padding: 14, borderRadius: 14,
       borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
     },
     payoutText: { flex: 1, gap: 2 },
     payoutHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    group: { gap: 10 },
+    holdText: { color: Colors.warningText, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
+    pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, borderWidth: 1 },
     statusText: { fontSize: 13, fontWeight: '700', fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, styles };

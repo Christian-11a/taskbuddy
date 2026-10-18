@@ -39,7 +39,7 @@ import RootLayout from './app/layout';
 
 // ── Auth screens ──────────────────────────────────────────────────────────────
 import SplashScreenComponent from './app/SplashScreen';
-import OnboardingScreen from './app/(auth)/screens/OnboardingScreen';
+import OnboardingScreen, { type IntroChoice } from './app/(auth)/screens/OnboardingScreen';
 import LoginScreen from './app/(auth)/screens/LoginScreen';
 import ForgotPasswordScreen from './app/(auth)/screens/ForgotPasswordScreen';
 import RegisterScreen from './app/(auth)/screens/RegisterScreen';
@@ -103,7 +103,7 @@ import { HOScreen, SPScreen } from './src/types/navigation';
 // ── Auth ───────────────────────────────────────────────────────────────────────
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { hasCompletedOnboarding, markOnboardingCompleted } from './src/lib/onboarding';
-import { firstNameFrom, tourSteps, type FinishAction } from './src/lib/tourContent';
+import { certificateStateFrom, firstNameFrom, tourSteps, type CertificateState, type FinishAction } from './src/lib/tourContent';
 import {
   firstRunKind, homeContentReady, idleTourFlow, nextTourFlow, shouldOfferTour, shouldStartTour, TOUR_CONTENT_POLL_MS,
   welcomeHoldsPushes, type TourFlow,
@@ -112,7 +112,7 @@ import { api } from './src/lib/api';
 import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/lib/pushNotifications';
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 import { warmUpServer } from './src/lib/warmUp';
-import { profileReadyToVerify } from './src/lib/verifyReady';
+import { missingProfileSteps, profileReadyToVerify } from './src/lib/verifyReady';
 
 /** The tab list with the unread-chat count on the Messages tab. */
 export function withMessagesBadge<T extends string>(
@@ -517,11 +517,14 @@ function AppFlow() {
   }, [profileId, profileCreatedAt]);
 
   // ── Welcome flow: intro cards, then the spotlight tour, then the finish card (phases in tourFlow.ts) ──
-  // "Show me around" on the last intro card of a first run. The tour starts once Home is on screen.
-  const finishOnboarding = () => {
+  // The last slide of a first run: both buttons start the tour on Home; the main one first opens Post a job (client) or
+  // the first missing setup step (provider). The tour waits for Home, so it starts when the person comes back to it.
+  const finishOnboarding = async (choice: IntroChoice) => {
+    const target = choice === 'primary' ? await introTarget() : null;
     if (profileId) void markOnboardingCompleted(profileId);
     setShowOnboarding(false);
     setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: true }));
+    if (target) target();
   };
 
   // Ends the flow early (Skip, Android Back, sign-out): the tour counts as done for this account and no finish card follows.
@@ -546,8 +549,20 @@ function AppFlow() {
     else spNavigate('Tutorial');
   };
 
-  // The replay's intro cards are done: back to the first tab, where the tour starts. No confetti on a replay.
-  const finishReplay = () => {
+  // The replay's intro slides are done: back to the first tab (or the main button's target), where the tour starts. No confetti on a replay.
+  const finishReplay = async (choice: IntroChoice) => {
+    const target = choice === 'primary' ? await introTarget() : null;
+    if (role === 'homeowner') hoNavigate('Home');
+    else spNavigate('Dashboard');
+    setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: false }));
+    if (target) target();
+  };
+
+  // "Show me the tour again" in Help: straight to the spotlight tour on the first tab.
+  const restartTour = () => {
+    setTourOfferOpen(false);
+    stopTour();
+    setTourFlow(idleTourFlow);
     if (role === 'homeowner') hoNavigate('Home');
     else spNavigate('Dashboard');
     setTourFlow((flow) => nextTourFlow(flow, { type: 'introDone', firstRun: false }));
@@ -571,12 +586,25 @@ function AppFlow() {
   };
   const tourOffer = tourOfferOpen ? { onStart: startTourFromOffer, onDismiss: dismissTourOffer } : undefined;
 
+  // Where the last onboarding slide's main button goes. A provider's goes to the first missing setup step, in the
+  // finish card's order: address and bio, verification, certificate, payout account. Null means nothing is missing.
+  const introTarget = async (): Promise<(() => void) | null> => {
+    if (role === 'homeowner') return () => hoNavigate('Create Job');
+    if (role !== 'provider') return null;
+    if (missingProfileSteps(profile, providerProfile).length > 0) return () => spNavigate('Edit Profile');
+    if (!isVerified) return () => spNavigate('Verification');
+    if ((await loadCertificateState()) === 'none') return () => spNavigate('Credentials');
+    if ((await loadHasPayoutAccount()) === false) return () => spNavigate('Payout Account');
+    return null;
+  };
+
   // The finish card's buttons close it for good, then go where the button points.
   const handleFinishAction = (action: FinishAction) => {
     endTourFlow();
     if (action === 'postJob' && role === 'homeowner') hoNavigate('Create Job');
     if (action === 'getVerified' && role === 'provider') spNavigate('Verification');
     if (action === 'setupProfile' && role === 'provider') spNavigate('Edit Profile');
+    if (action === 'uploadCertificate' && role === 'provider') spNavigate('Credentials');
     if (action === 'linkPayout' && role === 'provider') spNavigate('Payout Account');
   };
 
@@ -614,22 +642,28 @@ function AppFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tourFlow.phase]);
 
-  // Whether a provider has a payout account, for the finish card's last step. A failed lookup is "unknown",
-  // treated as linked so nothing new shows.
-  const [hasPayoutAccount, setHasPayoutAccount] = useState(true);
+  // What the finish card's last two steps need. A failed payout lookup is "unknown", not ticked and not next (null). A failed certificate lookup is "unknown", which counts as not done.
+  const loadHasPayoutAccount = async () => {
+    try { return !!(await api.payoutAccount()); } catch { return null; }
+  };
+  const loadCertificateState = async (): Promise<CertificateState> => {
+    try { return certificateStateFrom(await api.myCredentials()); } catch { return 'unknown'; }
+  };
+  const [hasPayoutAccount, setHasPayoutAccount] = useState<boolean | null>(null);
+  const [certificate, setCertificate] = useState<CertificateState>('approved');
   const finishingAsProvider = tourFlow.phase === 'finishing' && isAuthenticated && role === 'provider';
   useEffect(() => {
     if (!finishingAsProvider) return;
     let cancelled = false;
     (async () => {
-      try {
-        const account = await api.payoutAccount();
-        if (!cancelled) setHasPayoutAccount(!!account);
-      } catch {
-        if (!cancelled) setHasPayoutAccount(true);
-      }
+      const [payout, cert] = await Promise.all([loadHasPayoutAccount(), loadCertificateState()]);
+      if (cancelled) return;
+      setHasPayoutAccount(payout);
+      setCertificate(cert);
     })();
     return () => { cancelled = true; };
+    // loadHasPayoutAccount and loadCertificateState are rebuilt on every render; only the phase matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [finishingAsProvider]);
 
   // The finish card, once the tour is over. It is drawn beside whichever screen is up (see wrap).
@@ -637,7 +671,9 @@ function AppFlow() {
     <TourFinishCard
       role={role}
       verified={isVerified}
-      hasServiceProfile={profileReadyToVerify(profile, providerProfile)}
+      hasAddress={!missingProfileSteps(profile, providerProfile).includes('address')}
+      hasBio={!missingProfileSteps(profile, providerProfile).includes('bio')}
+      certificate={certificate}
       hasPayoutAccount={hasPayoutAccount}
       firstName={firstName}
       firstRun={tourFlow.firstRun}
@@ -894,7 +930,7 @@ function AppFlow() {
           <HelpSupportScreen
             role="homeowner"
             onBack={hoBack}
-            onReplayTour={openTutorial}
+            onReplayTour={restartTour}
           />
         </ScreenFrame>
       );
@@ -1036,7 +1072,7 @@ function AppFlow() {
         <HelpSupportScreen
           role="provider"
           onBack={spBack}
-          onReplayTour={openTutorial}
+          onReplayTour={restartTour}
         />
       </ScreenFrame>
     );
@@ -1085,7 +1121,7 @@ function AppFlow() {
   if (spScreen === 'Payout Account') {
     return wrap(
       <ScreenFrame bottomColor={V6Colors.surface}>
-        <SPPayoutAccountScreen onBack={spBack} />
+        <SPPayoutAccountScreen onBack={spBack} onOpenEarnings={() => spNavigate('Earnings')} />
       </ScreenFrame>
     );
   }

@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   CalendarDays,
   Check,
+  CalendarClock,
   CircleX,
   ClipboardList,
   EllipsisVertical,
@@ -43,9 +44,12 @@ import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { HOScreen } from '../../../src/types/navigation';
-import { api, ApiError, type Job, type JobApplication, type ProviderCard } from '../../../src/lib/api';
+import { api, ApiError, type Job, type JobApplication, type JobChangeRequest, type ProviderCard } from '../../../src/lib/api';
+import ScheduleChangeCard from '../../../src/components/ScheduleChangeCard';
+import ScheduleChangeSheet from '../../../src/components/ScheduleChangeSheet';
+import { canProposeScheduleChange, pendingScheduleChange } from '../../../src/lib/scheduleChange';
 import { findProvidersFailureMessage } from '../../../src/lib/findProvidersFailure';
-import { homeownerJobView, type Action, type JobView } from '../../../src/lib/jobDetailView';
+import { homeownerJobView, showsChecklist, type Action, type JobView } from '../../../src/lib/jobDetailView';
 import { countPendingProposals, isOpenJob } from '../../../src/lib/proposalCounts';
 import {
   distanceLabel,
@@ -82,7 +86,7 @@ function actionLabel(action: Action, slot: 'main' | 'link'): string {
   switch (action.kind) {
     case 'reviewProposals': return `Review proposals (${action.count})`;
     case 'findProviders': return slot === 'link' ? 'Find providers near you' : 'Find providers';
-    case 'viewOffers': return 'View offers';
+    case 'viewOffers': return 'View proposals';
     case 'message': return `Message ${action.name}`;
     case 'confirmDone': return 'Confirm job is done';
     case 'reportProblem': return 'Report a problem';
@@ -123,9 +127,17 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
       setRefreshing(false);
     }
   }, [jobId]);
+  // Date/time change requests for this job (in memory only). A failed lookup just means no card.
+  const { data: changes, reload: reloadChanges } = useAsyncData<JobChangeRequest[]>(
+    async () => (jobId ? api.jobChangeRequests(jobId).catch(() => []) : []),
+    [jobId],
+    `job-changes-${jobId}`,
+  );
+  const [changeOpen, setChangeOpen] = useState(false);
   const onRefresh = () => {
     setRefreshing(true);
     reload();
+    reloadChanges();
   };
 
   const [busy, setBusy] = useState(false);
@@ -143,11 +155,15 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const job = data?.job;
   const provider: ProviderCard | null = data?.provider ?? null;
   const dispute = data?.dispute ?? null;
+  const pendingChange = pendingScheduleChange(changes);
+  const canChangeDate = !!job && canProposeScheduleChange(job, job.client_id, job.client_id, job.assigned_provider_id, pendingChange);
   const acceptedDistance = job ? acceptedDistanceKm(job) : null;
   // "0 m away" (the provider accepted from the job itself) and an unknown distance add nothing, so the line is left out.
   const acceptedAway = acceptedDistance != null && Math.round(acceptedDistance * 1000) > 0 ? acceptedDistance : null;
   const tasks = [...(job?.job_tasks ?? [])].sort((a, b) => a.position - b.position);
   const doneCount = tasks.filter((t) => t.is_done).length;
+  // Checkboxes only once the work is under way or finished; before that the tasks are a plain list.
+  const checklist = showsChecklist(job?.status, tasks);
 
   // Proposals on an open job. Loaded after the job and never blocks the screen:
   // until they arrive the job reads as having none. A failed lookup is kept as
@@ -277,7 +293,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     }
   };
 
-  const menuItems: MenuSheetItem[] = (view?.menu ?? []).flatMap((action): MenuSheetItem[] => {
+  const baseMenuItems: MenuSheetItem[] = (view?.menu ?? []).flatMap((action): MenuSheetItem[] => {
     switch (action.kind) {
       case 'reportProblem':
         return [{ label: 'Report a problem', icon: TriangleAlert, disabled: busy, onPress: () => perform(action) }];
@@ -296,6 +312,10 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
         return [];
     }
   });
+
+  const menuItems: MenuSheetItem[] = canChangeDate
+    ? [{ label: 'Change date or time', icon: CalendarClock, disabled: busy, onPress: () => setChangeOpen(true) }, ...baseMenuItems]
+    : baseMenuItems;
 
   const hasProvider = !!job?.assigned_provider_id;
   const providerHeading = job?.status === 'completed'
@@ -334,7 +354,6 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
 
       {/* The skeleton only stands in for a job not loaded yet; a reload keeps the job and shows the bar. */}
       {loading && !data && <ContentSkeleton variant="detail" />}
-      {loading && !!data && <RefreshBar />}
       {!!error && !loading && (
         <View style={styles.loadErrorWrap}>
           <LoadErrorCard title="Couldn't load this job" message={error} onRetry={reload} />
@@ -350,6 +369,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={V6Colors.link} colors={[V6Colors.link]} />
           }
         >
+          {loading && !!data && <RefreshBar />}
           <View style={styles.titleBlock}>
             <Text style={styles.kicker}>
               {(job.service_categories?.name ?? 'Service').toUpperCase()}
@@ -380,6 +400,14 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <Text style={styles.disputeBannerLink}>View case</Text>
               </Pressable>
             )}
+            {pendingChange && (
+              <ScheduleChangeCard
+                request={pendingChange}
+                userId={job.client_id}
+                otherName={provider?.profiles?.full_name}
+                onDecided={() => { reload(); reloadChanges(); }}
+              />
+            )}
             <StatusCard
               tone={view.card.tone}
               overline={view.card.overline}
@@ -400,7 +428,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           {isOpenJob(job) && (
             <View style={styles.block}>
               <SectionHeader
-                title="Offers"
+                title="Proposals"
                 count={pendingCount ? pendingCount : undefined}
                 linkLabel="See all"
                 onLinkPress={() => onNavigate('Job Applications', job.id)}
@@ -423,7 +451,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 <EmptyCard>
                   <EmptyRow
                     icon={ClipboardList}
-                    title="No offers yet"
+                    title="No proposals yet"
                     body="Providers who apply show up here."
                   />
                 </EmptyCard>
@@ -468,8 +496,8 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
             <Text style={styles.muted}>Posted {timeAgo(job.posted_at)}</Text>
           </View>
 
-          {/* Read-only for the homeowner: only the provider ticks tasks off. */}
-          {tasks.length > 0 && (
+          {/* Read-only for the homeowner: only the provider ticks tasks off. Before the work starts, a plain list. */}
+          {tasks.length > 0 && checklist && (
             <View style={styles.block}>
               <View style={styles.rowBetween}>
                 <Text style={styles.sectionTitle} accessibilityRole="header">Tasks</Text>
@@ -496,6 +524,20 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                       <PhotoStrip urls={task.proof_photo_urls ?? []} label={`Proof for ${task.label}, photo`} testID={`task-proof-${task.id}`} />
                     </View>
                   )}
+                </View>
+              ))}
+            </View>
+          )}
+
+          {tasks.length > 0 && !checklist && (
+            <View style={styles.block}>
+              <Text style={styles.sectionTitle} accessibilityRole="header">What the job includes</Text>
+              {tasks.map((task) => (
+                <View key={task.id} testID={`task-item-${task.id}`} style={styles.bulletRow}>
+                  <View style={styles.bulletBox}>
+                    <View style={styles.bulletDot} />
+                  </View>
+                  <Text style={styles.taskLabel}>{task.label}</Text>
                 </View>
               ))}
             </View>
@@ -536,6 +578,16 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
           busy={busy}
           secondaryLabel={link ? actionLabel(link, 'link') : undefined}
           onSecondary={link ? () => perform(link) : undefined}
+        />
+      )}
+
+      {!!job && (
+        <ScheduleChangeSheet
+          visible={changeOpen}
+          jobId={job.id}
+          currentScheduledAt={job.scheduled_at}
+          onClose={() => setChangeOpen(false)}
+          onSent={() => reloadChanges()}
         />
       )}
 
@@ -687,6 +739,9 @@ function createThemedStyles(theme: ThemePalette) {
     taskLabelDone: { color: C.ink500, textDecorationLine: 'line-through' },
     taskDoneLabel: { fontFamily: 'Inter', fontSize: 12.5, fontWeight: '700', lineHeight: 16, color: C.successText },
     taskPhotos: { marginLeft: 36 },
+    bulletRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 4 },
+    bulletBox: { width: 24, alignItems: 'center' },
+    bulletDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.ink500 },
 
     attachmentList: { gap: 10 },
     attachmentImage: { width: 92, height: 92, borderRadius: 12, backgroundColor: C.ink100 },

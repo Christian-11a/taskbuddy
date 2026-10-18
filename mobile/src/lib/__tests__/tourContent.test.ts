@@ -1,4 +1,4 @@
-import { finishCard, firstNameFrom, introCards, tourSteps } from '../tourContent';
+import { certificateStateFrom, finishCard, firstNameFrom, introButtons, introCards, tourSteps } from '../tourContent';
 
 describe('firstNameFrom', () => {
   it.each([
@@ -17,11 +17,14 @@ describe('firstNameFrom', () => {
 describe('introCards', () => {
   it('gives the client three cards with the approved copy, greeting by first name', () => {
     expect(introCards('homeowner', 'Juan')).toEqual([
-      { title: 'Hi Juan, help is close by', body: 'Book trusted local pros for plumbing, cleaning, repairs and more.' },
-      { title: 'You choose who comes', body: 'Pros send you offers. Compare ratings and reviews, then hire one.' },
+      { title: 'Hi Juan, help is close by', body: 'Book trusted local providers for plumbing, cleaning, repairs and more.' },
       {
-        title: 'Your money waits until the job is done',
-        body: 'We hold your payment safely and release it only when you confirm the job is done.',
+        title: 'Compare proposals, then hire',
+        body: 'Providers send you proposals. Check their ratings, reviews and price, then hire the one you like.',
+      },
+      {
+        title: 'Your payment waits until the job is done',
+        body: 'We hold your payment and release it to the provider only when you confirm the job is done.',
       },
     ]);
   });
@@ -29,12 +32,25 @@ describe('introCards', () => {
   it('gives the provider three cards with the approved copy, greeting by first name', () => {
     expect(introCards('provider', 'Ana')).toEqual([
       { title: "Hi Ana, let's get you hired", body: 'Find jobs near you in the services you offer.' },
-      { title: 'Send an offer, get booked', body: 'Clients compare offers. When one hires you, the booking is confirmed for you.' },
       {
-        title: 'Get paid safely',
-        body: "The client's payment is held and released to you as soon as they confirm the job is done.",
+        title: 'Get verified, then send proposals',
+        body: 'Add your ID, a certificate for your service, and a payout account. Then send a short proposal on any open job near you.',
+      },
+      {
+        title: 'Get paid to GCash, Maya or your bank',
+        body: 'When the client confirms the job is done, your pay is sent to your account, minus the platform fee.',
       },
     ]);
+  });
+
+  it('names the last-slide buttons per role', () => {
+    expect(introButtons('homeowner')).toEqual({ primary: 'Post your first job', secondary: 'Look around first' });
+    expect(introButtons('provider')).toEqual({ primary: 'Finish setting up', secondary: 'Look around first' });
+  });
+
+  it('never uses the banned words', () => {
+    const all = JSON.stringify([introCards('homeowner', 'A'), introCards('provider', 'A'), tourSteps('homeowner'), tourSteps('provider'), tourSteps('provider', false)]);
+    expect(all).not.toMatch(/wallet|balance|warranty|offers|\bpros?\b/i);
   });
 
   it.each(['homeowner', 'provider'] as const)('uses "there" when the %s has no name', (role) => {
@@ -62,36 +78,46 @@ describe('introCards', () => {
 });
 
 describe('tourSteps', () => {
-  it('points the client at the post field, Jobs tab and bell, in order', () => {
+  it('gives the client five steps with the approved copy', () => {
     const steps = tourSteps('homeowner');
 
-    expect(steps.map((step) => step.anchorId)).toEqual(['home.post', 'tab.jobs', 'home.bell']);
-    expect(steps[0]).toEqual({ anchorId: 'home.post', title: 'Start here', body: 'Pick a service and describe the job. It takes about a minute.' });
-    expect(steps[2].title).toBe('Never miss an offer');
+    expect(steps.map((step) => step.anchorId)).toEqual(['home.post', 'tab.jobs', 'tab.Messages', 'home.bell', 'tab.Profile']);
+    expect(steps.map((step) => [step.title, step.body])).toEqual([
+      ['Start here', 'Pick a service and describe the job. It takes about a minute.'],
+      ['Your jobs and proposals', 'Proposals, bookings and progress for every job.'],
+      ['Chat with your provider', 'Message your provider about each job. Filter by active or finished jobs, or by service.'],
+      ['Never miss a proposal', 'We tell you when a provider sends a proposal or your booking changes.'],
+      ['Your payments', 'See what you paid and any refunds, month by month, under Profile > Payments.'],
+    ]);
   });
 
-  it('points the provider at the availability toggle, feed search, My Work tab and Messages tab, in order', () => {
+  it('gives a verified provider five steps with the approved copy', () => {
     const steps = tourSteps('provider');
 
-    expect(steps.map((step) => step.anchorId)).toEqual(['home.availability', 'home.feed', 'tab.work', 'tab.Messages']);
-    expect(steps[0]).toEqual({ anchorId: 'home.availability', title: 'Be seen', body: 'Turn this on to get invited to jobs near you.' });
+    expect(steps.map((step) => step.anchorId)).toEqual(['home.availability', 'home.feed', 'tab.work', 'tab.Messages', 'tab.Profile']);
+    expect(steps.map((step) => [step.title, step.body])).toEqual([
+      ['Be seen', 'Turn this on to get invited to jobs near you.'],
+      ['Open jobs near you', 'Open one to see the price, the platform fee and what you receive, then send a proposal.'],
+      ['Your work', 'Proposals, bookings and jobs in progress, all in one place.'],
+      ['Chat with your clients', 'Filter by active or finished jobs.'],
+      ['Your earnings', 'See what was released to you and what was sent to your account, under Profile > Earnings.'],
+    ]);
   });
 
-  it('keeps the four Home steps for a verified provider, whether or not the flag is passed', () => {
-    expect(tourSteps('provider', true).map((step) => step.anchorId)).toEqual(tourSteps('provider').map((step) => step.anchorId));
+  it('keeps the same steps for a verified provider, whether or not the flag is passed', () => {
+    expect(tourSteps('provider', true)).toEqual(tourSteps('provider'));
   });
 
-  it('starts an unverified provider at the setup panel on Home, then the work, messages and profile tabs', () => {
+  it('gives an unverified provider four steps, starting at the setup card on Home', () => {
     const steps = tourSteps('provider', false);
 
     expect(steps.map((step) => step.anchorId)).toEqual(['home.setup', 'tab.work', 'tab.Messages', 'tab.Profile']);
-    expect(steps[0]).toEqual({
-      anchorId: 'home.setup',
-      title: 'Finish setting up',
-      body: 'Add your details and ID so clients can find you.',
-    });
-    expect(steps[1].title).toBe('Your work');
-    expect(steps[2].title).toBe('Your messages');
+    expect(steps.map((step) => [step.title, step.body])).toEqual([
+      ['Finish setting up', 'Add your details, your ID, your certificate and a payout account so you can send proposals.'],
+      ['Your work', 'Proposals, bookings and jobs in progress, all in one place.'],
+      ['Chat with your clients', 'Filter by active or finished jobs.'],
+      ['Your earnings', 'See what was released to you and what was sent to your account, under Profile > Earnings.'],
+    ]);
   });
 
   it('never points an unverified provider at a Home control that only a verified provider has', () => {
@@ -99,121 +125,88 @@ describe('tourSteps', () => {
 
     expect(anchors.filter((anchorId) => anchorId.startsWith('home.'))).toEqual(['home.setup']);
   });
+});
 
-  it('points the provider at the Messages tab, never at a wallet', () => {
-    expect(tourSteps('provider')[3]).toEqual({ anchorId: 'tab.Messages', title: 'Your messages', body: 'Chat with your clients about each job here.' });
-    expect(tourSteps('provider', false)[2].anchorId).toBe('tab.Messages');
-    expect(JSON.stringify([tourSteps('provider'), tourSteps('provider', false), tourSteps('homeowner')])).not.toMatch(/wallet|withdraw/i);
-  });
-
-  it('gives every step a title and a body', () => {
-    const all = [
-      ...tourSteps('homeowner'),
-      ...tourSteps('provider'),
-      ...tourSteps('provider', false),
-    ];
-    for (const step of all) {
-      expect(step.title.trim()).not.toBe('');
-      expect(step.body.trim()).not.toBe('');
-    }
+describe('certificateStateFrom', () => {
+  it.each([
+    [[], 'none'],
+    [null, 'none'],
+    [[{ status: 'rejected' }, { status: 'expired' }], 'none'],
+    [[{ status: 'pending' }], 'pending'],
+    [[{ status: 'pending' }, { status: 'approved' }], 'approved'],
+  ] as const)('reads %j as %s', (list, expected) => {
+    expect(certificateStateFrom(list as never)).toBe(expected);
   });
 });
 
 describe('finishCard', () => {
-  it('shows the client a finished account and a first post as the next step', () => {
+  it('gives the client the three-step checklist, posting first', () => {
     expect(finishCard({ role: 'homeowner', verified: false, firstName: 'Juan' })).toEqual({
       title: "You're all set, Juan",
       checklist: [
-        { label: 'Account created', state: 'done' },
-        { label: 'Post your first job', state: 'next' },
-        { label: 'Hire a pro', state: 'later' },
+        { label: 'Post a job', state: 'next' },
+        { label: 'Compare proposals', state: 'later' },
+        { label: 'Confirm when the job is done', state: 'later' },
       ],
-      primary: { label: 'Post my first job', action: 'postJob' },
+      primary: { label: 'Post your first job', action: 'postJob' },
       secondary: { label: 'Look around first', action: 'close' },
     });
   });
 
-  it('asks an unverified provider to get verified first, with a way to look around', () => {
-    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana' })).toEqual({
-      title: "You're all set, Ana",
-      checklist: [
-        { label: 'Account created', state: 'done' },
-        { label: 'Get verified', state: 'next' },
-        { label: 'Link payout account', state: 'later' },
-        { label: 'Send your first offer', state: 'later' },
-      ],
-      primary: { label: 'Get verified', action: 'getVerified' },
-      secondary: { label: 'Look around first', action: 'close' },
+  it('gives a provider with nothing done five steps, address first', () => {
+    const card = finishCard({
+      role: 'provider', verified: false, firstName: 'Ana', hasAddress: false, hasBio: false, certificate: 'none', hasPayoutAccount: false,
     });
+
+    expect(card.checklist).toEqual([
+      { label: 'Add your address', state: 'next' },
+      { label: 'Add a short bio', state: 'later' },
+      { label: 'Get verified', state: 'later' },
+      { label: 'Upload your certificate', state: 'later' },
+      { label: 'Link a payout account', state: 'later' },
+    ]);
+    expect(card.primary).toEqual({ label: 'Finish setting up', action: 'setupProfile' });
+    expect(card.secondary).toEqual({ label: 'Look around first', action: 'close' });
   });
 
-  it('sends an unverified provider whose profile is not ready to add the address and bio first', () => {
-    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: false })).toEqual({
-      title: "You're all set, Ana",
-      checklist: [
-        { label: 'Account created', state: 'done' },
-        { label: 'Add your address and bio', state: 'next' },
-        { label: 'Get verified', state: 'later' },
-        { label: 'Link payout account', state: 'later' },
-      ],
-      primary: { label: 'Finish my profile', action: 'setupProfile' },
-      secondary: { label: 'Look around first', action: 'close' },
-    });
+  it('points the main action at the first step not done', () => {
+    const base = { role: 'provider' as const, firstName: 'Ana' };
+    expect(finishCard({ ...base, verified: false }).primary.action).toBe('getVerified');
+    expect(finishCard({ ...base, verified: true, certificate: 'none' }).primary.action).toBe('uploadCertificate');
+    expect(finishCard({ ...base, verified: true, certificate: 'unknown' }).primary.action).toBe('uploadCertificate');
+    expect(finishCard({ ...base, verified: true, hasPayoutAccount: false }).primary.action).toBe('linkPayout');
+    expect(finishCard({ ...base, verified: false, hasBio: false }).primary.action).toBe('setupProfile');
   });
 
-  it('treats a provider whose profile is ready as before: verification comes first', () => {
-    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana', hasServiceProfile: true }).primary)
-      .toEqual({ label: 'Get verified', action: 'getVerified' });
-    expect(finishCard({ role: 'provider', verified: false, firstName: 'Ana' }).primary)
-      .toEqual({ label: 'Get verified', action: 'getVerified' });
+  it('counts a pending certificate as done and says it is waiting for review', () => {
+    const card = finishCard({ role: 'provider', verified: true, firstName: 'Ana', certificate: 'pending' });
+
+    expect(card.checklist[3]).toEqual({ label: 'Upload your certificate', state: 'done', note: 'Waiting for review' });
   });
 
-  it('sends a verified provider to their first job, with no second button', () => {
-    expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana' })).toEqual({
-      title: "You're all set, Ana",
-      checklist: [
-        { label: 'Account created', state: 'done' },
-        { label: 'Get verified', state: 'done' },
-        { label: 'Send your first offer', state: 'next' },
-      ],
-      primary: { label: 'Find my first job', action: 'close' },
-    });
+  it('counts an approved certificate as done with no note', () => {
+    const card = finishCard({ role: 'provider', verified: true, firstName: 'Ana', certificate: 'approved' });
+
+    expect(card.checklist[3]).toEqual({ label: 'Upload your certificate', state: 'done' });
   });
 
-  it('sends a verified provider with no payout account to link one, before the first offer', () => {
-    expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasPayoutAccount: false })).toEqual({
-      title: "You're all set, Ana",
-      checklist: [
-        { label: 'Account created', state: 'done' },
-        { label: 'Get verified', state: 'done' },
-        { label: 'Link payout account', state: 'next' },
-        { label: 'Send your first offer', state: 'later' },
-      ],
-      primary: { label: 'Link payout account', action: 'linkPayout' },
-      secondary: { label: 'Look around first', action: 'close' },
-    });
+  it('sends a provider with everything done to their first job, with no second button', () => {
+    const card = finishCard({ role: 'provider', verified: true, firstName: 'Ana' });
+
+    expect(card.checklist.every((item) => item.state === 'done')).toBe(true);
+    expect(card.primary).toEqual({ label: 'Find my first job', action: 'close' });
+    expect(card.secondary).toBeUndefined();
   });
 
-  it('ignores the profile readiness for a verified provider and for a client', () => {
-    expect(finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasServiceProfile: false }).primary.action)
-      .toBe('close');
-    expect(finishCard({ role: 'homeowner', verified: false, firstName: 'Juan', hasServiceProfile: false }).primary.action)
-      .toBe('postJob');
+  it('leaves the payout step neutral when the lookup failed: not ticked, not next', () => {
+    const card = finishCard({ role: 'provider', verified: true, firstName: 'Ana', hasPayoutAccount: null });
+
+    expect(card.checklist[4]).toEqual({ label: 'Link a payout account', state: 'later' });
+    expect(card.primary.action).toBe('close');
   });
 
   it('greets "there" when the name is missing', () => {
     expect(finishCard({ role: 'homeowner', verified: false, firstName: '' }).title).toBe("You're all set, there");
-  });
-
-  it.each([
-    ['homeowner', false],
-    ['provider', false],
-    ['provider', true],
-  ] as const)('for %s (verified %s) starts the checklist with a done account and exactly one next step', (role, verified) => {
-    const card = finishCard({ role, verified, firstName: 'Juan' });
-
-    expect(card.checklist[0]).toEqual({ label: 'Account created', state: 'done' });
-    expect(card.checklist.filter((item) => item.state === 'next')).toHaveLength(1);
   });
 
   it('never offers a client the provider actions, nor a provider the client action', () => {

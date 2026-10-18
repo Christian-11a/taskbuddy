@@ -30,7 +30,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   TrendingUp,
-  Wallet,
+  Landmark,
   Wrench,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -43,6 +43,7 @@ import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForegroun
 import { useRetainedScroll } from '../../../src/hooks/useRetainedState';
 import { SPScreen } from '../../../src/types/navigation';
 import { useAuth } from '../../../src/context/AuthContext';
+import { MIN_TOUCH_DP } from '../../../src/components/ui/touchTarget';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { api } from '../../../src/lib/api';
 import { initials } from '../../../src/lib/format';
@@ -114,7 +115,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
     { key: 'services', icon: Wrench, label: 'My services', onPress: () => onNavigate('My Services') },
     { key: 'portfolio', icon: Camera, label: 'Portfolio', onPress: () => onNavigate('Portfolio') },
     { key: 'credentials', icon: Award, label: 'Certifications', onPress: () => onNavigate('Credentials') },
-    { key: 'payouts', icon: Wallet, label: 'Payout account', onPress: () => onNavigate('Payout Account') },
+    { key: 'payouts', icon: Landmark, label: 'Payout account', onPress: () => onNavigate('Payout Account') },
     { key: 'earnings', icon: TrendingUp, label: 'Earnings', onPress: () => onNavigate('Earnings') },
   ];
   const helpItems: MenuItem[] = [
@@ -135,7 +136,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
             <Tap
               style={[styles.backBtn, { top: headerTop }]}
               onPress={onBack}
-              hitSlop={4}
+              hitSlop={(MIN_TOUCH_DP - 40) / 2}
               accessibilityRole="button"
               accessibilityLabel="Back to Feed"
             >
@@ -182,7 +183,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
           </View>
           <Tap
             style={styles.editButton}
-            hitSlop={{ top: 4, bottom: 4 }}
+            hitSlop={{ top: (MIN_TOUCH_DP - 40) / 2, bottom: (MIN_TOUCH_DP - 40) / 2 }}
             accessibilityRole="button"
             accessibilityLabel="Edit profile"
             onPress={() => onNavigate('Edit Profile')}
@@ -226,7 +227,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
               ) : (
                 <Tap
                   style={styles.linkTap}
-                  hitSlop={{ top: 12, bottom: 12 }}
+                  hitSlop={{ top: 14, bottom: 14, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel="Add phone number"
                   onPress={() => onNavigate('Edit Profile')}
@@ -242,7 +243,7 @@ export default function SPProfileScreen({ onNavigate, onLogout, onBack }: SPProf
               ) : (
                 <Tap
                   style={styles.linkTap}
-                  hitSlop={{ top: 12, bottom: 12 }}
+                  hitSlop={{ top: 14, bottom: 14, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel="Add location"
                   onPress={() => onNavigate('Edit Profile')}

@@ -1,8 +1,9 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, StyleSheet, Text, View } from 'react-native';
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { ArrowLeft, Award, ImagePlus } from 'lucide-react-native';
+import { ArrowLeft, Award, Calendar, Check, CircleAlert, ImagePlus } from 'lucide-react-native';
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
@@ -16,6 +17,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { cleanText, textLength } from '../../../src/lib/textRules';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 import { portfolioServices, PHOTO_MAX_BYTES } from './SPPortfolioScreen';
 
 export const CREDENTIAL_TYPES: { key: CredentialType; label: string; issuer: string }[] = [
@@ -56,6 +58,35 @@ export function credentialProblem(input: {
   return null;
 }
 
+export type CredentialField = 'photo' | 'title' | 'issuer' | 'expiry';
+const FIELD_ORDER: readonly CredentialField[] = ['photo', 'title', 'issuer', 'expiry'];
+
+/** Per-field messages, shown under each field after Submit. */
+export function credentialErrors(input: {
+  hasPhoto: boolean;
+  title: string;
+  issuer: string;
+  expiresOn: string;
+}): Partial<Record<CredentialField, string>> {
+  const errors: Partial<Record<CredentialField, string>> = {};
+  if (!input.hasPhoto) errors.photo = 'Add a clear photo of the certificate.';
+  if (textLength(input.title) < 2) errors.title = 'Enter the certificate name, e.g. Plumbing NC II.';
+  if (textLength(input.issuer) < 2) errors.issuer = 'Enter who issued it, e.g. TESDA.';
+  if (!isValidExpiry(input.expiresOn)) errors.expiry = 'Pick the expiry date again, or clear it.';
+  return errors;
+}
+
+/** A picked day as YYYY-MM-DD in the phone's own calendar, the format the API takes. */
+export function formatExpiry(day: Date): string {
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${day.getFullYear()}-${two(day.getMonth() + 1)}-${two(day.getDate())}`;
+}
+
+function parseExpiry(value: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : new Date();
+}
+
 export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) {
   const { styles, Colors, V6Colors, appearance } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
@@ -72,6 +103,13 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState<Credential | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<CredentialField, string>>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [showDate, setShowDate] = useState(false);
+  const [newId, setNewId] = useState<string | null>(null);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
+  const clearError = (field: CredentialField) => setFieldErrors((previous) => (previous[field] ? { ...previous, [field]: undefined } : previous));
   const selectedCategory = category ?? services[0]?.id ?? null;
 
   const reset = () => {
@@ -96,22 +134,29 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
         return;
       }
       setUri(asset.uri);
+      clearError('photo');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not open your photos.');
     }
   };
 
   const submit = async () => {
+    setSent(false);
+    const errors = credentialErrors({ hasPhoto: !!uri, title, issuer, expiresOn });
+    setSubmitted(true);
+    setFieldErrors(errors);
     const problem = credentialProblem({ hasPhoto: !!uri, categoryId: selectedCategory, title, issuer, expiresOn });
     if (problem) {
-      setError(problem);
+      // Field errors cover everything but a missing service, which has no field of its own.
+      setError(Object.keys(errors).length ? null : problem);
+      scrollToFirstError(errors);
       return;
     }
     setBusy(true);
     setError(null);
     try {
       const document_path = await api.uploadImage('provider-credentials', uri!);
-      await api.createCredential({
+      const created = await api.createCredential({
         category_id: selectedCategory!,
         credential_type: type,
         title: cleanText(title),
@@ -121,12 +166,40 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
         document_path,
       });
       reset();
+      setSubmitted(false);
+      setFieldErrors({});
+      setSent(true);
+      setNewId((created as { id?: string } | undefined)?.id ?? null);
       credentials.reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not submit this credential.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const onDateChange = (event: DateTimePickerEvent, picked?: Date) => {
+    if (Platform.OS === 'android') setShowDate(false);
+    if (event.type === 'set' && picked) {
+      setExpiresOn(formatExpiry(picked));
+      clearError('expiry');
+    }
+  };
+
+  /** Fills the form from a rejected credential so only the fix and a new photo are left. */
+  const resubmit = (item: Credential) => {
+    setType(item.credential_type);
+    setCategory(item.category_id);
+    setTitle(item.title);
+    setIssuer(item.issuer);
+    setNumber(item.credential_number ?? '');
+    setExpiresOn(item.expires_on && parseExpiry(item.expires_on) >= new Date() ? item.expires_on : '');
+    setUri(null);
+    setError(null);
+    setSent(false);
+    setSubmitted(false);
+    setFieldErrors({});
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
   };
 
   const remove = async () => {
@@ -151,7 +224,7 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
         </Tap>
         <Text style={styles.headerTitle} accessibilityRole="header">Certifications</Text>
       </View>
-      <KeyboardAwareScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView ref={scrollRef} style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.intro}>
           Add a TESDA National Certificate, PRC licence or trade certificate for a service you offer. An admin checks
           it, then clients see a Certified badge on that service.
@@ -202,11 +275,7 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
         )}
         {services.length === 1 && <Text style={styles.label}>{`Service: ${services[0].name}`}</Text>}
 
-        <TextField label="Certificate name" value={title} onChangeText={setTitle} maxLength={120} editable={!busy} keyboardAppearance={appearance} helper="e.g. Plumbing NC II" />
-        <TextField label="Issued by" value={issuer} onChangeText={setIssuer} maxLength={120} editable={!busy} keyboardAppearance={appearance} />
-        <TextField label="Certificate number (optional)" value={number} onChangeText={setNumber} maxLength={60} editable={!busy} keyboardAppearance={appearance} />
-        <TextField label="Expiry date (optional)" value={expiresOn} onChangeText={setExpiresOn} maxLength={10} editable={!busy} keyboardAppearance={appearance} helper="YYYY-MM-DD" placeholder="2028-12-31" />
-
+        <View onLayout={fieldLayout('photo')} style={styles.fieldBlock}>
         {uri ? (
           <Tap disabled={busy} onPress={() => void choose()} accessibilityRole="button" accessibilityLabel="Change certificate photo">
             <Image source={{ uri }} style={styles.preview} resizeMode="contain" accessible accessibilityLabel="Selected certificate photo" />
@@ -217,8 +286,73 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
             <Text style={styles.pickText}>Add certificate photo</Text>
           </Tap>
         )}
+          {!!fieldErrors.photo && (
+            <View style={styles.errorRow}>
+              <CircleAlert size={14} color={Colors.dangerText} />
+              <Text accessibilityRole="alert" style={styles.errorText}>{fieldErrors.photo}</Text>
+            </View>
+          )}
+        </View>
+
+        <View onLayout={fieldLayout('title')}>
+          <TextField ref={inputRef('title')} label="Certificate name" value={title} onChangeText={(t) => { setTitle(t); clearError('title'); }} maxLength={120} editable={!busy} keyboardAppearance={appearance} helper="e.g. Plumbing NC II" error={fieldErrors.title} submitted={submitted} />
+        </View>
+        <View onLayout={fieldLayout('issuer')}>
+          <TextField ref={inputRef('issuer')} label="Issued by" value={issuer} onChangeText={(t) => { setIssuer(t); clearError('issuer'); }} maxLength={120} editable={!busy} keyboardAppearance={appearance} error={fieldErrors.issuer} submitted={submitted} />
+        </View>
+        <TextField label="Certificate number (optional)" value={number} onChangeText={setNumber} maxLength={60} editable={!busy} keyboardAppearance={appearance} />
+
+        <View onLayout={fieldLayout('expiry')} style={styles.fieldBlock}>
+          <Text style={styles.label}>Expiry date (optional)</Text>
+          <View style={styles.dateRow}>
+            <Tap
+              disabled={busy}
+              onPress={() => setShowDate(true)}
+              style={[styles.dateField, !!fieldErrors.expiry && styles.dateFieldError]}
+              accessibilityRole="button"
+              accessibilityLabel="Expiry date"
+              accessibilityValue={{ text: expiresOn || 'Not set' }}
+            >
+              <Calendar size={18} color={V6Colors.ink500} />
+              <Text style={styles.dateText}>{expiresOn || 'Pick a date'}</Text>
+            </Tap>
+            {!!expiresOn && (
+              <Tap disabled={busy} onPress={() => { setExpiresOn(''); setShowDate(false); }} accessibilityRole="button" accessibilityLabel="Clear expiry date">
+                <Text style={styles.link}>Clear</Text>
+              </Tap>
+            )}
+          </View>
+          {!!fieldErrors.expiry && (
+            <View style={styles.errorRow}>
+              <CircleAlert size={14} color={Colors.dangerText} />
+              <Text accessibilityRole="alert" style={styles.errorText}>{fieldErrors.expiry}</Text>
+            </View>
+          )}
+          {showDate && (
+            <DateTimePicker
+              themeVariant={appearance}
+              testID="expiry-picker"
+              value={parseExpiry(expiresOn)}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'inline' : 'default'}
+              minimumDate={new Date()}
+              onChange={onDateChange}
+            />
+          )}
+          {showDate && Platform.OS === 'ios' && (
+            <Tap onPress={() => setShowDate(false)} accessibilityRole="button" accessibilityLabel="Done picking date" style={styles.linkBtn}>
+              <Text style={styles.link}>Done</Text>
+            </Tap>
+          )}
+        </View>
 
         {!!error && <Text accessibilityRole="alert" style={styles.errorText}>{error}</Text>}
+        {sent && (
+          <View style={styles.sentRow} testID="sent-confirmation">
+            <Check size={16} color={Colors.primary} />
+            <Text accessibilityLiveRegion="polite" style={styles.sentText}>Sent for review</Text>
+          </View>
+        )}
 
         <Text style={[styles.label, styles.listTitle]} accessibilityRole="header">Your credentials</Text>
         {credentials.loading && !credentials.data && <ContentSkeleton variant="list" />}
@@ -227,7 +361,17 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
         )}
         {credentials.data?.length === 0 && <Text style={styles.intro}>No credentials yet.</Text>}
         {credentials.data?.map((item) => (
-          <View key={item.id} style={styles.card} testID={`credential-${item.id}`}>
+          <View
+            key={item.id}
+            style={styles.card}
+            testID={`credential-${item.id}`}
+            onLayout={(event) => {
+              if (newId && item.id === newId) {
+                scrollRef.current?.scrollTo({ y: Math.max(0, event.nativeEvent.layout.y - 12), animated: true });
+                setNewId(null);
+              }
+            }}
+          >
             <Award size={22} color={item.status === 'approved' ? Colors.primary : V6Colors.ink500} />
             <View style={styles.cardText}>
               <Text style={styles.cardTitle}>{item.title}</Text>
@@ -239,6 +383,11 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
                 <Text style={styles.cardMeta}>{item.rejection_reason}</Text>
               )}
             </View>
+            {item.status === 'rejected' && (
+              <Tap disabled={busy} onPress={() => resubmit(item)} accessibilityRole="button" accessibilityLabel={`Resubmit ${item.title}`}>
+                <Text style={styles.link}>Resubmit</Text>
+              </Tap>
+            )}
             {item.status !== 'approved' && (
               <Tap disabled={busy} onPress={() => setRemoving(item)} accessibilityRole="button" accessibilityLabel={`Remove ${item.title}`}>
                 <Text style={styles.link}>Remove</Text>
@@ -311,6 +460,18 @@ function createThemedStyles(theme: ThemePalette) {
     status: { color: V6Colors.ink700, fontSize: 13, fontWeight: '700', fontFamily: 'Inter', marginTop: 2 },
     statusOk: { color: Colors.primary },
     link: { color: Colors.link, fontSize: 14, fontWeight: '600', fontFamily: 'Inter' },
+    fieldBlock: { gap: 8 },
+    errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dateRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+    dateField: {
+      flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14,
+      borderRadius: 12, borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
+    },
+    dateFieldError: { borderColor: Colors.dangerText },
+    dateText: { color: V6Colors.ink900, fontSize: 15, lineHeight: 20, fontFamily: 'Inter' },
+    linkBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 4 },
+    sentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    sentText: { color: Colors.primary, fontSize: 14, fontWeight: '700', lineHeight: 20, fontFamily: 'Inter' },
     errorText: { color: Colors.dangerText, fontSize: 14, lineHeight: 20, fontFamily: 'Inter' },
   });
   return { appearance: theme.appearance, Colors, V6Colors, styles };

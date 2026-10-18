@@ -5,12 +5,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 import HelpSupportScreen from '../HelpSupportScreen';
 import KeyboardAwareScrollView from '../ui/KeyboardAwareScrollView';
 
-describe('HelpSupportScreen — welcome tour replay entry point', () => {
-  it('shows a "Replay the welcome tour" card and calls onReplayTour when pressed', () => {
+describe('HelpSupportScreen — tour restart entry point', () => {
+  it('shows a "Show me the tour again" card and calls onReplayTour when pressed', () => {
     const onReplayTour = jest.fn();
     render(<HelpSupportScreen role="homeowner" onBack={jest.fn()} onReplayTour={onReplayTour} />);
 
-    fireEvent.press(screen.getByText('Replay the welcome tour'));
+    fireEvent.press(screen.getByText('Show me the tour again'));
 
     expect(onReplayTour).toHaveBeenCalledTimes(1);
   });
@@ -18,7 +18,7 @@ describe('HelpSupportScreen — welcome tour replay entry point', () => {
   it('does not show the card when onReplayTour is not provided', () => {
     render(<HelpSupportScreen role="provider" onBack={jest.fn()} />);
 
-    expect(screen.queryByText('Replay the welcome tour')).toBeNull();
+    expect(screen.queryByText('Show me the tour again')).toBeNull();
   });
 });
 

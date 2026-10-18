@@ -193,7 +193,7 @@ it('an empty day says nothing is scheduled', async () => {
   pickDay(dayAt(45));
 
   expect(screen.getByText('Nothing scheduled')).toBeTruthy();
-  expect(screen.getByText('Jobs appear here after a client hires you.')).toBeTruthy();
+  expect(screen.getByText('Booked jobs appear here; proposals are in My Work.')).toBeTruthy();
 });
 
 it('Go to today returns to today and its month', async () => {
@@ -280,4 +280,18 @@ it('pulling the schedule down reloads it', async () => {
   });
 
   await waitFor(() => expect(api.bookings as jest.Mock).toHaveBeenCalledTimes(2));
+});
+
+it('keeps a month between visits, so coming back shows its jobs at once', async () => {
+  (api.bookings as jest.Mock).mockResolvedValue(bookings);
+  const first = render(<SPCalendarScreen onNavigate={jest.fn()} />);
+  await screen.findByText(dayHeading(todayKey));
+  await act(async () => {});
+  first.unmount();
+  (api.bookings as jest.Mock).mockReturnValue(new Promise(() => {}));
+
+  render(<SPCalendarScreen onNavigate={jest.fn()} />);
+
+  // The month is remembered: its count shows now, while the fetch is still running.
+  expect(screen.getByText(/\d+ jobs?$/)).toBeTruthy();
 });

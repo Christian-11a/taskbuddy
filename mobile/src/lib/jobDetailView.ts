@@ -46,10 +46,10 @@ export type JobView = {
 
 export const DISPUTE_BANNER_TEXT = 'A complaint is open. An admin is reviewing it.';
 
-const DISPUTE_HIDDEN: readonly Action['kind'][] = ['confirmDone', 'cancelJob', 'declineBooking'];
+const DISPUTE_HIDDEN: readonly Action['kind'][] = ['confirmDone', 'cancelJob', 'declineBooking', 'startJob'];
 
 /**
- * While a complaint is open (display_status 'disputed'): no complete, cancel or release, a banner to the case,
+ * While a complaint is open (display_status 'disputed'): no complete, cancel, decline or start, a banner to the case,
  * and the status card turns to the amber attention tone so it agrees with the banner. Shared by both views.
  */
 export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'menu' | 'card'>>(
@@ -67,6 +67,16 @@ export function withDisputeBanner<V extends Pick<JobView, 'main' | 'link' | 'men
     menu: view.menu.filter((action) => !hidden(action)),
     banner: { text: DISPUTE_BANNER_TEXT, action: { kind: 'viewCase' } },
   };
+}
+
+/**
+ * Whether the task list shows checkboxes. Before the work starts it is a plain list of what the job includes.
+ * Checkboxes show from in_progress (the provider ticks them) and on a completed job (ticked, with proof photos).
+ * A cancelled job keeps the ticks it had, so work already done is still shown.
+ */
+export function showsChecklist(status: Job['status'] | null | undefined, tasks: readonly JobTask[]): boolean {
+  if (status === 'in_progress' || status === 'completed') return true;
+  return status === 'cancelled' && tasks.some((task) => task.is_done);
 }
 
 export type HomeownerJobInput = {
@@ -128,7 +138,7 @@ function baseHomeownerJobView(input: HomeownerJobInput): JobView {
           card: {
             tone: 'action',
             overline: 'OPEN',
-            title: 'Open for offers',
+            title: 'Open for proposals',
             body: withNote("Providers near you can apply. We'll notify you.", note),
           },
           step: 'posted',
@@ -143,7 +153,7 @@ function baseHomeownerJobView(input: HomeownerJobInput): JobView {
             tone: 'attention',
             overline: 'NEEDS YOU',
             title: `${plural(pendingCount, 'proposal')} waiting`,
-            body: withNote('Compare offers and hire someone. The job is not booked yet.', note),
+            body: withNote('Compare proposals and hire someone. The job is not booked yet.', note),
           },
           step: 'posted',
           main: { kind: 'reviewProposals', count: pendingCount },
@@ -155,7 +165,7 @@ function baseHomeownerJobView(input: HomeownerJobInput): JobView {
         card: {
           tone: 'action',
           overline: 'OPEN',
-          title: 'Waiting for offers',
+          title: 'Waiting for proposals',
           body: withNote("Providers near you can apply. We'll notify you.", note),
         },
         step: 'posted',
@@ -245,7 +255,7 @@ function baseHomeownerJobView(input: HomeownerJobInput): JobView {
           overline: closed ? `EXPIRED · ${closed}` : 'EXPIRED',
           title: 'No one was hired in time',
           // The backend expires an unhired job a day after posting; naming a date here read oddly next to a later "When".
-          body: withNote('No one was hired within 24 hours of posting. Post it again to get new offers.', note),
+          body: withNote('No one was hired within 24 hours of posting. Post it again to get new proposals.', note),
         },
         step: 'posted',
         main: { kind: 'postAgain', categoryId: job.category_id },

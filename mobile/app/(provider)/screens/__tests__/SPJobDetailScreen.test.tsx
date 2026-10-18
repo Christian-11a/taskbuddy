@@ -20,6 +20,8 @@ jest.mock('../../../../src/lib/api', () => ({
     conversations: jest.fn(),
     uploadImage: jest.fn(),
     payoutAccount: jest.fn().mockResolvedValue({ id: 'acct-1' }),
+    jobChangeRequests: jest.fn().mockResolvedValue([]),
+    decideJobChange: jest.fn(),
   },
   ApiError: class ApiError extends Error {
     status?: number;
@@ -43,6 +45,11 @@ jest.mock('../../../../src/context/AuthContext', () => ({
 
 const JOB_ID = 'job-1';
 const PROVIDER_ID = 'provider-1';
+
+// The job, complaint and applications reads are cached per job; every test starts from an empty cache.
+beforeEach(() => {
+  clearAsyncDataCache();
+});
 
 const openJob = {
   id: JOB_ID,
@@ -165,12 +172,14 @@ describe('FullTest provider job details', () => {
     expect(within(screen.getByTestId('empty-card')).getByText('No photos attached')).toBeTruthy();
   });
 
-  it('keeps the checklist locked before Start Job and does not claim completion', async () => {
+  it('shows the tasks as a plain list before Start Job, with no checkboxes, and does not claim completion', async () => {
     (api.getJob as jest.Mock).mockResolvedValue({ ...openJob, status: 'confirmed', assigned_provider_id: PROVIDER_ID,
       job_tasks: [{ id: 'task-1', label: 'Fix tap', position: 0, is_done: false }] });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
     await screen.findByText('Start job');
-    expect(screen.getByRole('checkbox').props.accessibilityState.disabled).toBe(true);
+    expect(screen.getByText('What the job includes')).toBeTruthy();
+    expect(screen.getByText('Fix tap')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByText('Waiting for client to confirm completion')).toBeNull();
     expect(screen.queryByText('Accept Booking')).toBeNull();
   });
@@ -358,11 +367,12 @@ describe('SPJobDetailScreen — status card, one main action and the client card
     fireEvent.press(await screen.findByLabelText('Fix tap'));
 
     // Ticking done asks for proof first; it cannot be marked done without a photo.
-    expect(await screen.findByText('Proof the task is done')).toBeTruthy();
+    expect(await screen.findByText('Show the finished task')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Mark as done', disabled: true })).toBeTruthy();
     expect(api.updateJobTask).not.toHaveBeenCalled();
 
-    await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' })));
+    fireEvent.press(screen.getByRole('button', { name: 'Add photo' }));
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Choose from gallery' })));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Mark as done' })));
     await waitFor(() =>
       expect(api.updateJobTask).toHaveBeenCalledWith(JOB_ID, 'task-1', true, ['provider-1/proof.jpg']),
@@ -642,6 +652,16 @@ describe('SPJobDetailScreen — payout account before proposing', () => {
     expect(onNavigate).toHaveBeenCalledWith('Payout Account');
   });
 
+  it('keeps Send proposal when the payout lookup fails, and the failure is not cached as linked', async () => {
+    (api.payoutAccount as jest.Mock).mockRejectedValue(new Error('network down'));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Send proposal')).toBeTruthy());
+    expect(screen.queryByLabelText('Link payout account')).toBeNull();
+    expect(screen.queryByTestId('payout-note')).toBeNull();
+    expect(api.payoutAccount).toHaveBeenCalled();
+  });
+
   it('keeps Send proposal when an account is linked', async () => {
     (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
     render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
@@ -754,25 +774,53 @@ describe('SPJobDetailScreen — platform fee breakdown (M15)', () => {
     expect(screen.getByTestId('proposal-fee').props.accessibilityLabel).toBe(summary);
   });
 
-  it('a booked job says what the provider will receive once the client confirms', async () => {
+  it('a booked job shows the three rows and what the provider will receive once the client confirms', async () => {
     renderJob({ ...booked, fee });
 
-    expect(await screen.findByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
-    expect(screen.queryByTestId('job-fee-breakdown')).toBeNull();
+    const breakdown = await screen.findByTestId('job-fee-breakdown');
+    expect(within(breakdown).getByText('Job price')).toBeTruthy();
+    expect(within(breakdown).getByText('Platform fee (15%)')).toBeTruthy();
+    expect(within(breakdown).getByText('You receive')).toBeTruthy();
+    expect(within(breakdown).getByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
+    expect(screen.queryByText(/A platform fee is taken/)).toBeNull();
+    expect(within(breakdown).getByTestId('job-fee-booked')).toBeTruthy();
     expect(screen.queryByTestId('job-fee-paid-out')).toBeNull();
   });
 
-  it('a job in progress says the same thing as a booked one', async () => {
+  it('a job in progress shows the same three rows and timing line as a booked one', async () => {
     renderJob({ ...booked, status: 'in_progress', fee });
 
-    expect(await screen.findByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
+    const breakdown = await screen.findByTestId('job-fee-breakdown');
+    expect(within(breakdown).getByText('Job price')).toBeTruthy();
+    expect(within(breakdown).getByText('Platform fee (15%)')).toBeTruthy();
+    expect(within(breakdown).getByText('You receive')).toBeTruthy();
+    expect(within(breakdown).getByText("You'll receive ₱425.00 when the client confirms the job is done.")).toBeTruthy();
+    expect(screen.queryByText(/A platform fee is taken/)).toBeNull();
   });
 
-  it('a completed job shows what was paid out, less the fee', async () => {
+  it('a job in progress without a fee shows no figures', async () => {
+    renderJob({ ...booked, status: 'in_progress', fee: null });
+
+    expect(await screen.findByText('Fix the sink')).toBeTruthy();
+    expect(screen.queryByTestId('job-fee-breakdown')).toBeNull();
+    expect(screen.queryByText(/You'll receive/)).toBeNull();
+  });
+
+  it('a completed job shows the three rows and what was paid out, less the fee', async () => {
     renderJob({ ...booked, status: 'completed', completed_at: new Date().toISOString(), fee });
 
-    expect(await screen.findByText('Paid out ₱425.00 (₱500.00 − ₱75.00 fee)')).toBeTruthy();
+    const breakdown = await screen.findByTestId('job-fee-breakdown');
+    expect(within(breakdown).getByText('Platform fee (15%)')).toBeTruthy();
+    expect(within(breakdown).getByText('Paid out ₱425.00 (₱500.00 − ₱75.00 fee)')).toBeTruthy();
     expect(screen.queryByText(/You'll receive/)).toBeNull();
+    expect(screen.queryByText(/A platform fee is taken/)).toBeNull();
+  });
+
+  it('a completed job without a fee keeps the fee sentence and shows no figures', async () => {
+    renderJob({ ...booked, status: 'completed', completed_at: new Date().toISOString(), fee: null });
+
+    expect(await screen.findByText("A platform fee is taken when it's paid out to your linked GCash, Maya or bank account.")).toBeTruthy();
+    expect(screen.queryByTestId('job-fee-breakdown')).toBeNull();
   });
 
   it('shows no fee line for an open job without a fee', async () => {
@@ -787,5 +835,169 @@ describe('SPJobDetailScreen — platform fee breakdown (M15)', () => {
     expect(await screen.findByText('Fix the sink')).toBeTruthy();
     expect(screen.queryByText(/You'll receive/)).toBeNull();
     expect(screen.queryByTestId('job-fee-paid-out')).toBeNull();
+  });
+});
+
+describe('SPJobDetailScreen — task list by job state, complaint hides Start job, saved reads', () => {
+  const tasks = [
+    { id: 'task-1', label: 'Fix tap', position: 0, is_done: false, completed_at: null },
+    { id: 'task-2', label: 'Clean up', position: 1, is_done: false, completed_at: null },
+  ];
+  const booked = {
+    ...openJob,
+    status: 'confirmed' as const,
+    assigned_provider_id: PROVIDER_ID,
+    scheduled_at: new Date(Date.now() + 5 * 86_400_000).toISOString(),
+    job_tasks: tasks,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+  });
+
+  const renderJob = (job: object) => {
+    (api.getJob as jest.Mock).mockResolvedValue(job);
+    return render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+  };
+
+  it('an open job lists its tasks as a plain list, with no checkboxes', async () => {
+    renderJob({ ...openJob, job_tasks: tasks });
+
+    expect(await screen.findByText('What the job includes')).toBeTruthy();
+    expect(screen.getByTestId('task-item-task-1')).toBeTruthy();
+    expect(screen.getByText('Clean up')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('a provider with a pending proposal sees the same plain list', async () => {
+    (api.myApplications as jest.Mock).mockResolvedValue([{ id: 'app-1', status: 'pending', jobs: { id: JOB_ID } }]);
+    renderJob({ ...openJob, job_tasks: tasks });
+
+    expect(await screen.findByText('Your proposal is in')).toBeTruthy();
+    expect(screen.getByTestId('task-item-task-2')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('a booked job not yet started lists its tasks plainly, and Start job still asks first', async () => {
+    renderJob(booked);
+
+    fireEvent.press(await screen.findByLabelText('Start job'));
+    expect(screen.getByText('Start the job now?')).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(api.startJob).not.toHaveBeenCalled();
+  });
+
+  it('a job in progress shows tickable checkboxes', async () => {
+    renderJob({ ...booked, status: 'in_progress' });
+
+    await screen.findByTestId('task-row-task-1');
+    const boxes = screen.getAllByRole('checkbox');
+    expect(boxes).toHaveLength(2);
+    expect(screen.getByLabelText('Fix tap').props.accessibilityState).toEqual({ checked: false, disabled: false });
+    expect(screen.queryByTestId('task-item-task-1')).toBeNull();
+  });
+
+  it('a completed job shows ticked checkboxes with proof photos, read-only', async () => {
+    renderJob({
+      ...booked,
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      job_tasks: [
+        { ...tasks[0], is_done: true, completed_at: '2026-10-16T00:00:00Z', proof_photo_urls: ['https://public/proof.jpg'] },
+        tasks[1],
+      ],
+    });
+
+    const ticked = await screen.findByLabelText('Fix tap');
+    expect(ticked.props.accessibilityState).toEqual({ checked: true, disabled: true });
+    expect(screen.getByLabelText('Clean up').props.accessibilityState).toEqual({ checked: false, disabled: true });
+    expect(screen.getByLabelText('Proof for Fix tap, photo 1 of 1')).toBeTruthy();
+  });
+
+  it('an open complaint on a booked job hides Start job and the decline link', async () => {
+    renderJob({ ...booked, display_status: 'disputed' });
+
+    expect(await screen.findByTestId('dispute-banner')).toBeTruthy();
+    expect(screen.queryByLabelText('Start job')).toBeNull();
+    expect(screen.queryByLabelText("Can't make it? Decline booking")).toBeNull();
+  });
+
+  it('reopening a job shows the saved job and complaint at once, while the reads run again', async () => {
+    (api.jobDispute as jest.Mock).mockResolvedValue({ id: 'd-1', status: 'open', escrow_transactions: null });
+    const first = renderJob(booked);
+    expect(await screen.findByText('Complaint awaiting admin review')).toBeTruthy();
+    first.unmount();
+
+    (api.getJob as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.jobDispute as jest.Mock).mockReturnValue(new Promise(() => {}));
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    expect(screen.getByText('Fix the sink')).toBeTruthy();
+    expect(screen.getByText('Complaint awaiting admin review')).toBeTruthy();
+  });
+});
+
+describe('SPJobDetailScreen — date or time change requests', () => {
+  const booked = { ...openJob, status: 'confirmed' as const, assigned_provider_id: PROVIDER_ID, scheduled_at: '2030-10-05T09:30:00.000Z' };
+  const request = (by: string) => ({
+    id: 'r1', job_id: JOB_ID, requested_by: by, type: 'schedule', new_scheduled_at: '2030-10-07T06:00:00.000Z',
+    new_budget: null, reason: 'Late shift', status: 'pending', created_at: new Date().toISOString(),
+    expires_at: '2099-01-01T00:00:00.000Z', decided_at: null,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
+    (api.myApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+    (api.conversations as jest.Mock).mockResolvedValue([]);
+    (api.getJob as jest.Mock).mockResolvedValue(booked);
+  });
+
+  it('offers the change in the menu when nothing is pending', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([]);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    expect(await screen.findByText('Change date or time')).toBeTruthy();
+  });
+
+  it('shows Accept and Decline for the client request, and hides the menu row', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([request('client-1')]);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Accept')).toBeTruthy();
+    expect(screen.getByLabelText('Decline')).toBeTruthy();
+    expect(screen.queryByLabelText('Withdraw')).toBeNull();
+    expect(screen.queryByText('Change date or time')).toBeNull();
+  });
+
+  it('shows Withdraw for my own request', async () => {
+    (api.jobChangeRequests as jest.Mock).mockResolvedValue([request(PROVIDER_ID)]);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Withdraw')).toBeTruthy();
+    expect(screen.queryByLabelText('Accept')).toBeNull();
+  });
+
+  it('does not offer the change once the job is in progress', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...booked, status: 'in_progress' as const });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
+  });
+
+  it('does not offer the change for an open job or while a complaint is open', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue({ ...openJob });
+    const first = render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
+    first.unmount();
+    clearAsyncDataCache();
+    (api.getJob as jest.Mock).mockResolvedValue({ ...booked, display_status: 'disputed' });
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    await screen.findByText('Fix the sink');
+    expect(screen.queryByText('Change date or time')).toBeNull();
   });
 });

@@ -165,7 +165,7 @@ function simpleHeroCopy(hero: Exclude<HomeHero, { kind: 'proposals' }>, onNaviga
       };
     case 'searching':
       return {
-        chip: 'Waiting for offers',
+        chip: 'Waiting for proposals',
         title: "We're finding providers",
         line: `${job.title} · posted ${shortMonthDay(job.posted_at)}`,
         button,

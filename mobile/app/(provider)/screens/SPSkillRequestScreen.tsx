@@ -10,7 +10,6 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -22,6 +21,7 @@ import TextField from '../../../src/components/ui/TextField';
 import StatusCard from '../../../src/components/ui/StatusCard';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import EmptyCard from '../../../src/components/ui/EmptyCard';
+import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import Banner from '../../../src/components/ui/Banner';
 import EmptyRow from '../../../src/components/ui/EmptyRow';
 import { ArrowLeft, CircleCheck, CircleSlash, CircleX, Clock, FileText, ShieldCheck, type LucideIcon } from 'lucide-react-native';
@@ -30,6 +30,7 @@ import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useNotifications } from '../../../src/context/NotificationsContext';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
+import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
@@ -101,6 +102,8 @@ export function canSendRequest(input: {
   );
 }
 
+const FIELD_ORDER = ['category', 'reason'] as const;
+
 interface SPSkillRequestScreenProps {
   onBack: () => void;
 }
@@ -116,13 +119,16 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   });
   const { notifications } = useNotifications();
   const serviceNoticeKey = notifications.filter((notice) => notice.data?.request_id).map((notice) => notice.id).join(',');
-  const requests = useAsyncData(() => api.mySkillRequests(), [serviceNoticeKey]);
+  const requests = useAsyncData(() => api.mySkillRequests(), [serviceNoticeKey], 'my-skill-requests');
 
   const [type, setType] = useState<SkillRequestType>('change_primary');
   const [categoryId, setCategoryId] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Set once Send request is tapped, so the field errors show even for untouched fields. */
+  const [attempted, setAttempted] = useState(false);
+  const { scrollRef, fieldLayout, inputRef, scrollToFirstError } = useScrollToFirstError(FIELD_ORDER);
   const [confirmCancel, setConfirmCancel] = useState<SkillRequest | null>(null);
 
   useEffect(() => {
@@ -142,24 +148,22 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
   );
   const choices = (categories.data ?? []).filter((c) => !offeredIds.has(c.id));
   const chosenName = (categories.data ?? []).find((c) => c.id === categoryId)?.name ?? null;
-  const canSubmit = canSendRequest({ categoryId, offeredIds, reason, submitting });
+  const fieldErrors = {
+    category: !categoryId || offeredIds.has(categoryId) ? 'Choose a service' : undefined,
+    reason: reasonProblem(reason),
+  };
 
   const submit = async () => {
-    if (!categoryId || offeredIds.has(categoryId)) {
-      setError('Choose a service.');
-      return;
-    }
-    const problem = reasonProblem(reason);
-    if (problem) {
-      setError(problem);
-      return;
-    }
+    setAttempted(true);
+    if (scrollToFirstError(fieldErrors)) return;
+    if (!categoryId) return;
     setSubmitting(true);
     setError(null);
     try {
       await api.createSkillRequest({ type, category_id: categoryId, reason: cleanText(reason) });
       setCategoryId(null);
       setReason('');
+      setAttempted(false);
       showToast('Request sent to the admins', 'success');
       requests.reload();
     } catch (e) {
@@ -221,6 +225,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
       </View>
 
       <KeyboardAwareScrollView
+        ref={scrollRef}
         style={styles.body}
         contentContainerStyle={styles.bodyContent}
         keyboardShouldPersistTaps="handled"
@@ -235,7 +240,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
           )}
         </View>
 
-        {requests.loading && <ActivityIndicator color={Colors.link} style={styles.spinner} />}
+        {requests.loading && !requests.data && <ContentSkeleton variant="list" />}
         {!!error && <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text>}
         {!!requests.error && !requests.loading && (
           <Banner tone="error" message={requests.error} actionLabel="Try again" onAction={requests.reload} />
@@ -281,6 +286,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
             {!!categories.error && (
               <Banner tone="error" message={categories.error} actionLabel="Try again" onAction={categories.reload} />
             )}
+            <View onLayout={fieldLayout('category')} style={styles.fieldBlock}>
             <Text style={styles.fieldLabel}>Service</Text>
             <View style={styles.chipGrid}>
               {choices.map((cat) => {
@@ -301,8 +307,15 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
                 );
               })}
             </View>
+            {attempted && !!fieldErrors.category && (
+              <Text style={styles.error} accessibilityLiveRegion="polite" testID="service-error">{fieldErrors.category}</Text>
+            )}
+            </View>
 
+            <View onLayout={fieldLayout('reason')}>
             <TextField
+              ref={inputRef('reason')}
+              submitted={attempted}
               label="Why are you qualified?"
               value={reason}
               onChangeText={setReason}
@@ -314,6 +327,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
               editable={!submitting}
               keyboardAppearance={appearance}
             />
+            </View>
 
             <View style={styles.infoBox}>
               <ShieldCheck size={18} color={V6Colors.ink700} />
@@ -367,7 +381,7 @@ export default function SPSkillRequestScreen({ onBack }: SPSkillRequestScreenPro
         <BottomActionBar
           primaryLabel="Send request"
           onPrimary={() => void submit()}
-          primaryDisabled={!canSubmit}
+          primaryDisabled={submitting}
           busy={submitting}
         />
       )}
@@ -411,7 +425,7 @@ function createThemedStyles(theme: ThemePalette) {
     headerTitle: { flex: 1, color: C.ink900, fontSize: 19.5, fontWeight: '800', fontFamily: 'Inter' },
     body: { flex: 1 },
     bodyContent: { padding: Spacing.screenH, paddingBottom: 24, gap: 14 },
-    spinner: { marginTop: 16 },
+    fieldBlock: { gap: 8 },
     error: { color: Colors.dangerText, fontSize: 13.5, lineHeight: 19, fontFamily: 'Inter' },
 
     card: {

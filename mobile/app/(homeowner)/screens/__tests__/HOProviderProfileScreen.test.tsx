@@ -138,7 +138,7 @@ describe('HOProviderProfileScreen: opened from a proposal', () => {
   it('shows this job\'s offer from the provider', async () => {
     await renderProfile({ proposal: offer });
 
-    expect(await screen.findByText('Their offer for Window cleaning')).toBeTruthy();
+    expect(await screen.findByText('Their proposal for Window cleaning')).toBeTruthy();
     expect(screen.getByText('I can come Friday evening.')).toBeTruthy();
   });
 
@@ -170,7 +170,7 @@ describe('HOProviderProfileScreen: opened without a proposal', () => {
     await screen.findByText('Alex Reyes');
     expect(screen.queryByRole('button', { name: /^Hire / })).toBeNull();
     expect(screen.queryByText('Back to proposals')).toBeNull();
-    expect(screen.queryByText(/Their offer/)).toBeNull();
+    expect(screen.queryByText(/Their proposal/)).toBeNull();
   });
 });
 

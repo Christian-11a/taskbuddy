@@ -1,6 +1,6 @@
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Check } from 'lucide-react-native';
 import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
@@ -62,10 +62,24 @@ export default function ProposalModal({
 }: ProposalModalProps) {
   const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const messageRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    if (visible) setMessage('');
+    if (visible) {
+      setMessage('');
+      setSubmitted(false);
+    }
   }, [visible]);
+
+  const trySend = () => {
+    if (!canSendProposal(message)) {
+      setSubmitted(true);
+      messageRef.current?.focus();
+      return;
+    }
+    onSubmit(cleanText(message));
+  };
 
   const breakdown = feeRows(jobBudget, fee);
   const ready = canSendProposal(message);
@@ -94,6 +108,7 @@ export default function ProposalModal({
             <Text style={styles.feeLabel}>You receive</Text>
             <Text style={styles.feeTotal}>{breakdown.receives}</Text>
           </View>
+          <Text style={styles.feeNote}>{`You receive ${breakdown.receives} when the client confirms the job is done`}</Text>
         </View>
       )}
 
@@ -114,6 +129,8 @@ export default function ProposalModal({
         placeholder="Hi! I can come on Oct 14 at 2 PM…"
         helper={counter}
         error={messageError}
+        submitted={submitted}
+        ref={messageRef}
         multiline
         maxLength={PROPOSAL_MAX_LENGTH}
         editable={!busy}
@@ -121,7 +138,7 @@ export default function ProposalModal({
         testID="proposal-message"
       />
 
-      <Text style={styles.notice}>The client compares offers and hires one provider. You'll be notified.</Text>
+      <Text style={styles.notice}>The client compares proposals and hires one provider. You'll be notified.</Text>
 
       {payoutRequired ? (
         <>
@@ -141,22 +158,24 @@ export default function ProposalModal({
         </>
       ) : !!error && <Text style={styles.error} accessibilityRole="alert">{error}</Text>}
 
-      <Tap
-        style={[styles.sendBtn, !ready && !busy && styles.sendBtnOff, busy && styles.dimmed]}
-        onPress={() => onSubmit(cleanText(message))}
-        disabled={busy || !ready}
-        scale
-        hitSlop={{ top: 1, bottom: 1 }}
-        accessibilityRole="button"
-        accessibilityLabel="Send proposal"
-        testID="proposal-send"
-      >
-        {busy ? (
-          <ActivityIndicator color={Colors.onPrimary} />
-        ) : (
-          <Text style={[styles.sendText, !ready && styles.sendTextOff]}>Send proposal</Text>
-        )}
-      </Tap>
+      {!payoutRequired && (
+        <Tap
+          style={[styles.sendBtn, busy && styles.dimmed]}
+          onPress={trySend}
+          disabled={busy}
+          scale
+          hitSlop={{ top: 1, bottom: 1 }}
+          accessibilityRole="button"
+          accessibilityLabel="Send proposal"
+          testID="proposal-send"
+        >
+          {busy ? (
+            <ActivityIndicator color={Colors.onPrimary} />
+          ) : (
+            <Text style={styles.sendText}>Send proposal</Text>
+          )}
+        </Tap>
+      )}
       <Tap
         style={styles.cancelBtn}
         onPress={onCancel}
@@ -185,6 +204,8 @@ function createThemedStyles(theme: ThemePalette) {
     feeValue: { color: C.ink900, fontSize: 14, lineHeight: 20, fontWeight: '600', fontFamily: 'Inter' },
     feeTotal: { color: C.ink900, fontSize: 15, lineHeight: 20, fontWeight: '700', fontFamily: 'Inter' },
 
+    feeNote: { color: C.ink500, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
+
     tips: { backgroundColor: C.wellBg, borderRadius: 14, padding: 14, gap: 8 },
     tipsTitle: { color: C.ink900, fontSize: 13, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
     tipRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -196,10 +217,7 @@ function createThemedStyles(theme: ThemePalette) {
     sendBtn: {
       height: 46, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.primary,
     },
-    // Readable disabled state: grey fill with dark text, like the other forms.
-    sendBtnOff: { backgroundColor: C.ink100 },
     sendText: { color: Colors.onPrimary, fontSize: 14, fontWeight: '600', lineHeight: 18, fontFamily: 'Inter' },
-    sendTextOff: { color: C.ink700 },
     dimmed: { opacity: 0.6 },
 
     cancelBtn: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 8 },

@@ -244,7 +244,7 @@ describe('HOJobApplicationsScreen: the provider profile from a proposal', () => 
 
     fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
 
-    expect(await screen.findByText('Their offer for Window cleaning')).toBeTruthy();
+    expect(await screen.findByText('Their proposal for Window cleaning')).toBeTruthy();
     expect(screen.getByText('I can come Friday evening.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Hire Alex Reyes' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeNull();
@@ -257,7 +257,7 @@ describe('HOJobApplicationsScreen: the provider profile from a proposal', () => 
     fireEvent.press(await screen.findByRole('button', { name: 'Back to proposals' }));
 
     expect(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' })).toBeTruthy();
-    expect(screen.queryByText('Their offer for Window cleaning')).toBeNull();
+    expect(screen.queryByText('Their proposal for Window cleaning')).toBeNull();
   });
 
   it('Android back on the profile returns to the proposals instead of leaving the screen', async () => {
@@ -265,7 +265,7 @@ describe('HOJobApplicationsScreen: the provider profile from a proposal', () => 
     try {
       await renderScreen();
       fireEvent.press(await screen.findByRole('button', { name: "View Alex Reyes's profile" }));
-      await screen.findByText('Their offer for Window cleaning');
+      await screen.findByText('Their proposal for Window cleaning');
 
       const handler = addListener.mock.calls.filter(([name]) => name === 'hardwareBackPress').pop()?.[1];
       expect(handler).toBeDefined();

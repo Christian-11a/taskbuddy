@@ -250,8 +250,10 @@ describe.each<Role>(['homeowner', 'provider'])('%s edit profile leaving', (role)
     fireEvent.changeText(screen.getByLabelText('Phone (optional)'), '09990000000');
 
     fireEvent.press(screen.getByLabelText('Save changes'));
+    // The provider editor saves straight away; the homeowner editor asks first.
+    const confirm = screen.queryByRole('alert');
     await act(async () => {
-      fireEvent.press(within(screen.getByRole('alert')).getByLabelText('Save changes'));
+      if (confirm) fireEvent.press(within(confirm).getByLabelText('Save changes'));
     });
 
     expect(api.updateProfile).toHaveBeenCalledTimes(1);

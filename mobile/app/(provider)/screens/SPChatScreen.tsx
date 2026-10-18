@@ -130,6 +130,8 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   const dayHeads = useMemo(() => dayHeadLabels(messages, now), [messages]);
   const statusLabel = conversation?.job_status ? jobStatusMeta(conversation.job_status).label : null;
 
+  const disputed = (conversation?.job_status ?? job?.status) === 'disputed';
+
   return (
     <ChatThread
       counterpartName={conversation?.counterpart_name}
@@ -140,6 +142,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
         job,
         now,
       })}
+      notice={disputed ? { tone: 'warning', text: 'A complaint is open. An admin is reviewing it.' } : null}
       dayHeads={dayHeads}
       messages={messages}
       profileId={profile?.id}

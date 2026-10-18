@@ -51,7 +51,7 @@ describe('OnboardingScreen — homeowner (client)', () => {
     await renderOnboarding('homeowner', { firstName: 'Juan' });
 
     expect(screen.getByText('Hi Juan, help is close by')).toBeTruthy();
-    expect(screen.getByText('Book trusted local pros for plumbing, cleaning, repairs and more.')).toBeTruthy();
+    expect(screen.getByText('Book trusted local providers for plumbing, cleaning, repairs and more.')).toBeTruthy();
   });
 
   it('says "there" when the name is not known yet', async () => {
@@ -63,20 +63,36 @@ describe('OnboardingScreen — homeowner (client)', () => {
   it('shows the three cards in order, and no card says "File a complaint"', async () => {
     await renderOnboarding('homeowner', { firstName: 'Juan' });
 
-    expect(screen.getByText('You choose who comes')).toBeTruthy();
-    expect(screen.getByText('Your money waits until the job is done')).toBeTruthy();
+    expect(screen.getByText('Compare proposals, then hire')).toBeTruthy();
+    expect(screen.getByText('Your payment waits until the job is done')).toBeTruthy();
     expect(screen.queryByText(/File a complaint/i)).toBeNull();
   });
 
-  it('moves on with Next and ends on "Show me around", which finishes the walkthrough', async () => {
-    const { onFinish } = await renderOnboarding('homeowner');
+  it('shows Next on the early slides, with no last-slide buttons yet', async () => {
+    await renderOnboarding('homeowner');
+
     expect(screen.getByText('Next')).toBeTruthy();
+    expect(screen.queryByText('Post your first job')).toBeNull();
+    expect(screen.queryByText('Look around first')).toBeNull();
+  });
+
+  it('shows three progress dots that read as slide N of 3', async () => {
+    await renderOnboarding('homeowner');
+    expect(screen.getByLabelText('Slide 1 of 3')).toBeTruthy();
 
     showSlide(2);
-    expect(screen.getByText('Show me around')).toBeTruthy();
-    fireEvent.press(screen.getByText('Show me around'));
+    expect(screen.getByLabelText('Slide 3 of 3')).toBeTruthy();
+  });
 
-    expect(onFinish).toHaveBeenCalledTimes(1);
+  it('ends on "Post your first job" and a "Look around first" link, each reporting its own choice', async () => {
+    const { onFinish } = await renderOnboarding('homeowner');
+
+    showSlide(2);
+    expect(screen.queryByText('Next')).toBeNull();
+    fireEvent.press(screen.getByText('Post your first job'));
+    fireEvent.press(screen.getByText('Look around first'));
+
+    expect(onFinish.mock.calls).toEqual([['primary'], ['lookAround']]);
   });
 });
 
@@ -119,8 +135,8 @@ describe('OnboardingScreen — provider', () => {
 
     showSlide(2);
 
-    expect(screen.getByText('Get paid safely')).toBeTruthy();
-    expect(screen.getByText("The client's payment is held and released to you as soon as they confirm the job is done.")).toBeTruthy();
+    expect(screen.getByText('Get paid to GCash, Maya or your bank')).toBeTruthy();
+    expect(screen.getByText('When the client confirms the job is done, your pay is sent to your account, minus the platform fee.')).toBeTruthy();
   });
 
   it('does not look up service categories, since its pictures are icon-only', async () => {
@@ -129,13 +145,20 @@ describe('OnboardingScreen — provider', () => {
     expect(api.categories).not.toHaveBeenCalled();
   });
 
-  it('the final button reads Show me around and finishes the walkthrough', async () => {
+  it('shows the second slide copy', async () => {
+    await renderOnboarding('provider');
+
+    expect(screen.getByText('Get verified, then send proposals')).toBeTruthy();
+  });
+
+  it('the final slide has "Finish setting up" and "Look around first", each reporting its own choice', async () => {
     const { onFinish } = await renderOnboarding('provider');
 
     showSlide(2);
-    fireEvent.press(screen.getByText('Show me around'));
+    fireEvent.press(screen.getByText('Finish setting up'));
+    fireEvent.press(screen.getByText('Look around first'));
 
-    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish.mock.calls).toEqual([['primary'], ['lookAround']]);
   });
 });
 

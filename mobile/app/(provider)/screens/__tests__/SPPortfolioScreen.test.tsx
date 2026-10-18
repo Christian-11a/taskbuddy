@@ -1,6 +1,6 @@
 import { findUnnamedControls } from '../../../../src/testing/a11yAudit';
 import React from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, TextInput, type AppStateStatus } from 'react-native';
 import {
   act,
   fireEvent,
@@ -476,5 +476,45 @@ describe('SPPortfolioScreen — a photo is filed under the provider\'s own servi
     await act(async () => fireEvent.press(screen.getByText('Save photo details')));
 
     expect(api.updatePortfolio).toHaveBeenCalledWith('photo', expect.objectContaining({ category_id: 9 }));
+  });
+});
+
+describe('portfolio form UX and examples', () => {
+  const plumber = { category_id: 1, service_categories: { name: 'Plumbing' }, approved_secondary_services: [] };
+  const photos = (n: number) => Array.from({ length: n }, (_, i) => ({ ...entry, id: `p${i}`, position: i }));
+
+  it('shows field errors under photo and caption, and focuses the caption when only it is missing', async () => {
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('No portfolio photos yet');
+    await act(async () => fireEvent.press(screen.getByText('Publish photo')));
+    expect(screen.getByText('Choose a photo to publish.')).toBeTruthy();
+    expect(screen.getByText('Add a caption to publish this photo.')).toBeTruthy();
+    await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
+    const focus = jest.spyOn(TextInput.prototype, 'focus').mockImplementation(() => {});
+    await act(async () => fireEvent.press(screen.getByText('Publish photo')));
+    expect(focus).toHaveBeenCalled();
+    expect(api.createPortfolio).not.toHaveBeenCalled();
+  });
+
+  it('confirms Published after a save', async () => {
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findByText('No portfolio photos yet');
+    await act(async () => fireEvent.press(screen.getByText('Choose portfolio photo')));
+    fireEvent.changeText(screen.getByLabelText('Caption'), 'Sink repair');
+    await act(async () => fireEvent.press(screen.getByText('Publish photo')));
+    expect(screen.getByText('Published')).toBeTruthy();
+  });
+
+  it('shows labelled Example cards for the service under 3 photos, and hides them at 3', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ providerProfile: plumber });
+    (api.myPortfolio as jest.Mock).mockResolvedValue(photos(2));
+    const first = render(<SPPortfolioScreen onBack={jest.fn()} />);
+    expect(await screen.findByText('Show the whole sink or pipe, in good light')).toBeTruthy();
+    expect(screen.getAllByText('Example').length).toBe(2);
+    first.unmount();
+    (api.myPortfolio as jest.Mock).mockResolvedValue(photos(3));
+    render(<SPPortfolioScreen onBack={jest.fn()} />);
+    await screen.findAllByText('Edit photo details');
+    expect(screen.queryByTestId('portfolio-examples')).toBeNull();
   });
 });

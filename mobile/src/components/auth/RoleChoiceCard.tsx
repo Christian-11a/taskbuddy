@@ -10,7 +10,7 @@ export type RoleChoice = 'homeowner' | 'provider';
 export const ROLE_CHOICE_COPY: Record<RoleChoice, { title: string; body: string; tag: string }> = {
   homeowner: {
     title: 'I need help at home',
-    body: 'Post jobs, compare offers, hire and pay safely.',
+    body: 'Post jobs, compare proposals, hire and pay safely.',
     tag: 'Client',
   },
   provider: {

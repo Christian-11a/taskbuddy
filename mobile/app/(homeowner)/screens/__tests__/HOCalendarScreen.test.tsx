@@ -194,7 +194,7 @@ it('shows the jobs not scheduled yet with a count, and leaves out finished ones'
   expect(await screen.findByText('Not scheduled yet')).toBeTruthy();
   expect(screen.getByText('2')).toBeTruthy();
   expect(screen.getByText('Cleaning: Window cleaning')).toBeTruthy();
-  expect(screen.getByText('Open · waiting for offers')).toBeTruthy();
+  expect(screen.getByText('Open · waiting for proposals')).toBeTruthy();
   expect(screen.getByText('Handyman: Fix cabinet door')).toBeTruthy();
   expect(screen.queryByText('Plumbing: Leaking faucet')).toBeNull();
 });

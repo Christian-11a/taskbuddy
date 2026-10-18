@@ -140,6 +140,7 @@ export default function HOChatScreen({ jobId, onBack, onViewJob }: HOChatScreenP
         job,
         now,
       })}
+      notice={(conversation?.job_status ?? job?.status) === 'disputed' ? { tone: 'warning', text: 'A complaint is open. An admin is reviewing it.' } : null}
       dayHeads={dayHeads}
       messages={messages}
       profileId={profile?.id}

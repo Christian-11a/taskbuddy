@@ -93,7 +93,8 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
     await act(async () => {});
     fireEvent.press(screen.getByText('Select GPS address'));
     fireEvent.press(screen.getByText('Save changes'));
-    await act(async () => fireEvent.press(screen.getByText('Confirm save')));
+    // The provider editor saves straight away; the homeowner editor asks first.
+    await act(async () => { const c = screen.queryByText('Confirm save'); if (c) fireEvent.press(c); });
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         address: 'HSSi Building, Lipa',
@@ -117,7 +118,8 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
     fireEvent.press(screen.getByText('Select GPS address'));
     fireEvent.changeText(screen.getByTestId('address'), 'New street');
     fireEvent.press(screen.getByText('Save changes'));
-    await act(async () => fireEvent.press(screen.getByText('Confirm save')));
+    // The provider editor saves straight away; the homeowner editor asks first.
+    await act(async () => { const c = screen.queryByText('Confirm save'); if (c) fireEvent.press(c); });
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         address: 'New street',
@@ -140,7 +142,8 @@ for (const Screen of [HOEditProfileScreen, SPEditProfileScreen]) {
       'Batangas',
     );
     fireEvent.press(screen.getByText('Save changes'));
-    await act(async () => fireEvent.press(screen.getByText('Confirm save')));
+    // The provider editor saves straight away; the homeowner editor asks first.
+    await act(async () => { const c = screen.queryByText('Confirm save'); if (c) fireEvent.press(c); });
     expect(api.updateProfile).toHaveBeenCalledWith(
       expect.objectContaining({
         city: 'Batangas',
@@ -156,7 +159,8 @@ it('shows an expired-reference error and leaves the form available for a new sel
   render(<HOEditProfileScreen onBack={jest.fn()} onSave={jest.fn()} />);
   fireEvent.press(screen.getByText('Select GPS address'));
   fireEvent.press(screen.getByText('Save changes'));
-  await act(async () => fireEvent.press(screen.getByText('Confirm save')));
+  // The provider editor saves straight away; the homeowner editor asks first.
+    await act(async () => { const c = screen.queryByText('Confirm save'); if (c) fireEvent.press(c); });
   await waitFor(() =>
     expect(
       screen.getByText(

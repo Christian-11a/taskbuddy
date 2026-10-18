@@ -68,7 +68,7 @@ describe('HOHomeScreen — welcome tour anchors', () => {
   // a missing anchor would pass the step over and the card would never appear.
   it.each([
     ['home.post', 'Start here'],
-    ['home.bell', 'Never miss an offer'],
+    ['home.bell', 'Never miss a proposal'],
   ])('%s is a spotlight target, so its step is shown', async (anchorId, title) => {
     render(
       <TourProvider>

@@ -12,6 +12,7 @@ import SPSkillRequestScreen, {
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { showToast } from '../../../../src/components/Toast';
+import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
 jest.mock('../../../../src/lib/api', () => ({
@@ -69,6 +70,7 @@ const signedIn = (providerProfile = profile()) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  clearAsyncDataCache();
   (useAuth as jest.Mock).mockReturnValue(signedIn());
   (api.categories as jest.Mock).mockResolvedValue(CATEGORIES);
   (api.mySkillRequests as jest.Mock).mockResolvedValue([]);
@@ -158,15 +160,20 @@ it('offers only services the provider does not already have', async () => {
   expect(screen.getByRole('radio', { name: 'Manicure' })).toBeTruthy();
 });
 
-it('keeps Send disabled until a service is chosen and the reason is long enough', async () => {
+it('keeps Send tappable, and a tap with problems shows both errors without sending', async () => {
   render(<SPSkillRequestScreen onBack={jest.fn()} />);
   await screen.findByRole('radio', { name: 'Handyman' });
-  expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled();
-  fireEvent.changeText(screen.getByLabelText('Why are you qualified?'), 'a'.repeat(REASON_MIN - 1));
-  fireEvent.press(screen.getByRole('radio', { name: 'Handyman' }));
-  expect(screen.getByRole('button', { name: 'Send request' })).toBeDisabled();
-  fireEvent.changeText(screen.getByLabelText('Why are you qualified?'), 'a'.repeat(REASON_MIN));
   expect(screen.getByRole('button', { name: 'Send request' })).toBeEnabled();
+  expect(screen.queryByText('Choose a service')).toBeNull();
+
+  await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Send request' })));
+
+  expect(screen.getByText('Choose a service')).toBeTruthy();
+  expect(screen.getByText('Tell the admins a little more (at least 10 characters).')).toBeTruthy();
+  expect(api.createSkillRequest).not.toHaveBeenCalled();
+
+  fireEvent.press(screen.getByRole('radio', { name: 'Handyman' }));
+  expect(screen.queryByText('Choose a service')).toBeNull();
 });
 
 it('names the chosen service in the request copy and sends the same request fields', async () => {

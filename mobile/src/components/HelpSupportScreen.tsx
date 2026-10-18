@@ -65,7 +65,7 @@ const SP_FAQS = [
 interface HelpSupportScreenProps {
   role: 'homeowner' | 'provider';
   onBack: () => void;
-  /** Replays the welcome walkthrough. The row is hidden when this is not passed. */
+  /** Restarts the spotlight tour. The row is hidden when this is not passed. */
   onReplayTour?: () => void;
 }
 
@@ -103,12 +103,12 @@ export default function HelpSupportScreen({ role, onBack, onReplayTour }: HelpSu
             scale
             onPress={onReplayTour}
             accessibilityRole="button"
-            accessibilityLabel="Replay the welcome tour. A short welcome, then a quick look around the app"
+            accessibilityLabel="Show me the tour again. A quick look around the app"
           >
             <PlayCircle size={24} color={Colors.onPrimary} />
             <View style={styles.tourText}>
-              <Text style={styles.tourTitle}>Replay the welcome tour</Text>
-              <Text style={styles.tourBody}>A short welcome, then a quick look around the app</Text>
+              <Text style={styles.tourTitle}>Show me the tour again</Text>
+              <Text style={styles.tourBody}>A quick look around the app</Text>
             </View>
             <ChevronRight size={20} color={Colors.onPrimary} />
           </Tap>

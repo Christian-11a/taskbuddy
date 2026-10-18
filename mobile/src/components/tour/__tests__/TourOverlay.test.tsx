@@ -33,6 +33,12 @@ describe('TourOverlay card', () => {
     expect(dots.map((dot) => StyleSheet.flatten(dot.props.style).width)).toEqual([8, 24, 8, 8]);
   });
 
+  it('shows a "Step N of M" label next to the dots', () => {
+    renderOverlay();
+
+    expect(screen.getByTestId('tour-step-label').props.children).toBe('Step 2 of 4');
+  });
+
   it('labels the card for screen readers with the step number, title and body', () => {
     renderOverlay();
 

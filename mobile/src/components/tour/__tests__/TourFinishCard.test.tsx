@@ -48,17 +48,17 @@ describe('TourFinishCard — the client', () => {
     renderCard();
 
     expect(screen.getByText("You're all set, Juan")).toBeTruthy();
-    expect(screen.getByText('Account created')).toBeTruthy();
-    expect(screen.getByText('Post your first job')).toBeTruthy();
-    expect(screen.getByText('Hire a pro')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Post my first job' })).toBeTruthy();
+    expect(screen.getByText('Post a job')).toBeTruthy();
+    expect(screen.getByText('Compare proposals')).toBeTruthy();
+    expect(screen.getByText('Confirm when the job is done')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Post your first job' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Look around first' })).toBeTruthy();
   });
 
-  it('"Post my first job" asks for the postJob action, once', () => {
+  it('"Post your first job" asks for the postJob action, once', () => {
     const { onAction } = renderCard();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Post my first job' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Post your first job' }));
 
     expect(onAction).toHaveBeenCalledTimes(1);
     expect(onAction).toHaveBeenCalledWith('postJob');
@@ -90,35 +90,55 @@ describe('TourFinishCard — the client', () => {
   it('names each checklist step with its state for screen readers', () => {
     renderCard();
 
-    expect(screen.getByLabelText('Account created, done')).toBeTruthy();
-    expect(screen.getByLabelText('Post your first job, next step')).toBeTruthy();
-    expect(screen.getByLabelText('Hire a pro, to do')).toBeTruthy();
+    expect(screen.getByLabelText('Post a job, next step')).toBeTruthy();
+    expect(screen.getByLabelText('Compare proposals, to do')).toBeTruthy();
   });
 });
 
 describe('TourFinishCard — the provider', () => {
-  it('sends an unverified provider to get verified, and keeps a way to look around', () => {
-    const { onAction } = renderCard({ role: 'provider', verified: false, firstName: 'Ana' });
+  const none = { hasAddress: false, hasBio: false, certificate: 'none' as const, hasPayoutAccount: false };
+
+  it('shows the five setup items and a first action that finishes the profile', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: false, firstName: 'Ana', ...none });
 
     expect(screen.getByText("You're all set, Ana")).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Post my first job' })).toBeNull();
-    fireEvent.press(screen.getByRole('button', { name: 'Get verified' }));
+    for (const label of ['Add your address', 'Add a short bio', 'Get verified', 'Upload your certificate', 'Link a payout account']) {
+      expect(screen.getByText(label)).toBeTruthy();
+    }
+    expect(screen.queryByRole('button', { name: 'Post your first job' })).toBeNull();
+    fireEvent.press(screen.getByRole('button', { name: 'Finish setting up' }));
+
+    expect(onAction).toHaveBeenCalledWith('setupProfile');
+  });
+
+  it('asks to get verified once the address and bio are saved', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: false, ...none, hasAddress: true, hasBio: true });
+
+    fireEvent.press(screen.getByRole('button', { name: 'Finish setting up' }));
 
     expect(onAction).toHaveBeenCalledWith('getVerified');
   });
 
-  it('an unverified provider whose profile is not ready is asked to add the address and bio first', () => {
-    const { onAction } = renderCard({ role: 'provider', verified: false, hasServiceProfile: false, firstName: 'Ana' });
+  it('opens the certificate action when "Upload your certificate" is the next step', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: true, ...none, hasAddress: true, hasBio: true });
 
-    expect(screen.getByText('Add your address and bio')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Get verified' })).toBeNull();
-    fireEvent.press(screen.getByRole('button', { name: 'Finish my profile' }));
+    expect(screen.getByLabelText('Upload your certificate, next step')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Finish setting up' }));
 
-    expect(onAction).toHaveBeenCalledTimes(1);
-    expect(onAction).toHaveBeenCalledWith('setupProfile');
+    expect(onAction).toHaveBeenCalledWith('uploadCertificate');
   });
 
-  it('a verified provider has one main action, which just closes the card', () => {
+  it('shows "Waiting for review" under a pending certificate and moves on to the payout account', () => {
+    const { onAction } = renderCard({ role: 'provider', verified: true, hasAddress: true, hasBio: true, certificate: 'pending', hasPayoutAccount: false });
+
+    expect(screen.getByText('Waiting for review')).toBeTruthy();
+    expect(screen.getByLabelText('Upload your certificate, done, waiting for review')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Finish setting up' }));
+
+    expect(onAction).toHaveBeenCalledWith('linkPayout');
+  });
+
+  it('a provider with everything done has one main action, which just closes the card', () => {
     const { onAction } = renderCard({ role: 'provider', verified: true, firstName: 'Ana' });
 
     expect(screen.queryByRole('button', { name: 'Look around first' })).toBeNull();

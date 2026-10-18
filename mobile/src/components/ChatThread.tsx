@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import { ArrowLeft, ArrowRight, Camera } from 'lucide-react-native';
 import Tap from './ui/Tap';
+import Banner from './ui/Banner';
 import ContentSkeleton from './ui/ContentSkeleton';
 import LoadErrorCard from './ui/LoadErrorCard';
 import Silhouette from './ui/Silhouette';
@@ -48,6 +49,8 @@ export interface ChatThreadProps {
   subtitle: string | null;
   /** The plain line pinned under the header, or null. */
   systemLine: string | null;
+  /** An optional amber note pinned under the header (e.g. an open complaint). */
+  notice?: { tone: 'warning'; text: string } | null;
   /** Day label for the first message of each day, keyed by message id. */
   dayHeads: Record<string, string>;
   /** Messages in time order, exactly as the screen received them. */
@@ -72,7 +75,7 @@ export interface ChatThreadProps {
 }
 
 export default function ChatThread({
-  counterpartName, subtitle, systemLine, dayHeads, messages, profileId, loading, error, sendError, conversationReady, onRetry, listRef,
+  counterpartName, subtitle, systemLine, notice, dayHeads, messages, profileId, loading, error, sendError, conversationReady, onRetry, listRef,
   text, onChangeText, onSend, attaching, onAttach, onBack, onViewJob,
 }: ChatThreadProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -156,6 +159,12 @@ export default function ChatThread({
       </View>
 
       <ChatSafetyNote />
+
+      {!!notice && (
+        <View testID="chat-notice" style={styles.notice}>
+          <Banner tone={notice.tone} message={notice.text} />
+        </View>
+      )}
 
       {!!systemLine && <Text style={styles.systemLine}>{systemLine}</Text>}
 
@@ -278,6 +287,7 @@ function createThemedStyles(theme: ThemePalette) {
     viewJobTapBelow: { alignSelf: 'flex-start', minWidth: 48, minHeight: 48 },
     viewJobLink: { color: V6Colors.link, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
 
+    notice: { paddingHorizontal: 16, paddingTop: 10 },
     systemLine: {
       color: C.ink500, fontSize: 12.5, fontWeight: '600', fontFamily: 'Inter', textAlign: 'center',
       paddingHorizontal: 24, paddingTop: 10,

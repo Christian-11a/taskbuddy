@@ -130,3 +130,18 @@ it('a failed text send with no usable message shows the fallback and keeps the t
   expect(screen.queryByText("Couldn't load this chat")).toBeNull();
   expect(screen.getByPlaceholderText('Message…').props.value).toBe('Retry me');
 });
+
+it('a job with an open complaint shows an amber note at the top of the chat', async () => {
+  (api.openConversation as jest.Mock).mockResolvedValue({ ...conversation, job_status: 'disputed' });
+  (api.getJob as jest.Mock).mockResolvedValue({ ...job, status: 'disputed' });
+  renderChat();
+
+  expect(await screen.findByText('A complaint is open. An admin is reviewing it.')).toBeTruthy();
+});
+
+it('shows no complaint note on a normal job', async () => {
+  renderChat();
+  await screen.findByText('Incoming message');
+
+  expect(screen.queryByText('A complaint is open. An admin is reviewing it.')).toBeNull();
+});

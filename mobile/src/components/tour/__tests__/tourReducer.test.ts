@@ -47,3 +47,19 @@ describe('tourReducer', () => {
     expect(state).toEqual(idle);
   });
 });
+
+describe('tourReducer drop', () => {
+  it('removes the current step from the count and keeps the position', () => {
+    const state = { status: 'running' as const, stepIndex: 1, total: 4 };
+    expect(tourReducer(state, { type: 'drop' })).toEqual({ status: 'running', stepIndex: 1, total: 3 });
+  });
+
+  it('ends the tour when the dropped step was the last one', () => {
+    const state = { status: 'running' as const, stepIndex: 2, total: 3 };
+    expect(tourReducer(state, { type: 'drop' }).status).toBe('idle');
+  });
+
+  it('does nothing while idle', () => {
+    expect(tourReducer(initialTourState, { type: 'drop' })).toBe(initialTourState);
+  });
+});
