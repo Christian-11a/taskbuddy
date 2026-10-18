@@ -1,81 +1,106 @@
 import React from 'react';
 import { AbsoluteFill, useCurrentFrame } from 'remotion';
 import { INTER } from '../theme';
-import { SOFT, sp, tw } from '../motion';
-import { DP_H, Phone, S } from './kit';
-import { ClientMyJobsQuiet, ClientPostService, ProviderFeed } from './HeroScreens';
+import { tw } from '../motion';
+import { DP_H, Phone, S, Screens } from './kit';
+import type { Scr } from './kit';
+import { CLIENT_SCREENS, PROVIDER_SCREENS } from './HeroScreens';
 
-// Two-phone hero stage, 1920 x 1080. Client LEFT (light), provider RIGHT (navy panel).
-// Phones are big and simple because the website shows this at about 560 px wide.
-const PHONE_W = 372;
-const PAD = PHONE_W * 0.022;
-const PHONE_K = (PHONE_W - PAD * 2) / 360;
-const PHONE_H = DP_H * PHONE_K + PAD * 2;
-const PHONE_TOP = 128;
-const CLIENT_CX = 680;
-const PROVIDER_CX = 1630;
-const PANEL = { left: 1360, top: 40, width: 540, height: 1000 };
+// Hero loop stage, 1920 x 1080. Two phones centred as one pair; the provider phone sits on a soft
+// navy-tinted wash (not a slab). Headline at the bottom, one blue keyword per beat.
+// Phones are 440 px wide: a full 360 x 776 phone is about 2.16:1 and cannot be 540 px wide inside
+// a 1080 px frame with room for the headline. Text inside them is 21 dp or more (about 24 px).
 
-const Slot: React.FC<{ cx: number; f: number; provider?: boolean; label: string; dim: number; children: React.ReactNode }> = ({ cx, f, provider, label, dim, children }) => {
-  const rise = (1 - sp(f, 0, SOFT)) * 60;
-  return (
-    <>
-      <div style={{ position: 'absolute', left: cx - PHONE_W / 2 - 1, top: PHONE_TOP - 70, width: PHONE_W + 2, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ padding: '10px 22px', borderRadius: 99, background: provider ? S.skyLight : S.primary, color: provider ? S.navy : S.white, fontFamily: INTER, fontWeight: 800, fontSize: 22, letterSpacing: '0.12em' }}>
-          {label}
-        </div>
-      </div>
-      <div style={{ position: 'absolute', left: cx - PHONE_W / 2, top: PHONE_TOP + rise, width: PHONE_W, height: PHONE_H }}>
-        <Phone w={PHONE_W}>{children}</Phone>
-        {/* quiet state for the phone that is not the focus of this beat */}
-        <div style={{ position: 'absolute', left: PAD, top: PAD, width: PHONE_W - PAD * 2, height: PHONE_H - PAD * 2, borderRadius: PHONE_W * 0.115, background: provider ? 'rgba(10,22,34,1)' : 'rgba(246,248,250,1)', opacity: dim, pointerEvents: 'none', zIndex: 40 }} />
-      </div>
-    </>
-  );
+export const BEAT_LEN = 80;
+const BEATS = 7;
+export const STAGE_FRAMES = BEAT_LEN * BEATS;
+
+const PW = 440;
+const PAD = PW * 0.022;
+const K = (PW - PAD * 2) / 360;
+export const PH = DP_H * K + PAD * 2;
+const PHONE_TOP = 40;
+const GAP = 80;
+const CLIENT_X = (1920 - (PW * 2 + GAP)) / 2;
+const PROVIDER_X = CLIENT_X + PW + GAP;
+
+// Dim (white veil) per beat, 0 = fully bright. Eases over the first 10 frames of each beat.
+const CLIENT_DIM = [0, 0.35, 0, 0, 0, 0, 0];
+const PROVIDER_DIM = [0.4, 0, 0.3, 0, 0, 0, 0.4];
+const dimAt = (f: number, levels: number[]) => {
+  const b = Math.min(BEATS - 1, Math.floor(f / BEAT_LEN));
+  const lf = f - b * BEAT_LEN;
+  const cur = levels[b];
+  const prev = b > 0 ? levels[b - 1] : cur;
+  return prev + (cur - prev) * tw(lf, 0, 10, 0, 1);
 };
 
-type Beat = 1 | 2;
-export const HeroStage: React.FC<{ f: number; beat: Beat }> = ({ f, beat }) => {
-  const head = beat === 1
-    ? { pre: 'Post a ', key: 'job', post: '.' }
-    : { pre: 'Jobs come to ', key: 'you', post: '.' };
-  const hp = sp(f, 0, SOFT);
-  // Beat 1: client is the focus. Beat 2: provider is the focus, client goes quiet.
-  const clientDim = beat === 2 ? tw(f, 0, 16, 0, 0.62) : 0;
-  const providerDim = beat === 1 ? tw(f, 0, 16, 0, 0.42) : 0;
+type Head = { pre: string; key: string };
+const HEADS: Head[] = [
+  { pre: 'Post a ', key: 'job' },
+  { pre: 'Jobs come to ', key: 'you' },
+  { pre: 'Compare ', key: 'proposals' },
+  { pre: 'Chat and share ', key: 'photos' },
+  { pre: 'Track every ', key: 'task' },
+  { pre: 'Reschedule ', key: 'easily' },
+  { pre: 'Rate your ', key: 'provider' },
+];
 
+const Headline: React.FC<{ h: Head; opacity: number; y: number }> = ({ h, opacity, y }) => (
+  <div style={{
+    position: 'absolute', left: 0, top: 986 + y, width: 1920, textAlign: 'center', fontFamily: INTER,
+    fontWeight: 800, fontSize: 66, letterSpacing: '-0.03em', lineHeight: '76px', color: S.ink, opacity,
+    whiteSpace: 'nowrap',
+  }}>
+    {h.pre}
+    <span style={{ color: S.primary }}>{h.key}</span>.
+  </div>
+);
+
+const PhoneSlot: React.FC<{ x: number; label: string; provider?: boolean; dim: number; list: Scr[]; f: number }> = ({ x, label, provider, dim, list, f }) => (
+  <>
+    <div style={{ position: 'absolute', left: x, top: 0, width: PW, height: 34, display: 'flex', justifyContent: 'center' }}>
+      <div style={{
+        padding: '4px 20px', borderRadius: 99, background: provider ? S.navyTonalStrong : S.primary,
+        color: provider ? S.navy : S.white, fontFamily: INTER, fontWeight: 800, fontSize: 20, letterSpacing: '0.12em', lineHeight: '26px',
+      }}>{label}</div>
+    </div>
+    <div style={{ position: 'absolute', left: x, top: PHONE_TOP, width: PW, height: PH }}>
+      <Phone w={PW}>
+        <Screens f={f} list={list} />
+        {dim > 0 && <div style={{ position: 'absolute', left: 0, top: 0, width: 360, height: DP_H, background: `rgba(246,248,250,${dim})`, zIndex: 70 }} />}
+      </Phone>
+    </div>
+  </>
+);
+
+/** One frame of the loop at global frame f (0 .. STAGE_FRAMES - 1). */
+export const HeroStage: React.FC<{ f: number }> = ({ f }) => {
+  const b = Math.min(BEATS - 1, Math.floor(f / BEAT_LEN));
+  const lf = f - b * BEAT_LEN;
+  const enter = b === 0 ? 1 : tw(lf, 0, 10, 0, 1);
+  const leave = b === 0 ? 0 : 1 - tw(lf, 0, 8, 0, 1);
   return (
     <AbsoluteFill style={{ background: S.canvas, fontFamily: INTER, overflow: 'hidden' }}>
-      {/* airy background with a soft sky tint on the left */}
-      <AbsoluteFill style={{ background: 'radial-gradient(ellipse 900px 700px at 28% 40%, rgba(186,230,253,0.55) 0%, rgba(246,248,250,0) 70%)' }} />
-      {/* provider navy panel behind the right phone */}
-      <div style={{ position: 'absolute', left: PANEL.left, top: PANEL.top, width: PANEL.width, height: PANEL.height, borderRadius: 44, background: S.navy }} />
+      <AbsoluteFill style={{ background: 'radial-gradient(ellipse 900px 620px at 30% 40%, rgba(186,230,253,0.45) 0%, rgba(246,248,250,0) 70%)' }} />
+      {/* soft provider wash behind the right phone */}
+      <div style={{ position: 'absolute', left: PROVIDER_X - 24, top: 0, width: PW + 48, height: 978, borderRadius: 48, background: '#E4EBF2' }} />
 
-      <Slot cx={CLIENT_CX} f={f} label="CLIENT" dim={clientDim}>
-        {beat === 1 ? <ClientPostService f={f} /> : <ClientMyJobsQuiet />}
-      </Slot>
-      <Slot cx={PROVIDER_CX} f={f} provider label="PROVIDER" dim={providerDim}>
-        <ProviderFeed f={f} newAt={beat === 2 ? 28 : undefined} />
-      </Slot>
+      <PhoneSlot x={CLIENT_X} label="CLIENT" dim={dimAt(f, CLIENT_DIM)} list={CLIENT_SCREENS} f={f} />
+      <PhoneSlot x={PROVIDER_X} label="PROVIDER" provider dim={dimAt(f, PROVIDER_DIM)} list={PROVIDER_SCREENS} f={f} />
 
-      {/* headline, bottom centre, one blue keyword */}
-      <div style={{ position: 'absolute', left: 360, width: 1200, top: 938 + (1 - hp) * 30, textAlign: 'center', fontWeight: 800, fontSize: 84, letterSpacing: '-0.035em', lineHeight: '96px', color: S.ink, opacity: hp }}>
-        {head.pre}
-        <span style={{ color: S.primary }}>{head.key}</span>
-        {head.post}
-      </div>
+      {b > 0 && lf < 8 && <Headline h={HEADS[b - 1]} opacity={leave} y={0} />}
+      <Headline h={HEADS[b]} opacity={enter} y={(1 - enter) * 24} />
     </AbsoluteFill>
   );
 };
 
-/** Beat 1 still: client on Post a job (Plumbing picked), provider on its Feed. */
+/** Beat stills for checking the look: frame 60 (tasks being typed) and frame 118 (new job landed). */
 export const HeroBeat1: React.FC<{ at?: number }> = ({ at }) => {
   const cur = useCurrentFrame();
-  return <HeroStage f={at ?? cur} beat={1} />;
+  return <HeroStage f={at ?? cur} />;
 };
-
-/** Beat 2 still: provider Feed with the new job, client dimmed on My Jobs. */
 export const HeroBeat2: React.FC<{ at?: number }> = ({ at }) => {
   const cur = useCurrentFrame();
-  return <HeroStage f={at ?? cur} beat={2} />;
+  return <HeroStage f={at ?? cur} />;
 };

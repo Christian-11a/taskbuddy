@@ -15,8 +15,8 @@ import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAME
 
 export const Root: React.FC = () => (
   <>
-    <Still id="HeroBeat1" component={HeroBeat1} width={1920} height={1080} defaultProps={{ at: 72 }} />
-    <Still id="HeroBeat2" component={HeroBeat2} width={1920} height={1080} defaultProps={{ at: 80 }} />
+    <Still id="HeroBeat1" component={HeroBeat1} width={1920} height={1080} defaultProps={{ at: 60 }} />
+    <Still id="HeroBeat2" component={HeroBeat2} width={1920} height={1080} defaultProps={{ at: 118 }} />
     <Composition id="TaskBuddy60" component={PromoV2} durationInFrames={TOTAL60} fps={FPS} width={1920} height={1080} />
     <Composition id="HeroLoop" component={HeroLoop} durationInFrames={HERO_LOOP_FRAMES} fps={FPS} width={1920} height={1080} />
     <Composition id="StoryClip" component={StoryClip} durationInFrames={100} fps={FPS} width={1080} height={1080} defaultProps={{ role: 'customer' as const, step: 1 }} calculateMetadata={storyClipMetadata} />
