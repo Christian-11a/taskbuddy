@@ -14,12 +14,14 @@ import { HeroStill } from './v2/HeroLoop';
 import { CarouselClip, CarouselPoster, carouselMetadata } from './hero/Carousel';
 import { PhoneShot, SHOT_H, SHOT_W } from './hero/PhoneShot';
 import { Film, FILM_FRAMES } from './film/Film';
+import { TapAudit } from './guides2/TapAudit';
 import { GuideVideo, guideMetadata, GUIDE_FPS as G2FPS } from './guides2/GuideVideo';
 import { GuideLesson, calculateGuideMetadata, GUIDE_FPS, TITLE_FRAMES, END_FRAMES } from './guide/GuideLesson';
 
 export const Root: React.FC = () => (
   <>
     <Still id="HeroStill" component={HeroStill} width={1920} height={1080} defaultProps={{ at: 60 }} />
+    <Still id="TapAudit" component={TapAudit} width={411} height={914} defaultProps={{ src: 'client', f: 0 } as { src: string; f: number; dur?: number; x?: number; y?: number; label?: string }} />
     <Composition id="Guide" component={GuideVideo} durationInFrames={300} fps={G2FPS} width={1920} height={1080} defaultProps={{ id: 'post-a-job', timing: null as { a: number; b: number }[] | null }} calculateMetadata={guideMetadata} />
     <Composition id="TaskBuddyFilm" component={Film} durationInFrames={FILM_FRAMES} fps={FPS} width={1920} height={1080} />
     <Composition id="TaskBuddy60" component={PromoV2} durationInFrames={TOTAL60} fps={FPS} width={1920} height={1080} />

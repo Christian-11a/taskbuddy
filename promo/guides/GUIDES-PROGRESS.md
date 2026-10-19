@@ -31,3 +31,18 @@ Providers (navy): p1 Create your account · p2 Get verified · p3 Link your payo
 ## Narration sessions (ElevenLabs flow v6YTOOb2cld6NWebwged; fetch with creative_get_flow_run_status, download content_url to public/guides/audio/<id>.mp3, then `python scripts/guide-timing.py <id> <lines>`)
 post-a-job w1xT1qrkBxGFfu0NOEhz (8 lines) · create-your-account 03lVnLFPhAX9hUyBjf6K (7) · compare-proposals-and-hire 6tIcKllAqBIsThLU3dvc (7) · track-confirm-and-review Trgcs5Oj62ZoJwOGrppj (6) · provider-create-account CN3ToB7t9HbG4RsICiWA (7) · provider-get-verified N1dYU24ZLAjKZw1i0yIP (9) · provider-send-a-proposal 7ADXSAaLzW0wBYpiICml (7) · provider-do-the-job 48P6VWn3DPyhZd5Rpveg (7) · provider-get-paid xpny74194NQPAv4O6MTn (5)
 Lines = intro + steps + outro. Prompt = "[warmly] intro [pause] step1 [pause] ... [pause] outro".
+
+## Tap pass, 2026-10-19 (done, committed locally)
+- Every tap re-aimed and checked (TapAudit composition, scripts/tap-list.ts, scripts/tap-audit.mjs).
+- Client Settings matches the app: Appearance (Dark mode) first, then Notifications (Push), Account, Delete.
+  Tapping Dark mode flips the switch and the screen fades to the app's dark palette.
+- Guide phone timing (GuideVideo realSpeed + phoneWarp): taps and screen changes play at real speed; spare time
+  becomes rests on calm frames (never mid-slide, mid-typing or on a press). The finger's glide and the tap ring run
+  in real time (TapGate.real), so a rest never freezes a finger or ring. Steps own their taps (TapGate min/max).
+  Debug: npx tsx scripts/warp-one.ts <lesson> <step>.
+- New/fixed screens: myJobsOpen (tap My Jobs tab), startJob (Working, 0/2 ticked), payoutOpen (Profile → Payout
+  account push), decline link tap, QuietBooked (banner gone), date-change Job details (price, stepper, provider,
+  When/Where; new time only after Accept), menus open after the ⋮ tap and stay.
+- Hero loop, carousel and film re-rendered with the fixed taps: bash scripts/render-marketing.sh, check, then
+  bash scripts/render-marketing.sh --publish.
+- 757 web tests pass; guide durations unchanged.

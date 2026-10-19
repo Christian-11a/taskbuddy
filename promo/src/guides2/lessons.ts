@@ -39,7 +39,7 @@ export const LESSONS: GLesson[] = [
     summary: 'Tell providers what you need, step by step.', intro: "Let's post a job.",
     outro: 'Your job is live. Providers near you can now send proposals.', endLine: 'Your job is posted.', next: 'Compare proposals and hire',
     steps: [
-      { headline: 'Tap Post a job', body: 'On Home, tap Post a job. You can also tap “What do you need done?”.', say: 'On your Home screen, tap Post a job.', phone: hc(96, 150), spot: { x: 18, y: 228, w: 375, h: 178, at: 6 } },
+      { headline: 'Tap Post a job', body: 'On Home, tap Post a job. You can also tap “What do you need done?”.', say: 'On your Home screen, tap Post a job.', phone: hc(96, 146), spot: { x: 18, y: 228, w: 375, h: 178, at: 6 } },
       { headline: 'Choose a service', body: 'Pick the kind of work, like Plumbing or Cleaning, then tap Next.', say: 'Choose the service you need, like plumbing or cleaning, then tap Next.', phone: hc(146, 175) },
       { headline: 'Add the address', body: 'Type where the work happens. You’ll see Location confirmed when we find it.', say: 'Type the address where the work will happen. When it shows Location confirmed, tap Next.', phone: hc(175, 211) },
       { headline: 'Tick the tasks', body: 'Pick every task you need done. Your provider ticks them off as they work.', say: 'Tick the tasks you need done. Your provider will tick them off as they work.', phone: hc(211, 249) },
@@ -53,9 +53,9 @@ export const LESSONS: GLesson[] = [
     outro: 'Done. Your provider is booked, and your money is held safely.', endLine: 'Your provider is booked.', next: 'Chat and change the date or time',
     steps: [
       { headline: 'Open your proposals', body: 'When a provider applies, Job details shows “1 proposal waiting”. Tap Review proposals.', say: "When a provider applies, your job shows proposal waiting. Tap Review proposals.", phone: hc(450, 511) },
-      { headline: 'Compare the providers', body: 'Check each rating, Verified and Certified badges, and their message. Tap View profile for more.', say: "Compare each provider's rating, their Verified and Certified badges, and their message.", phone: hc(511, 514), spot: { x: 20, y: 258, w: 371, h: 228, at: 4 } },
-      { headline: 'Tap Hire', body: 'Tap Hire on the provider you want. Your payment option opens.', say: 'Tap Hire on the provider you want.', phone: hc(508, 542) },
-      { headline: 'Confirm and pay', body: 'Pay with GCash, Maya, card or bank. Your money is held until you confirm the job is done.', say: 'Choose GCash, Maya, card or bank, and tap Confirm and hire. Your money is held safely until you confirm the job is done.', phone: hc(538, 567), zoom: { y: 760, s: 1.1 } },
+      { headline: 'Compare the providers', body: 'Check each rating, Verified and Certified badges, and their message. Tap View profile for more.', say: "Compare each provider's rating, their Verified and Certified badges, and their message.", phone: hc(511, 512), spot: { x: 20, y: 258, w: 371, h: 228, at: 4 } },
+      { headline: 'Tap Hire', body: 'Tap Hire on the provider you want. Your payment option opens.', say: 'Tap Hire on the provider you want.', phone: hc(511, 528) },
+      { headline: 'Confirm and pay', body: 'Pay with GCash, Maya, card or bank. Your money is held until you confirm the job is done.', say: 'Choose GCash, Maya, card or bank, and tap Confirm and hire. Your money is held safely until you confirm the job is done.', phone: hc(528, 567), zoom: { y: 760, s: 1.1 } },
       { headline: 'You’re booked', body: 'Job details shows Booked with the date. Message your provider any time.', say: 'Your job now shows Booked, with the date and time. You can message your provider any time.', phone: hc(567, 620) },
     ],
   },
@@ -65,7 +65,7 @@ export const LESSONS: GLesson[] = [
     outro: 'Thanks for rating. It helps the next client choose.', endLine: 'Job done.', next: 'Cancel a job or report a problem',
     steps: [
       { headline: 'Follow the tasks', body: 'Job details shows how many tasks are done. Each one comes with a proof photo.', say: 'While your provider works, Job details shows how many tasks are done. Each task comes with a proof photo.', phone: hc(748, 820) },
-      { headline: 'Confirm job is done', body: 'When all tasks are done, check the work, then tap Confirm job is done. Something wrong? Tap Report a problem first.', say: "When every task is done, check the work and tap Confirm job is done. If something is wrong, tap Report a problem instead.", phone: scr('confirmDone') },
+      { headline: 'Confirm job is done', body: 'When all tasks are done, check the work, then tap Confirm job is done. Something wrong? Tap Report a problem first.', say: "When every task is done, check the work and tap Confirm job is done. If something is wrong, tap Report a problem instead.", phone: hc(816, 834) },
       { headline: 'Yes, Mark Complete', body: 'Confirming releases your payment to the provider right away.', say: 'Tap Yes, Mark Complete. Your payment is released to the provider right away.', phone: scr('confirmDialog') },
       { headline: 'Leave a review', body: 'Tap Leave a review, tap the stars, pick what went well and add a comment.', say: 'Tap Leave a review. Choose your stars, pick what went well, add a comment, and tap Submit review.', phone: hc(900, 1010) },
     ],
@@ -103,9 +103,9 @@ export const LESSONS: GLesson[] = [
     outro: "Now wait for the client. We'll notify you the moment they decide.", endLine: 'Proposal sent.', next: 'Do the job',
     steps: [
       { headline: 'Open a job', body: 'New jobs near you show up in your Feed. Tap one to open it.', say: 'New jobs near you appear in your Feed. Tap one to open it.', phone: hp(330, 371) },
-      { headline: 'Read the job', body: 'Check the date, the address, and what the job includes. Then tap Send proposal.', say: 'Read the job: the date, the address, and the tasks it includes. Then tap Send proposal.', phone: hp(371, 393) },
-      { headline: 'See what you receive', body: 'The job price, the platform fee and what you receive are shown before you send.', say: 'Before you send, you see the job price, the platform fee, and exactly what you receive.', phone: hp(402, 404), zoom: { y: 420, s: 1.15 } },
-      { headline: 'Write your message, then send', body: 'Say when you can come and what you’ll bring. Tap Send proposal.', say: "Write a short message: when you can come, and what you'll bring. Then tap Send proposal.", phone: hp(400, 451) },
+      { headline: 'Read the job', body: 'Check the date, the address, and what the job includes. Then tap Send proposal.', say: 'Read the job: the date, the address, and the tasks it includes. Then tap Send proposal.', phone: hp(371, 401) },
+      { headline: 'See what you receive', body: 'The job price, the platform fee and what you receive are shown before you send.', say: 'Before you send, you see the job price, the platform fee, and exactly what you receive.', phone: hp(401, 402), zoom: { y: 420, s: 1.15 } },
+      { headline: 'Write your message, then send', body: 'Say when you can come and what you’ll bring. Tap Send proposal.', say: "Write a short message: when you can come, and what you'll bring. Then tap Send proposal.", phone: hp(402, 451) },
       { headline: 'Wait for the client', body: 'The job shows Your proposal is in. You can withdraw it while you wait.', say: 'The job now shows Your proposal is in. You can withdraw it while the client decides.', phone: hp(451, 490) },
     ],
   },
@@ -115,10 +115,10 @@ export const LESSONS: GLesson[] = [
     outro: 'When the client confirms, your payment is released.', endLine: 'Job done.', next: 'Decline a booking or change the time',
     steps: [
       { headline: 'You’re booked', body: 'You get a Booking confirmed notification. The job shows where to go and when.', say: 'When a client hires you, you get a Booking confirmed notification, and the job shows where to go and when.', phone: hp(590, 632) },
-      { headline: 'Tap Start job', body: 'When you arrive, tap Start job.', say: 'When you arrive, tap Start job.', phone: hp(626, 648) },
+      { headline: 'Tap Start job', body: 'When you arrive, tap Start job.', say: 'When you arrive, tap Start job.', phone: scr('startJob') },
       { headline: 'Tick a task', body: 'Finished a task? Tap its box. A sheet asks for a proof photo.', say: 'When you finish a task, tap its box.', phone: hp(752, 766) },
-      { headline: 'Add a photo, then Mark as done', body: 'Add 1 to 4 photos of the finished task, then tap Mark as done.', say: 'Add at least one photo of the finished work, then tap Mark as done.', phone: hp(764, 796), zoom: { y: 760, s: 1.1 } },
-      { headline: 'Wait for the client', body: 'When every task is ticked, the client is asked to confirm.', say: 'When every task is ticked, the client is asked to confirm the job is done.', phone: hp(794, 830) },
+      { headline: 'Add a photo, then Mark as done', body: 'Add 1 to 4 photos of the finished task, then tap Mark as done.', say: 'Add at least one photo of the finished work, then tap Mark as done.', phone: hp(766, 796), zoom: { y: 760, s: 1.1 } },
+      { headline: 'Wait for the client', body: 'When every task is ticked, the client is asked to confirm.', say: 'When every task is ticked, the client is asked to confirm the job is done.', phone: hp(796, 830) },
     ],
   },
   {
@@ -126,9 +126,9 @@ export const LESSONS: GLesson[] = [
     summary: 'Know what you receive and where it goes.', intro: "Here's how you get paid in TaskBuddy.",
     outro: 'Your pay goes straight to your GCash, Maya or bank account.', endLine: 'Paid.', next: 'Services, certificates and portfolio',
     steps: [
-      { headline: 'Know what you receive', body: 'Every job shows the job price, the platform fee and what you receive before you apply.', say: 'Every job shows the price, the platform fee, and what you receive, before you even apply.', phone: hp(402, 404), zoom: { y: 420, s: 1.15 } },
+      { headline: 'Know what you receive', body: 'Every job shows the job price, the platform fee and what you receive before you apply.', say: 'Every job shows the price, the platform fee, and what you receive, before you even apply.', phone: hp(401, 402), zoom: { y: 420, s: 1.15 } },
       { headline: 'Paid when the client confirms', body: 'The client’s payment is held until they confirm. Then it’s released to you.', say: "The client's payment is held safely. When they confirm the job is done, it's released to you.", phone: hp(836, 872) },
-      { headline: 'Check Earnings', body: 'Profile → Earnings lists what was released to you and what is on its way.', say: 'Open Earnings from your profile to see what was released to you, and what is on its way.', phone: hp(866, 904), spot: { x: 18, y: 300, w: 375, h: 118, at: 8 } },
+      { headline: 'Check Earnings', body: 'Profile → Earnings lists what was released to you and what is on its way.', say: 'Open Earnings from your profile to see what was released to you, and what is on its way.', phone: hp(872, 904), spot: { x: 18, y: 300, w: 375, h: 118, at: 8 } },
     ],
   },
   // ── Added guides ─────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ export const LESSONS: GLesson[] = [
     outro: 'That is everything you need to find your way around.', endLine: 'You know your way around.', next: 'Post a job',
     steps: [
       { headline: 'Start from Home', body: 'Post a job, book a service, and see your active jobs. The bell opens your notifications.', say: 'Home is where you start. Post a job, pick a service, and see your active jobs. The bell at the top opens your notifications.', phone: scr('homeTour') },
-      { headline: 'All your jobs in My Jobs', body: 'My Jobs lists every job, grouped by what needs you, this week, waiting and finished.', say: 'Tap My Jobs to see every job you posted, grouped by what needs you, this week, waiting, and finished.', phone: scr('myJobs') },
+      { headline: 'All your jobs in My Jobs', body: 'My Jobs lists every job, grouped by what needs you, this week, waiting and finished.', say: 'Tap My Jobs to see every job you posted, grouped by what needs you, this week, waiting, and finished.', phone: scr('myJobsOpen') },
       { headline: 'Filter what needs you', body: 'Tap a filter like Needs you to see only the jobs waiting on you.', say: 'Tap a filter like Needs you, to see only the jobs waiting for your action.', phone: scr('myJobs'), spot: { x: 90, y: 144, w: 118, h: 40, at: 8 } },
     ],
   },
@@ -200,7 +200,7 @@ export const LESSONS: GLesson[] = [
     summary: 'What to do when you cannot make it.', intro: "Here is what to do when you can't make a booking.",
     outro: 'The client is told right away.', endLine: 'Handled.', next: 'Get paid',
     steps: [
-      { headline: 'Can’t make it?', body: 'On a booked job, tap “Can’t make it? Decline booking”.', say: "On a booked job, tap Can't make it? Decline booking.", phone: scr('bookedDecline'), spot: { x: 20, y: 836, w: 371, h: 26, at: 10 } },
+      { headline: 'Can’t make it?', body: 'On a booked job, tap “Can’t make it? Decline booking”.', say: "On a booked job, tap Can't make it? Decline booking.", phone: scr('bookedDecline'), spot: { x: 80, y: 874, w: 251, h: 26, at: 10 } },
       { headline: 'Choose a reason, then decline', body: 'Pick a reason, add a note if you want, and tap Decline Booking.', say: 'Pick a reason, add a note if you like, and tap Decline Booking.', phone: scr('decline') },
       { headline: 'Or ask for a new time', body: 'Tap the menu (⋮), then Change date or time.', say: 'Or, ask for a new time. Tap the menu, then Change date or time.', phone: scr('menuChangeP') },
       { headline: 'Send your request', body: 'Pick a new date and time, give a reason, and tap Send request.', say: 'Pick a new date and time, give a reason, and tap Send request.', phone: scr('changeSheetP') },

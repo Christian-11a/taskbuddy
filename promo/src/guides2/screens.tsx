@@ -1,6 +1,6 @@
 import React from 'react';
 import { CircleCheck } from 'lucide-react';
-import { Tap } from '../v2/kit';
+import { Tap, TapGate } from '../v2/kit';
 import { sp, tw } from '../motion';
 import { T, pal } from '../hero/ui';
 import { ClientPhone } from '../hero/ClientPhone';
@@ -38,7 +38,8 @@ const confirmDialog = (f: number, dur: number) => {
   const done = f >= press + 10;
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      <ClientPhone f={done ? lerp(f - press - 10, dur - press - 10, K.paid + 12, K.paid + 30) : K.cConfirm + 2} />
+      {/* the Confirm tap belongs to the previous step: keep it off this still background */}
+      <TapGate.Provider value={{ min: -Infinity, max: Infinity, o: 0 }}><ClientPhone f={done ? lerp(f - press - 10, dur - press - 10, K.paid + 12, K.paid + 30) : K.cConfirm + 2} /></TapGate.Provider>
       {p > 0.01 && <Dialog f={f} p={p} press={press} title="Mark this job complete?" message="This confirms the work is done to your satisfaction. Report any problem before you confirm." confirm="Yes, Mark Complete" cancel="Not Yet" />}
       <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={press} x={205} y={530} /></div>
     </div>

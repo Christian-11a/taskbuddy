@@ -267,16 +267,24 @@ export const Toast: React.FC<{ f: number; at: number; out?: number; title: strin
 // ── Tap indicator: finger glides in, presses at `at`, ripple ───────────────
 /** Set to false to hide the finger (poster frames). */
 export const ShowTaps = React.createContext(true);
-export const Tap: React.FC<{ f: number; at: number; x: number; y: number; from?: [number, number] }> = ({ f, at, x, y, from = [60, 90] }) => {
+/**
+ * Lets a guide step show only its own taps (pressed between min and max), fade them out (o), and keep a
+ * pressed tap's ring playing for `late` extra frames while the phone itself is paused.
+ */
+export const TapGate = React.createContext<{ min: number; max: number; o: number; late?: number; real?: (at: number, f: number) => number }>({ min: -Infinity, max: Infinity, o: 1 });
+export const Tap: React.FC<{ f: number; at: number; x: number; y: number; from?: [number, number] }> = ({ f: f0, at, x, y, from = [60, 90] }) => {
   const show = React.useContext(ShowTaps);
-  if (!show || f < at - 12 || f > at + 14) return null;
+  const gate = React.useContext(TapGate);
+  // the finger's glide and the ring both play in real time, even while the phone is paused
+  const f = gate.real ? gate.real(at, f0) : f0 >= at ? f0 + (gate.late ?? 0) : f0;
+  if (!show || f <= at - 12 || f > at + 14 || at < gate.min || at > gate.max || gate.o <= 0) return null;
   const m = tw(f, at - 12, at - 1, 0, 1, expoOut);
   const press = hit(f, at, 3);
   const ring = tw(f, at, at + 12, 0, 1, expoOut);
   const out = tw(f, at + 6, at + 14, 1, 0);
   const cx = x + (1 - m) * from[0], cy = y + (1 - m) * from[1];
   return (
-    <div style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 50, opacity: out }}>
+    <div style={{ position: 'absolute', left: 0, top: 0, pointerEvents: 'none', zIndex: 50, opacity: out * gate.o }}>
       <div style={{ position: 'absolute', left: cx - 24, top: cy - 24, width: 48, height: 48, borderRadius: 48, background: 'rgba(15,23,42,0.22)', border: '3px solid rgba(255,255,255,0.95)', boxShadow: '0 4px 14px rgba(0,0,0,0.28)', transform: `scale(${1 - press * 0.3})` }} />
       {f >= at && <div style={{ position: 'absolute', left: x - 40 * ring, top: y - 40 * ring, width: 80 * ring, height: 80 * ring, borderRadius: 99, border: `3px solid rgba(3,105,161,${1 - ring})` }} />}
     </div>

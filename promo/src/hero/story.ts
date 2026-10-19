@@ -31,7 +31,7 @@ export const K = {
   // 6. chat
   chat: 648,
   // 7. tasks ticked (each needs a proof photo), client confirms
-  work: 748, pTick1: 742, pTick2Tap: 758, proofSheet: 762, proofAdd: 774, proofDone: 788, pTick2: 792,
+  work: 748, pTick1: 742, pTick2Tap: 758, proofSheet: 762, proofAdd: 778, proofDone: 788, pTick2: 792,
   doneFly: 796, doneLand: 812, cConfirm: 832,
   // 8. payment released
   paid: 838, coinFly: 840, coinLand: 862,
@@ -46,3 +46,17 @@ export const CHAT = [
   { at: 688, from: 'p' as const, t: "Got it! I'll be there at 9." },
   { at: 716, from: 'c' as const, t: 'Thank you!' },
 ];
+
+/** Every tap frame on each phone, so guides can play taps at real speed. */
+export const TAPS: Record<'c' | 'p', number[]> = {
+  c: [K.cPostTap, K.cPickSvc, K.cStep1Next, K.cStep2Next, K.cTask1, K.cTask2, K.cStep3Next, K.cUrgent, K.cPickPrice, K.cStep4Next, K.cPost,
+    K.cOpenProps, K.cConfirm, K.cLeaveReview, K.cHireTap, K.cContinue, K.cPay, ...K.stars, K.chip1, K.chip2, K.submit],
+  p: [K.pVerifyTap, K.pOpenJob, K.pPickId, K.pStep1Next, K.pUsePhoto, K.pSelfieNext, K.pCertNext, K.pAgree, K.pSecure, K.pSendTap,
+    K.pStart, K.pTick2Tap, K.proofAdd, K.proofDone, K.pSend],
+};
+
+/** Frames where text is being typed; a guide never pauses in the middle of one. */
+export const TYPING: Record<'c' | 'p', [number, number][]> = {
+  c: [[K.cStep2 + 4, K.cStep2 + 24], [K.typeA, K.typeB]],
+  p: [[K.pStep4 + 8, K.pStep4 + 18], [K.pTypeA, K.pTypeB]],
+};

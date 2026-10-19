@@ -170,11 +170,11 @@ const MapScene: React.FC<{ f: number }> = ({ f }) => {
 
 // Screen changes inside the phones (slides, fades, sheets) play at real speed; only the calm parts between
 // them are slowed, so a phone never shows half of two screens for long.
-const CUTS: Record<'c' | 'p', number[]> = {
+export const CUTS: Record<'c' | 'p', number[]> = {
   c: [K.cStep1, K.cStep2, K.cStep3, K.cStep4, K.cStep5, K.cWaiting, K.cProps, K.cHireSheet, K.cConfirmPage, K.cBooked, K.chat, K.work, K.paid, K.review],
   p: [K.pStep1, K.pStep2, K.pStep3, K.pStep4, K.pStep5, K.pPending, K.pFeed, K.pDetail, K.pSheet, K.pSent, K.pBooked, K.chat, K.work, K.proofSheet, K.proofDone, K.paid + 2, K.review],
 };
-const FAST = 16;
+export const FAST = 16;
 type Warp = { heroAt: (l: number) => number; localAt: (h: number) => number };
 export const makeWarp = (role: 'c' | 'p', from: number, to: number, dur: number): Warp => {
   const wins = CUTS[role].filter((c) => c >= from && c < to).map((c) => [c, Math.min(c + FAST, to)] as [number, number]);

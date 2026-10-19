@@ -11,8 +11,11 @@ export const SU = {
   pick: 16, cont: 32, details: 38,
   nameA: 44, nameB: 58, mailA: 62, mailB: 80, passA: 84, passB: 96, confA: 100, confB: 110,
   cat: 116, catPick: 128, scroll: 134, agree1: 152, agree2: 160, create: 172,
-  code: 178, codeA: 186, codeB: 204, verify: 214, welcome: 220, end: 290,
+  code: 178, codeA: 192, codeB: 207, verify: 214, welcome: 220, end: 290,
 };
+/** Tap frames in the signup flow, so guides can play taps at real speed. */
+export const suTyping: [number, number][] = [[SU.nameA, SU.nameB], [SU.mailA, SU.mailB], [SU.passA, SU.passB], [SU.confA, SU.confB], [SU.codeA, SU.codeB]];
+export const suTaps = (role: 'client' | 'provider') => [SU.pick, SU.cont, ...(role === 'provider' ? [SU.cat, SU.catPick] : []), SU.agree1, SU.agree2, SU.create, SU.codeA - 2, SU.verify];
 
 const typed = (f: number, a: number, b: number, s: string) => s.slice(0, Math.floor(tw(f, a, b, 0, s.length, (t) => t)));
 const S = pal('client');
@@ -129,11 +132,11 @@ const Details = (role: Tone) => (f: number) => {
       </div>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 206, background: T.canvas }} />
       <Header n={2} label="DETAILS" />
-      {role === 'provider' && <Tap f={f} at={SU.cat} x={205} y={589} />}
-      {role === 'provider' && <Tap f={f} at={SU.catPick} x={120} y={813} />}
-      <Tap f={f} at={SU.agree1} x={56} y={role === 'client' ? 531 : 455} />
-      <Tap f={f} at={SU.agree2} x={56} y={role === 'client' ? 620 : 546} />
-      <Tap f={f} at={SU.create} x={205} y={role === 'client' ? 731 : 650} />
+      {role === 'provider' && <Tap f={f} at={SU.cat} x={205} y={572} />}
+      {role === 'provider' && <Tap f={f} at={SU.catPick} x={120} y={792} />}
+      <Tap f={f} at={SU.agree1} x={64} y={role === 'client' ? 505 : 433} />
+      <Tap f={f} at={SU.agree2} x={64} y={role === 'client' ? 597 : 527} />
+      <Tap f={f} at={SU.create} x={205} y={role === 'client' ? 710 : 640} />
     </div>
   );
 };
@@ -153,8 +156,8 @@ const Code = (role: Tone) => (f: number) => {
         <div style={{ fontSize: 14.5, fontWeight: 600, color: S.link }}>Didn&apos;t get it? Resend code</div>
         <div style={{ fontSize: 14.5, color: T.ink500 }}>Go to Sign In</div>
       </div>
-      <Tap f={f} at={SU.codeA - 4} x={205} y={490} />
-      <Tap f={f} at={SU.verify} x={205} y={566} />
+      <Tap f={f} at={SU.codeA - 2} x={205} y={428} />
+      <Tap f={f} at={SU.verify} x={205} y={500} />
     </div>
   );
 };

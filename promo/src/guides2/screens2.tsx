@@ -1,13 +1,13 @@
 import React from 'react';
 import {
   ArrowLeft, Bell, BriefcaseBusiness, CalendarClock, CalendarDays, Camera, Check, ChevronRight, CircleCheck, CircleHelp, CircleX, CreditCard, Eye, FileText,
-  Hourglass, ImagePlus, Landmark, Mail, MapPin, Moon, Phone as PhoneIcon, Plus, Settings, Smartphone, TriangleAlert, Wrench,
+  Hourglass, ImagePlus, Landmark, Mail, MapPin, Moon, Lock, Globe, Trash2, Phone as PhoneIcon, Plus, Settings, Smartphone, TriangleAlert, Wrench,
 } from 'lucide-react';
-import { Tap, pop } from '../v2/kit';
+import { Tap, TapGate, pop } from '../v2/kit';
 import { hit, inOut, sp, tw } from '../motion';
-import { AppBar, Avatar, Box, Btn, Caret, Footer, Pill, Radio, Section, Sheet, Status, StatusBar, T, TabBar, pal, type Tone } from '../hero/ui';
+import { AppBar, Avatar, Box, Btn, Caret, Footer, Person, Pill, Radio, Section, Sheet, Status, StatusBar, Stepper, T, TabBar, WhenWhere, pal, type Tone } from '../hero/ui';
 import { ClientPhone } from '../hero/ClientPhone';
-import { ProviderPhone } from '../hero/ProviderPhone';
+import { ProviderPhone, Detail as ProDetail } from '../hero/ProviderPhone';
 import { CLIENT as C, JOB, K, PRO as P } from '../hero/story';
 import { Dialog } from './screens';
 import { peso } from '../components/ui';
@@ -18,6 +18,9 @@ type Screen = (f: number, dur: number) => React.ReactNode;
 const at = (dur: number, x: number) => Math.round(dur * x);
 const typed = (f: number, a: number, b: number, s: string) => s.slice(0, Math.max(0, Math.floor(tw(f, a, b, 0, s.length, (t) => t))));
 const wrap = (n: React.ReactNode) => <div style={{ position: 'absolute', inset: 0, background: T.canvas }}>{n}<StatusBar /></div>;
+
+// Provider booked job, after the Booking confirmed banner has gone; the Start job tap belongs to another guide
+const QuietBooked: React.FC = () => <TapGate.Provider value={{ min: -Infinity, max: Infinity, o: 0 }}><ProviderPhone f={K.pBooked + 48} /></TapGate.Provider>;
 
 // ── shared pieces ──────────────────────────────────────────────────────────
 const DateBlock: React.FC<{ d: string; n: string; tone?: Tone; none?: boolean }> = ({ d, n, tone = 'client', none }) => {
@@ -56,7 +59,7 @@ const Field: React.FC<{ label: string; value: string; ph: string; on?: boolean; 
 
 // ── Client: Home and My Jobs ───────────────────────────────────────────────
 const homeTour: Screen = (f) => <ClientPhone f={Math.min(90, f * 0.6)} />;
-const MyJobs = (f: number, dur: number, filter: number) => {
+const MyJobs = (f: number, dur: number, filter: number, tap = true) => {
   const pills = [['All', 4], ['Needs you', 1], ['Booked', 1], ['Waiting', 1]] as const;
   return wrap(
     <div style={{ position: 'absolute', inset: 0 }}>
@@ -71,11 +74,21 @@ const MyJobs = (f: number, dur: number, filter: number) => {
         {filter === 0 && <><Group label="THIS WEEK" /><Row d="THU" n="22" t="Cleaning: Deep clean condo" meta="Booked · Mark Santos" dot={T.okText} amt={peso(1800)} /><Group label="WAITING" /><Row d="SAT" n="24" t="Handyman: Install shelves" meta="Waiting for proposals" dot={T.sky} amt={peso(900)} /><Group label="FINISHED" /><Row d="MON" n="12" t="Plumbing: Unclog drain" meta="Done" dot={T.ink500} amt={peso(850)} /></>}
       </div>
       <TabBar tone="client" active={1} />
-      <Tap f={f} at={at(dur, 0.35)} x={150} y={164} />
+      {tap && <Tap f={f} at={at(dur, 0.35)} x={150} y={164} />}
     </div>,
   );
 };
 const myJobs: Screen = (f, dur) => MyJobs(f, dur, f >= at(dur, 0.35) ? 1 : 0);
+// Home → tap the My Jobs tab → the full list (tabs switch instantly, like the app)
+const myJobsOpen: Screen = (f, dur) => {
+  const t = at(dur, 0.22);
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      {f < t + 3 ? <ClientPhone f={90} /> : MyJobs(f, dur, 0, false)}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={t} x={154} y={828} /></div>
+    </div>
+  );
+};
 
 // ── Client: chat and change the date or time ───────────────────────────────
 const openChat: Screen = (f, dur) => <ClientPhone f={K.chat - 30 + Math.min(1, f / dur) * 120} />;
@@ -95,26 +108,27 @@ const ChangeSheet = (f: number, dur: number, tone: Tone) => {
         <Btn f={f} press={send} tone={tone} label="Send request" r={14} style={{ background: T.navy }} />
         <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, color: T.ink700 }}>Cancel</div>
       </div>
-      <div style={{ position: 'absolute', inset: 0 }}><Tap f={f} at={d1 - 2} x={110} y={340} /><Tap f={f} at={d2 - 2} x={300} y={340} /><Tap f={f} at={send} x={205} y={600} /></div>
     </Sheet>
   );
 };
 const menuChange = (tone: Tone): Screen => (f, dur) => {
-  const p = sp(f, 4, { damping: 18, stiffness: 190, mass: 0.7 }) * tw(f, at(dur, 0.75), at(dur, 0.75) + 8, 1, 0);
+  // tap the menu button once the step has settled, then the menu opens and stays until the next step
+  const p = sp(f, 18, { damping: 18, stiffness: 190, mass: 0.7 });
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      {tone === 'client' ? <ClientPhone f={K.cBooked + 30} /> : <ProviderPhone f={K.pBooked + 20} />}
+      {tone === 'client' ? <ClientPhone f={K.cBooked + 30} /> : <QuietBooked />}
       <Menu f={f} p={p} pick={0} press={at(dur, 0.6)} title={JOB.title} items={tone === 'client'
         ? [{ l: 'Change date or time', I: CalendarClock }, { l: 'Report a problem', I: TriangleAlert }, { l: 'Cancel job', I: CircleX, danger: true, hint: 'Cancelling after hiring asks the provider to agree. Your money comes back once they do.' }]
         : [{ l: 'Change date or time', I: CalendarClock }, { l: 'Report a problem', I: TriangleAlert }]} />
-      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={2} x={372} y={110} /><Tap f={f} at={at(dur, 0.6)} x={150} y={tone === 'client' ? 600 : 706} /></div>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={14} x={372} y={110} /><Tap f={f} at={at(dur, 0.6)} x={150} y={tone === 'client' ? 712 : 808} /></div>
     </div>
   );
 };
 const changeSheet = (tone: Tone): Screen => (f, dur) => (
   <div style={{ position: 'absolute', inset: 0 }}>
-    {tone === 'client' ? <ClientPhone f={K.cBooked + 30} /> : <ProviderPhone f={K.pBooked + 20} />}
+    {tone === 'client' ? <ClientPhone f={K.cBooked + 30} /> : <QuietBooked />}
     <div style={{ position: 'absolute', inset: 0, zIndex: 30 }}>{ChangeSheet(f, dur, tone)}</div>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={at(dur, 0.25) - 2} x={110} y={652} /><Tap f={f} at={at(dur, 0.4) - 2} x={300} y={652} /><Tap f={f} at={at(dur, 0.86)} x={205} y={833} /></div>
   </div>
 );
 const ChangeCard: React.FC<{ f: number; dur: number; mine?: boolean; who: string; tone: Tone; press?: number }> = ({ f, mine, who, tone, press = -99 }) => {
@@ -133,28 +147,42 @@ const ChangeCard: React.FC<{ f: number; dur: number; mine?: boolean; who: string
     </div>
   );
 };
-const DetailWithCard = (f: number, dur: number, tone: Tone, mine: boolean, press = -99) => wrap(
-  <div style={{ position: 'absolute', inset: 0 }}>
-    <AppBar title="Job details" white menu y={113} size={19.5} />
-    <div style={{ position: 'absolute', top: 166, left: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div><div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.9, color: pal(tone).link }}>PLUMBING</div><div style={{ fontSize: 20, fontWeight: 700, marginTop: 6 }}>{JOB.title}</div></div>
-      <div style={{ transform: `scale(${pop(f, 4)})`, transformOrigin: 'top center' }}><ChangeCard f={f} dur={dur} mine={mine} who={tone === 'client' ? P.first : C.first} tone={tone} press={press} /></div>
-      <Status tone="booked" app={tone} over={f >= press + 4 ? 'Booked · Wed, Oct 21' : 'Booked'} title={tone === 'client' ? `${P.name} comes Tue, Oct 20` : `Go to ${JOB.address}`} body={f >= press + 4 ? '2:00 PM' : '9:00 AM'} I={CalendarDays} />
-    </div>
-    <Tap f={f} at={press} x={110} y={360} />
-  </div>,
-);
+const DetailWithCard = (f: number, dur: number, tone: Tone, mine: boolean, press = -99) => {
+  // the new schedule only applies once the other side accepts
+  const moved = press >= 0 && f >= press + 4;
+  return wrap(
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <AppBar title="Job details" white menu y={113} size={19.5} />
+      <div style={{ position: 'absolute', top: 166, left: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.9, color: pal(tone).link }}>PLUMBING</div>
+          <div style={{ fontSize: 20, fontWeight: 700, lineHeight: '26px', letterSpacing: -0.3 }}>{JOB.title}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><div style={{ fontSize: 18, fontWeight: 700 }}>{peso(JOB.price)}</div><div style={{ borderRadius: 999, padding: '4px 10px', background: T.ink50, fontSize: 12, fontWeight: 700, color: T.ink700 }}>Normal</div></div>
+        </div>
+        <div style={{ transform: `scale(${pop(f, 4)})`, transformOrigin: 'top center' }}><ChangeCard f={f} dur={dur} mine={mine} who={tone === 'client' ? P.first : C.first} tone={tone} press={press} /></div>
+        <Status tone="booked" app={tone} over={moved ? 'Booked · Wed, Oct 21' : 'Booked'} title={tone === 'client' ? `${P.name} comes ${moved ? 'Wed, Oct 21' : 'Tue, Oct 20'}` : `Go to ${JOB.address}`} body={moved ? '2:00 PM' : '9:00 AM'} I={CalendarDays} />
+        <Stepper n={1} />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Section title={tone === 'client' ? 'Your provider' : 'Your client'} />
+          {tone === 'client' ? <Person name={P.name} ini={P.ini} sub="4.8 · 38 jobs done" star msg /> : <Person name={C.name} ini={C.ini} sub="Client" msg tone="provider" />}
+        </div>
+        <WhenWhere when={moved ? 'Oct 21, 2026 · 2:00 PM' : JOB.when} where={JOB.address} I1={CalendarDays} I2={MapPin} />
+      </div>
+      <Tap f={f} at={press} x={117} y={366} />
+    </div>,
+  );
+};
 const requestSent: Screen = (f, dur) => DetailWithCard(f, dur, 'client', true);
 const providerAccepts: Screen = (f, dur) => DetailWithCard(f, dur, 'provider', false, at(dur, 0.55));
 
 // ── Client: cancel and report ──────────────────────────────────────────────
 const cancelMenu: Screen = (f, dur) => {
-  const p = sp(f, 4, { damping: 18, stiffness: 190, mass: 0.7 });
+  const p = sp(f, 18, { damping: 18, stiffness: 190, mass: 0.7 });
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
       <ClientPhone f={K.cWaiting + 20} />
       <Menu f={f} p={p} pick={1} press={at(dur, 0.6)} title={JOB.title} items={[{ l: 'Report a problem', I: TriangleAlert }, { l: 'Cancel job', I: CircleX, danger: true }]} />
-      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={2} x={372} y={110} /><Tap f={f} at={at(dur, 0.6)} x={150} y={760} /></div>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={14} x={372} y={110} /><Tap f={f} at={at(dur, 0.6)} x={150} y={862} /></div>
     </div>
   );
 };
@@ -165,7 +193,7 @@ const cancelDialog: Screen = (f, dur) => {
     <div style={{ position: 'absolute', inset: 0 }}>
       <ClientPhone f={K.cWaiting + 20} />
       {p > 0.01 && <Dialog f={f} p={p} press={press} danger title="Cancel this job?" message="This takes the job down so providers can no longer apply. It cannot be undone." confirm="Cancel Job" cancel="Keep Job" />}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={press} x={205} y={548} /></div>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={press} x={205} y={507} /></div>
     </div>
   );
 };
@@ -199,9 +227,9 @@ const Report = (f: number, dur: number, stage: 'reason' | 'details') => {
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 150, background: T.canvas }} />
       <AppBar title="Report a problem" y={113} size={19.5} />
       <Footer><Btn f={f} press={send} label="Send report" h={46} r={16} size={14} off={!chosen} style={{ flex: 1, fontWeight: 600 }} /></Footer>
-      <Tap f={f} at={pick} x={150} y={364} />
-      {stage === 'details' && <Tap f={f} at={ph - 2} x={58} y={540} />}
-      {stage === 'details' && <Tap f={f} at={send} x={205} y={851} />}
+      <Tap f={f} at={pick} x={150} y={377} />
+      {stage === 'details' && <Tap f={f} at={ph - 2} x={53} y={490} />}
+      {stage === 'details' && <Tap f={f} at={send} x={205} y={863} />}
     </div>,
   );
 };
@@ -267,29 +295,63 @@ const notifications: Screen = (f) => wrap(
     </div>
   </div>,
 );
+// HOSettingsScreen: Appearance (Dark mode) · Notifications (Push) · Account (Change password, Language) · Delete account.
+// Layout uses the screen's own spacing: body paddingTop 20, section title 13/18 + 8, card rows 14 + content + 14, card gap 20.
+// Settings in the app's light and dark palettes (mobile/src/constants/palettes.ts, client roles)
+type SP = { canvas: string; surface: string; well: string; line: string; ink900: string; ink700: string; ink500: string; off: string; on: string; danger: string };
+const SET_LIGHT: SP = { canvas: T.canvas, surface: T.surface, well: T.well, line: T.line, ink900: T.ink900, ink700: T.ink700, ink500: T.ink500, off: '#CBD5E1', on: '#0284C7', danger: T.danger };
+const SET_DARK: SP = { canvas: '#0e1113', surface: '#171b1f', well: '#1d2227', line: '#2c3238', ink900: '#f3f5f7', ink700: '#dce1e6', ink500: '#b9c1c9', off: '#3a4148', on: '#38bdf8', danger: '#fca5a5' };
+const SwitchRN: React.FC<{ on: boolean; c?: SP }> = ({ on, c = SET_LIGHT }) => (
+  <div style={{ width: 46, height: 26, borderRadius: 13, background: on ? c.on : c.off, position: 'relative', flexShrink: 0 }}><div style={{ position: 'absolute', top: 3, left: on ? 23 : 3, width: 20, height: 20, borderRadius: 10, background: T.white, boxShadow: '0 1px 2px rgba(15,23,42,0.25)' }} /></div>
+);
+const SRow: React.FC<{ I: React.ComponentType<any>; l: string; hint?: string; right?: React.ReactNode; danger?: boolean; border?: boolean; c?: SP }> = ({ I, l, hint, right, danger, border, c = SET_LIGHT }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', borderBottom: border ? `1px solid ${c.line}` : undefined }}>
+    <div style={{ width: 34, height: 34, borderRadius: 10, background: c.well, display: 'grid', placeItems: 'center', flexShrink: 0 }}><I size={18} color={danger ? c.danger : c.ink700} /></div>
+    <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 600, lineHeight: '20px', color: danger ? c.danger : c.ink900 }}>{l}</div>{hint && <div style={{ fontSize: 13, lineHeight: '18px', color: c.ink500, marginTop: 2 }}>{hint}</div>}</div>
+    {right}
+  </div>
+);
+const SHead: React.FC<{ t: string; c?: SP }> = ({ t, c = SET_LIGHT }) => <div style={{ fontSize: 13, lineHeight: '18px', fontWeight: 700, letterSpacing: 0.6, color: c.ink500, marginBottom: 8 }}>{t}</div>;
+const SCard: React.FC<{ children: React.ReactNode; c?: SP }> = ({ children, c = SET_LIGHT }) => <div style={{ background: c.surface, borderRadius: 16, border: `1px solid ${c.line}`, overflow: 'hidden', marginBottom: 20 }}>{children}</div>;
+export const SETTINGS_DARK = { x: 350, y: 237 }; // centre of the Dark mode switch
+const SettingsPage: React.FC<{ c: SP; dark: boolean }> = ({ c, dark }) => (
+  <div style={{ position: 'absolute', inset: 0, background: c.canvas, color: c.ink900 }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 52, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 26px 0 28px', fontSize: 14.5, fontWeight: 500, color: c.ink900, zIndex: 25 }}>
+      <span>9:41</span>
+      <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span style={{ display: 'flex', gap: 2, alignItems: 'flex-end' }}>{[4, 7, 10, 13].map((h, i) => <span key={i} style={{ width: 3, height: h, borderRadius: 1, background: c.ink900 }} />)}</span>
+        <svg width="17" height="13" viewBox="0 0 24 18"><path d="M12 17.5 0.8 6.3a16 16 0 0 1 22.4 0Z" fill={c.ink900} /></svg>
+        <span style={{ width: 24, height: 12, borderRadius: 3.5, background: c.ink900 }} />
+      </span>
+    </div>
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 155, padding: '93px 20px 0', display: 'flex', alignItems: 'flex-start', gap: 12, background: c.surface, borderBottom: `1px solid ${c.line}`, zIndex: 4 }}>
+      <div style={{ width: 40, height: 40, borderRadius: 20, background: c.surface, border: `1px solid ${c.line}`, display: 'grid', placeItems: 'center', flexShrink: 0 }}><ArrowLeft size={20} color={c.ink700} /></div>
+      <div style={{ flex: 1, fontSize: 19.5, fontWeight: 800, lineHeight: '40px' }}>Settings</div>
+    </div>
+    <div style={{ position: 'absolute', top: 175, left: 20, right: 20 }}>
+      <SHead t="APPEARANCE" c={c} />
+      <SCard c={c}><SRow c={c} I={Moon} l="Dark mode" hint="Easier on the eyes at night" right={<SwitchRN c={c} on={dark} />} /></SCard>
+      <SHead t="NOTIFICATIONS" c={c} />
+      <SCard c={c}><SRow c={c} I={Bell} l="Push notifications" hint="Proposals, bookings and messages" right={<SwitchRN c={c} on />} /></SCard>
+      <SHead t="ACCOUNT" c={c} />
+      <SCard c={c}>
+        <SRow c={c} I={Lock} l="Change password" border right={<ChevronRight size={20} color={c.ink500} />} />
+        <SRow c={c} I={Globe} l="Language" right={<><span style={{ fontSize: 14, color: c.ink500 }}>English</span><ChevronRight size={20} color={c.ink500} /></>} />
+      </SCard>
+      <SCard c={c}><SRow c={c} I={Trash2} l="Delete account" danger /></SCard>
+    </div>
+  </div>
+);
+// Tapping Dark mode flips the switch, then the whole app takes the dark palette, as in the app
 const settings: Screen = (f, dur) => {
-  const on = f >= at(dur, 0.55);
-  return wrap(
+  const tap = at(dur, 0.55);
+  const d = tw(f, tap + 3, tap + 9, 0, 1);
+  return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      <AppBar title="Settings" y={113} size={19.5} />
-      <div style={{ position: 'absolute', top: 170, left: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {[['NOTIFICATIONS', [[Bell, 'Push notifications', 'Proposals, bookings and messages', true]]], ['APPEARANCE', [[Moon, 'Dark mode', 'Easier on the eyes at night', on]]], ['ACCOUNT', [[Eye, 'Change password', '', null], [CircleX, 'Delete account', '', null]]]].map(([h, rows]: any) => (
-          <div key={h}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.6, color: T.ink500, margin: '8px 0' }}>{h}</div>
-            <div style={{ borderRadius: 18, border: `1px solid ${T.line}`, background: T.surface }}>
-              {rows.map(([I, l, s, t]: any) => (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 58, padding: '0 14px' }}>
-                  <I size={19} color={l === 'Delete account' ? T.danger : T.ink700} />
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 15, fontWeight: 600, color: l === 'Delete account' ? T.danger : T.ink900 }}>{l}</div>{s && <div style={{ fontSize: 13, color: T.ink500 }}>{s}</div>}</div>
-                  {t !== null ? <div style={{ width: 44, height: 24, borderRadius: 12, background: t ? T.okSolid : T.field, position: 'relative' }}><div style={{ position: 'absolute', top: 2, left: t ? 22 : 2, width: 20, height: 20, borderRadius: 10, background: T.white }} /></div> : <ChevronRight size={18} color={T.ink500} />}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-      <Tap f={f} at={at(dur, 0.55)} x={360} y={344} />
-    </div>,
+      <SettingsPage c={SET_LIGHT} dark={f >= tap} />
+      {d > 0 && <div style={{ position: 'absolute', inset: 0, opacity: d, zIndex: 30 }}><SettingsPage c={SET_DARK} dark /></div>}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={tap} x={SETTINGS_DARK.x} y={SETTINGS_DARK.y} /></div>
+    </div>
   );
 };
 
@@ -323,17 +385,28 @@ const Payout = (f: number, dur: number, stage: 'empty' | 'form' | 'saved') => {
           </div>
         )}
       </div>
-      {stage === 'form' && <Tap f={f} at={save} x={205} y={720} />}
+      {stage === 'form' && <Tap f={f} at={save} x={205} y={625} />}
     </div>,
   );
 };
-const payoutOpen: Screen = (f, dur) => Payout(f, dur, 'empty');
+// Profile → tap Payout account (row 5 of Your work) → the page pushes in, as in the app
+const payoutOpen: Screen = (f, dur) => {
+  const tap = at(dur, 0.3), open = tap + 6;
+  const x = tw(f, open, open + 12, 1, 0, inOut);
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+      {f < open + 12 && <div style={{ position: 'absolute', inset: 0, transform: `translateX(${-(1 - x) * 30}%)` }}>{ProfileP(f, tap / 0.55, 4)}</div>}
+      {f >= open && <div style={{ position: 'absolute', inset: 0, transform: `translateX(${x * 100}%)`, boxShadow: '-8px 0 24px rgba(15,23,42,0.12)' }}>{Payout(f - open, dur - open, 'empty')}</div>}
+    </div>
+  );
+};
 const payoutForm: Screen = (f, dur) => Payout(f, dur, 'form');
 const payoutSaved: Screen = (f, dur) => Payout(f, dur, 'saved');
 const setupPayout: Screen = (f) => <ProviderPhone f={Math.min(17, f * 0.2)} />;
 
 // ── Provider: feed and availability ────────────────────────────────────────
-const feedTour: Screen = (f, dur) => <ProviderPhone f={300 + Math.min(1, f / dur) * 66} />;
+// the new job lands at the top; the Open job tap belongs to the proposal guide, so it stays hidden
+const feedTour: Screen = (f, dur) => <TapGate.Provider value={{ min: -Infinity, max: Infinity, o: 0 }}><ProviderPhone f={300 + Math.min(1, f / dur) * 62} /></TapGate.Provider>;
 const availability: Screen = (f, dur) => {
   const off = f >= at(dur, 0.35) && f < at(dur, 0.75);
   return (
@@ -356,7 +429,7 @@ const decline: Screen = (f, dur) => {
   const pick = at(dur, 0.35), press = at(dur, 0.8);
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
-      <ProviderPhone f={K.pBooked + 20} />
+      <QuietBooked />
       <div style={{ position: 'absolute', inset: 0, zIndex: 30 }}>
         <Sheet p={p}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -366,13 +439,30 @@ const decline: Screen = (f, dur) => {
             <Btn f={f} press={press} label="Decline Booking" r={14} style={{ background: T.danger }} />
             <div style={{ textAlign: 'center', fontSize: 15, fontWeight: 600, color: '#2D4A68' }}>Keep booking</div>
           </div>
-          <div style={{ position: 'absolute', inset: 0 }}><Tap f={f} at={pick} x={150} y={110} /><Tap f={f} at={press} x={205} y={520} /></div>
         </Sheet>
       </div>
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={pick} x={150} y={517} /><Tap f={f} at={press} x={205} y={835} /></div>
     </div>
   );
 };
-const bookedDecline: Screen = (f, dur) => <ProviderPhone f={K.pBooked + 6 + Math.min(1, f / dur) * 28} />;
+// Tap Start job → the job turns Working, no task ticked yet (the app's Job details in working mode)
+const startJob: Screen = (f, dur) => {
+  const tap = at(dur, 0.35), swap = tap + 5;
+  const o = tw(f, swap, swap + 8, 0, 1);
+  return (
+    <div style={{ position: 'absolute', inset: 0 }}>
+      <QuietBooked />
+      {o > 0 && <div style={{ position: 'absolute', inset: 0, opacity: o, background: T.canvas, zIndex: 30 }}><TapGate.Provider value={{ min: -Infinity, max: Infinity, o: 0 }}>{ProDetail(741, 'working')}</TapGate.Provider><StatusBar /></div>}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={tap} x={205} y={845} /></div>
+    </div>
+  );
+};
+const bookedDecline: Screen = (f, dur) => (
+  <div style={{ position: 'absolute', inset: 0 }}>
+    <QuietBooked />
+    <div style={{ position: 'absolute', inset: 0, zIndex: 40 }}><Tap f={f} at={at(dur, 0.72)} x={205} y={887} /></div>
+  </div>
+);
 
 // ── Provider: services, certificates, portfolio ────────────────────────────
 const ProfileP = (f: number, dur: number, hi: number) => (
@@ -403,8 +493,8 @@ const services: Screen = (f, dur) => {
         <Field label="Why are you qualified?" value={typed(f, t1, t2, '5 years of home cleaning; TESDA Housekeeping NC II.')} ph="Years of experience, licences or certificates, past jobs…" h={84} tone="provider" on={f >= t1 && f < t2 + 4} f={f} until={t2 + 4} />
       </div>
       <Footer tone="provider"><Btn f={f} press={send} tone="provider" label="Send request" h={46} r={16} size={14} style={{ flex: 1, fontWeight: 600 }} /></Footer>
-      <Tap f={f} at={pick} x={70} y={560} />
-      <Tap f={f} at={send} x={205} y={851} />
+      <Tap f={f} at={pick} x={70} y={480} />
+      <Tap f={f} at={send} x={205} y={863} />
     </div>,
   );
 };
@@ -434,7 +524,7 @@ const portfolio: Screen = (f, dur) => {
         {f >= add && <Field label="Caption" value={typed(f, cap1, cap2, 'Kitchen sink replaced, Lipa City')} ph="What did you do?" tone="provider" on={f >= cap1 && f < cap2 + 4} f={f} until={cap2 + 4} />}
         {f >= add && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><span style={{ fontSize: 14, fontWeight: 600, color: T.ink700 }}>Service</span><span style={{ padding: '6px 12px', borderRadius: 999, background: T.navy, color: T.white, fontSize: 13, fontWeight: 600 }}>Plumbing</span></div>}
       </div>
-      <Tap f={f} at={add - 4} x={300} y={300} />
+      <Tap f={f} at={add - 4} x={109} y={253} />
     </div>,
   );
 };
@@ -443,7 +533,7 @@ const portfolio: Screen = (f, dur) => {
 void [BriefcaseBusiness, Landmark, Check, ArrowLeft, Box];
 
 export const CUSTOM2 = {
-  homeTour, myJobs, openChat, menuChangeC: menuChange('client'), changeSheetC: changeSheet('client'), requestSent, providerAccepts,
+  homeTour, myJobs, myJobsOpen, startJob, openChat, menuChangeC: menuChange('client'), changeSheetC: changeSheet('client'), requestSent, providerAccepts,
   menuChangeP: menuChange('provider'), changeSheetP: changeSheet('provider'),
   cancelMenu, cancelDialog, reportReason, reportDetails, profile, payments, notifications, settings,
   setupPayout, payoutOpen, payoutForm, payoutSaved, feedTour, availability, bookedDecline, decline,

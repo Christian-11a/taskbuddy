@@ -3,10 +3,12 @@ import { AbsoluteFill, Audio, Img, Sequence, interpolate, staticFile, useCurrent
 import { INTER } from '../theme';
 import { inOut, sp, tw } from '../motion';
 import { Phone, T, pal } from '../hero/ui';
+import { TapGate } from '../v2/kit';
 import { ClientPhone } from '../hero/ClientPhone';
 import { ProviderPhone } from '../hero/ProviderPhone';
-import { SignupPhone } from '../hero/Signup';
-import { makeWarp } from '../film/Film';
+import { SignupPhone, suTaps, suTyping } from '../hero/Signup';
+import { TAPS, TYPING } from '../hero/story';
+import { CUTS, FAST } from '../film/Film';
 import { LESSONS, type GLesson, type PhoneSrc } from './lessons';
 
 // Guide video: title card, one step at a time (STEP n OF N, headline, body) beside one phone doing exactly
@@ -47,13 +49,132 @@ export const guideMetadata: CalculateMetadataFunction<GuideProps> = async ({ pro
   return { durationInFrames: layout(l, timing).total, props: { ...props, timing } };
 };
 
+/**
+ * Maps step time to phone frame. Taps (finger in, press, ring) and screen changes play at real speed,
+ * calm parts (typing, reading) slow down at most 3x, and any time left becomes pauses: just before each
+ * tap, just after each screen change, and a longer one at the end. A pause only lands where nothing is
+ * moving, so nothing freezes half-way and nothing plays in slow motion.
+ * Only this step's own taps count; the TapGate hides the ones that belong to the steps around it.
+ */
+export const realSpeed = (from: number, to: number, dur: number, allTaps: number[], allCuts: number[], noEndPause = false, typing: [number, number][] = []) => {
+  const taps = allTaps.filter((t) => t >= from && t <= to);
+  const cuts = allCuts.filter((c) => c + FAST > from && c < to);
+  const moving = [...taps.map((t) => [t - 12, t + 14]), ...cuts.map((c) => [c, c + FAST])];
+  const raw = moving
+    .map(([a, b]) => [Math.max(from, a), Math.min(to, b)])
+    .filter(([a, b]) => b > a)
+    .sort((x, y) => x[0] - y[0]);
+  const wins: number[][] = [];
+  for (const w of raw) {
+    const last = wins[wins.length - 1];
+    if (last && w[0] <= last[1]) last[1] = Math.max(last[1], w[1]);
+    else wins.push([...w]);
+  }
+  const fastLen = wins.reduce((n, [a, b]) => n + (b - a), 0);
+  const slowHero = to - from - fastLen;
+  const linear = Object.assign((l: number) => from + Math.min(1, Math.max(0, l / dur)) * (to - from), { endAt: dur, hideUntil: 0, inv: (h: number) => ((h - from) / Math.max(1, to - from)) * dur });
+  if (fastLen + slowHero > dur) return linear; // more action than time: play it evenly
+  // calm parts (typing, reading) take most of the spare time, so a pause never freezes half-typed text;
+  // a little is kept for the finger to settle on each button and for a short look at the start and end
+  const nTaps = taps.length;
+  const keep = Math.min(Math.max(0, dur - fastLen - slowHero), nTaps * 10 + 24);
+  const stretch = slowHero > 0 ? Math.min(3, Math.max(1, (dur - fastLen - keep) / slowHero)) : 1;
+  const spare = dur - fastLen - slowHero * stretch;
+  // a pause may show a finger hovering just before its press, but never a sliding screen or a fading ring
+  const sliding = (x: number) => cuts.some((c) => x >= c && x < c + FAST);
+  // (another tap's ring is fine: rings keep playing in real time during a pause)
+  const busy = (x: number, own?: number) => sliding(x) || typing.some(([a, b]) => x > a && x < b + 2) || taps.some((u) => u !== own && x > u - 12 && x < u);
+  const tapHolds = taps.map((t) => {
+    // pause with the finger right over the button, just before it presses
+    for (let x = t - 2; x >= Math.max(from, t - 12); x--) if (!busy(x, t)) return x;
+    return NaN;
+  });
+  const holds = [...new Set([...tapHolds, ...cuts.map((c) => c + FAST).filter((x) => !busy(x))])]
+    .filter((x) => x >= from && x < to)
+    .sort((x, y) => x - y);
+  // a finger never hovers longer than 0.8 s; the rest is split between the start and the end of the step
+  let unit = Math.min(24, spare / (holds.length + 1.5));
+  let lead = (spare - unit * holds.length) / (noEndPause ? 1 : 2);
+  const inFast = (x: number) => wins.some(([a, b]) => x >= a && x < b);
+  // typing ends are good places to rest: the finished text is on screen
+  const marks = [...new Set([from, to, ...wins.flat(), ...holds, ...typing.map(([, b]) => b + 2)])].filter((x) => x >= from && x <= to).sort((x, y) => x - y);
+  // the opening pause sits on the first frame where nothing moves; if there is none it sits on the
+  // first frame, with the finger hidden until the pause is over (it then glides in to its button)
+  const idle = (x: number) => !busy(x) && !typing.some(([a, b]) => x >= a && x < b + 2) && !allCuts.some((c) => x >= c - 2 && x < c + FAST) && !allTaps.some((u) => x >= u - 12 && x < u + 8);
+  // a step that ends mid-motion (typing, a slide) gets no closing pause: all spare time goes up front
+  if (!idle(to)) lead = spare - unit * holds.length;
+  // no calm frame at all: the spare time slows the calm parts (typing) down a little more instead
+  const leadAt = marks.find((h) => idle(h) && h < to) ?? (idle(to) || slowHero <= 0 ? to : NaN);
+  // no calm frame: the spare time becomes longer hovers before the taps; only with no taps does it slow the motion
+  if (Number.isNaN(leadAt) && holds.length) { unit += lead / holds.length; lead = 0; }
+  const extra = Number.isNaN(leadAt) ? lead / slowHero : 0;
+  const hideUntil = 0;
+  const pts: [number, number][] = [[0, from]];
+  let l = 0;
+  for (let i = 0; i < marks.length; i++) {
+    const h = marks[i];
+    if (i > 0) { const h0 = marks[i - 1]; l += (h - h0) * (inFast(h0) ? 1 : stretch + extra); pts.push([l, h]); }
+    if (h === leadAt) { l += lead; pts.push([l, h]); }
+    if (holds.includes(h)) { l += unit; pts.push([l, h]); }
+  }
+  // a closing pause still lets the last tap's ring play out (it counts as time after the end)
+  const endAt = l - (leadAt === to ? lead : 0);
+  if (l < dur && !idle(to)) { const k = dur / l; for (const pt of pts) pt[0] *= k; }
+  pts.push([dur, to]);
+  // step time at which the phone reaches frame h (first time)
+  const inv = (h: number) => {
+    for (let i = 1; i < pts.length; i++) if (h <= pts[i][1]) { const [x0, y0] = pts[i - 1]; const [x1, y1] = pts[i]; return y1 === y0 ? x0 : x0 + ((h - y0) / (y1 - y0)) * (x1 - x0); }
+    return dur;
+  };
+  return Object.assign((x: number) => {
+    if (x <= 0) return from;
+    for (let i = 1; i < pts.length; i++) {
+      if (x <= pts[i][0]) {
+        const [x0, y0] = pts[i - 1];
+        const [x1, y1] = pts[i];
+        return x1 === x0 ? y1 : y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+      }
+    }
+    return to;
+  }, { endAt, hideUntil, inv });
+};
+
+/** The phone's time warp for one hero/signup step (exported for scripts/warp-one.ts). */
+export const phoneWarp = (src: Exclude<PhoneSrc, { kind: 'screen' }>, dur: number) => {
+  // a screen change that starts right at a step boundary belongs to the step whose tap caused it,
+  // so a tap is answered at once instead of after a pause
+  const cuts = src.kind === 'signup' ? [] : CUTS[src.role];
+  // (never when a tap sits inside that change: then the tap and its result stay together in the next step)
+  const taps = src.kind === 'signup' ? suTaps(src.role) : TAPS[src.role];
+  const edge = (x: number) => {
+    const c = cuts.find((k) => k >= x - 2 && k <= x + 8);
+    const caused = c !== undefined && taps.some((t) => t <= c && t >= c - 20);
+    // …unless the next screen's own tap follows within ~0.7 s (that step needs its screen)
+    const typing = src.kind === 'signup' ? suTyping : TYPING[src.role];
+    // …or when typing starts during it (a step must never stop on half-typed text)
+    const blocked = caused && (taps.some((t) => t > x && t <= c! + FAST + 20) || typing.some(([a2]) => a2 < c! + FAST + 2 && a2 >= c! - 2));
+    return { x: caused && !blocked ? c! + FAST : x, blocked };
+  };
+  const from = edge(src.from).x;
+  const end = edge(src.to);
+  const to = Math.max(from + 1, end.x);
+  // when the answer to the last tap must wait for the next step, no pause after that tap
+  const w = realSpeed(from, to, dur, taps, cuts, end.blocked, src.kind === 'signup' ? suTyping : TYPING[src.role]);
+  return { w, from, to };
+};
+
 const Screen: React.FC<{ src: PhoneSrc; f: number; dur: number }> = ({ src, f, dur }) => {
   if (src.kind === 'screen') return <>{src.render(f, dur)}</>;
   const t = Math.min(dur, Math.max(0, f));
-  if (src.kind === 'signup') return <SignupPhone f={src.from + (t / dur) * (src.to - src.from)} role={src.role} />;
-  const w = makeWarp(src.role, src.from, src.to, dur);
-  const hero = w.heroAt(t);
-  return src.role === 'c' ? <ClientPhone f={hero} /> : <ProviderPhone f={hero} />;
+  const { w, from, to } = phoneWarp(src, dur);
+  const h = w(t);
+  // taps belong to the step that presses them; one still showing when the step pauses at its end fades out
+  const gate = { min: from, max: to, o: t < w.hideUntil ? 0 : 1 - tw(t, w.endAt + 16, w.endAt + 22, 0, 1), real: (a: number, f0: number) => (f0 >= a ? a + Math.max(0, t - w.inv(a)) : Math.min(f0, a - (w.inv(a) - t))) };
+  return (
+    <TapGate.Provider value={gate}>
+      {src.kind === 'signup' ? <SignupPhone f={h} role={src.role} /> : src.role === 'c' ? <ClientPhone f={h} /> : <ProviderPhone f={h} />}
+    </TapGate.Provider>
+  );
 };
 
 const Logo: React.FC<{ dark?: boolean }> = ({ dark }) => (

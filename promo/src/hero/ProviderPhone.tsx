@@ -153,7 +153,7 @@ const V1 = (f: number) => (
     </div>
     <VFooter f={f} press={K.pStep1Next} label="Continue" note={f < K.pPickId ? 'Choose an ID to continue' : undefined} off={f < K.pPickId} />
     <Tap f={f} at={K.pPickId} x={190} y={288} />
-    <Tap f={f} at={K.pStep1Next} x={205} y={851} />
+    <Tap f={f} at={K.pStep1Next} x={205} y={863} />
   </div>
 );
 
@@ -175,7 +175,7 @@ const V2 = (f: number) => (
     <div style={{ position: 'absolute', top: 258, left: 20, transform: `translateY(${(1 - sp(f, K.pStep2 + 2)) * 60}px)`, opacity: tw(f, K.pStep2 + 1, K.pStep2 + 6) }}><SpecimenId w={371} /></div>
     <div style={{ position: 'absolute', top: 550, left: 20, right: 20, background: T.surface, border: `1px solid ${T.line}`, borderRadius: 16, padding: 16 }}><Ticks f={f} at={K.pStep2 + 6} items={['Name and photo are sharp', 'All 4 corners are visible', 'No glare or shadows on the text']} /></div>
     <VFooter f={f} press={K.pUsePhoto} label="Use this photo" link="Retake" />
-    <Tap f={f} at={K.pUsePhoto} x={205} y={825} />
+    <Tap f={f} at={K.pUsePhoto} x={205} y={845} />
   </div>
 );
 
@@ -193,7 +193,7 @@ const V3 = (f: number) => (
     <div style={{ position: 'absolute', top: 292, left: 106, transform: `scale(${sp(f, K.pStep3 + 2)})` }}><Selfie d={198} /></div>
     <div style={{ position: 'absolute', top: 506, left: 20, right: 20 }}><Ticks f={f} at={K.pStep3 + 6} items={['Take off glasses, hat and face mask', 'Face a window or a bright light', 'Hold the phone at eye level', 'Only you in the photo']} /></div>
     <VFooter f={f} press={K.pSelfieNext} label="Continue" link="Retake" />
-    <Tap f={f} at={K.pSelfieNext} x={205} y={825} />
+    <Tap f={f} at={K.pSelfieNext} x={205} y={845} />
   </div>
 );
 
@@ -223,7 +223,7 @@ const V4 = (f: number) => {
         <div style={{ fontSize: 12.5, color: T.ink500, marginTop: 6 }}>e.g. Plumbing NC II</div>
       </div>
       <VFooter f={f} press={K.pCertNext} label="Upload certificate" />
-      <Tap f={f} at={K.pCertNext} x={205} y={851} />
+      <Tap f={f} at={K.pCertNext} x={205} y={863} />
     </div>
   );
 };
@@ -258,7 +258,7 @@ const V5 = (f: number) => {
       </div>
       <VFooter f={f} press={K.pSecure} label="Continue to secure check" note={agreed ? undefined : 'Tick the box above to continue'} off={!agreed} />
       <Tap f={f} at={K.pAgree} x={46} y={554} />
-      <Tap f={f} at={K.pSecure} x={205} y={851} />
+      <Tap f={f} at={K.pSecure} x={205} y={863} />
     </div>
   );
 };
@@ -308,7 +308,7 @@ const Earn: React.FC = () => (
     <div style={{ fontSize: 14, lineHeight: '20px' }}>You&apos;ll receive {peso(JOB.net)} when the client confirms the job is done.</div>
   </div>
 );
-const Detail = (f: number, mode: Mode) => {
+export const Detail = (f: number, mode: Mode) => {
   const ticks = [f >= K.pTick1, f >= K.pTick2];
   const all = ticks[1];
   const status = mode === 'new'
@@ -358,8 +358,8 @@ const Detail = (f: number, mode: Mode) => {
         {(mode === 'new' || mode === 'sent') && <WhenWhere when={`${JOB.day} · 9:00 AM`} where={JOB.address} sub="1.2 km away" I1={CalendarDays} I2={MapPin} />}
       </div>
       {footer}
-      <Tap f={f} at={K.pSendTap} x={205} y={851} />
-      <Tap f={f} at={K.pStart} x={205} y={825} />
+      <Tap f={f} at={K.pSendTap} x={205} y={863} />
+      <Tap f={f} at={K.pStart} x={205} y={845} />
       <Tap f={f} at={K.pTick2Tap} x={46} y={736} />
     </div>
   );
@@ -395,7 +395,7 @@ const ProofSheet = (f: number) => {
           </div>
         </div>
       </Sheet>
-      <Tap f={f} at={K.proofAdd} x={58} y={758} />
+      <Tap f={f} at={K.proofAdd} x={57} y={735} />
       <Tap f={f} at={K.proofDone} x={205} y={860} />
     </div>
   );

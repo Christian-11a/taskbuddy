@@ -231,7 +231,7 @@ export const Notice: React.FC<{ f: number; at: number; out: number; title: strin
   if (f < at || f > out + 12) return null;
   const p = sp(f, at, SNAPPY) * tw(f, out, out + 10, 1, 0);
   return (
-    <div style={{ position: 'absolute', left: 10, right: 10, top: 40, padding: '14px 16px', borderRadius: 24, background: '#F3F4F7', boxShadow: '0 10px 30px rgba(8,24,40,0.22)', transform: `translateY(${(1 - p) * -130}px)`, zIndex: 40 }}>
+    <div style={{ position: 'absolute', left: 10, right: 10, top: 40, padding: '14px 16px', borderRadius: 24, background: '#F3F4F7', boxShadow: '0 10px 30px rgba(8,24,40,0.22)', transform: `translateY(${(1 - p) * -180}px)`, zIndex: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.ink500 }}>
         <div style={{ width: 18, height: 18, borderRadius: 9, background: T.sky, color: T.white, display: 'grid', placeItems: 'center', fontSize: 10, fontWeight: 800 }}>T</div>TaskBuddy · now
       </div>

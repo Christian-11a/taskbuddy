@@ -271,9 +271,9 @@ const Detail = (f: number, mode: Mode) => {
         <WhenWhere when={JOB.when} where={JOB.address} I1={CalendarDays} I2={MapPin} />
       </div>
       {footer}
-      <Tap f={f} at={K.cOpenProps} x={205} y={851} />
-      <Tap f={f} at={K.cConfirm} x={205} y={825} />
-      <Tap f={f} at={K.cLeaveReview} x={205} y={851} />
+      <Tap f={f} at={K.cOpenProps} x={205} y={863} />
+      <Tap f={f} at={K.cConfirm} x={205} y={845} />
+      <Tap f={f} at={K.cLeaveReview} x={205} y={863} />
     </div>
   );
 };
@@ -307,7 +307,7 @@ const Proposals = (f: number) => (
         </div>
       </div>
     </div>
-    <Tap f={f} at={K.cHireTap} x={334} y={452} />
+    <Tap f={f} at={K.cHireTap} x={334} y={437} />
   </div>
 );
 
@@ -434,7 +434,7 @@ const Review = (f: number) => {
       {K.stars.map((a, i) => <Tap key={i} f={f} at={a} x={102 + i * 51} y={346} from={i ? [-30, 10] : [60, 90]} />)}
       <Tap f={f} at={K.chip1} x={58} y={468} />
       <Tap f={f} at={K.chip2} x={140} y={468} />
-      <Tap f={f} at={K.submit} x={205} y={851} />
+      <Tap f={f} at={K.submit} x={205} y={863} />
     </div>
   );
 };
