@@ -109,7 +109,7 @@ const FEED_PAGE = 20;
 const VERIFY_HERO: Record<VerifyState, { title: string; body: string }> = {
   none: {
     title: 'Get verified to see jobs near you',
-    body: 'Clients only see verified providers. It takes about 2 minutes.',
+    body: 'Clients only see verified providers. It takes about 5 minutes.',
   },
   pending: {
     title: 'Verification under review',
