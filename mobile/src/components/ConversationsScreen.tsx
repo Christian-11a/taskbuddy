@@ -11,7 +11,7 @@ import { api, type Conversation } from '../lib/api';
 import { initials, jobStatusMeta, timeAgo } from '../lib/format';
 import {
   CONVERSATION_FILTERS, SEARCH_THRESHOLD, applyConversationFilters, conversationSections, countUnreadChats,
-  effectiveStatus, emptyCopy, matchesFilter, serviceCounts, type ConversationFilter, type ConversationItem,
+  effectiveStatus, emptyCopy, matchesFilter, serviceCounts, unreadOutsideFilter, type ConversationFilter, type ConversationItem,
 } from '../lib/conversationFilters';
 import { isList } from '../lib/savedShapes';
 import ContentSkeleton from './ui/ContentSkeleton';
@@ -78,6 +78,7 @@ export default function ConversationsScreen({ onOpenChat }: { onOpenChat: (jobId
   const role2 = isProvider ? 'provider' : 'client';
   const noChatsAtAll = all.length === 0;
   const empty = emptyCopy(noChatsAtAll ? 'all' : filter, role2);
+  const hiddenUnread = unreadOutsideFilter(all, filter);
   const filtered = !!(showSearch && query.trim()) || !!activeService;
 
   return (
@@ -155,6 +156,12 @@ export default function ConversationsScreen({ onOpenChat }: { onOpenChat: (jobId
               title={filtered ? 'No matching chats' : empty.title}
               body={filtered ? 'Nothing matches your search or service filter.' : empty.body}
             />
+            {!filtered && filter === 'active' && hiddenUnread > 0 && (
+              <Tap testID="messages-empty-view-unread" onPress={() => setFilter('unread')} accessibilityRole="button"
+                   accessibilityLabel={`View ${hiddenUnread} unread ${hiddenUnread === 1 ? 'chat' : 'chats'}`}>
+                <Text style={s.hintLink}>{hiddenUnread} unread in finished chats · View</Text>
+              </Tap>
+            )}
           </EmptyCard>
         )}
         {sections.map((section) => (
@@ -258,6 +265,7 @@ const createStyles = ({ Colors, V6Colors }: Palette) => ({
     empty: { alignItems: 'center', gap: 8, paddingVertical: 48 },
     emptyTitle: { color: V6Colors.ink900, fontSize: 16, fontWeight: '700', fontFamily: 'Inter' },
     emptyBody: { color: V6Colors.ink500, fontSize: 14, fontFamily: 'Inter', textAlign: 'center' },
+    hintLink: { color: Colors.primary, fontSize: 14, fontWeight: '700', fontFamily: 'Inter', paddingTop: 8 },
   }),
   c: { muted: V6Colors.ink500 },
   V6: V6Colors,
