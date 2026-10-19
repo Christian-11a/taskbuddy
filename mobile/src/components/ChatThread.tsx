@@ -223,6 +223,7 @@ export default function ChatThread({
           <TextInput keyboardAppearance={appearance}
             style={styles.chatInput}
             placeholder="Message…"
+            accessibilityLabel="Message"
             placeholderTextColor={C.ink400}
             value={text}
             onChangeText={onChangeText}
