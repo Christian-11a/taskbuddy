@@ -1,0 +1,65 @@
+{
+  "id": "sample-post-a-job",
+  "track": "clients",
+  "number": 3,
+  "title": "Post a job",
+  "summary": "Tell providers what you need, step by step.",
+  "next": "Compare proposals and hire",
+  "steps": [
+    {
+      "headline": "Start a new job",
+      "body": "On your Home screen, tap Post a job to begin.",
+      "narration": "To start, tap Post a job on your Home screen.",
+      "tapWord": "Post",
+      "screenshot": "placeholder:Home",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Choose a service",
+      "body": "Pick the kind of work you need, like plumbing or cleaning.",
+      "narration": "Next, choose the service you need, like plumbing or cleaning.",
+      "tapWord": "plumbing",
+      "screenshot": "placeholder:Choose a service",
+      "tap": {
+        "x": 0.27,
+        "y": 0.34
+      }
+    },
+    {
+      "headline": "Describe the work",
+      "body": "Add the location and a few details so providers know what to expect.",
+      "narration": "Then describe the work and add your location, so providers know what to expect.",
+      "tapWord": "location",
+      "screenshot": "placeholder:Describe the work",
+      "tap": {
+        "x": 0.5,
+        "y": 0.58
+      }
+    },
+    {
+      "headline": "Pick a time",
+      "body": "Choose when you would like the work done.",
+      "narration": "After that, pick when you would like the work done.",
+      "tapWord": "when",
+      "screenshot": "placeholder:Set your price",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Review and post",
+      "body": "Check everything once more, then tap Post job.",
+      "narration": "Finally, review everything and tap post job. Nearby providers will see it right away.",
+      "tapWord": "post",
+      "screenshot": "placeholder:Review and post",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    }
+  ]
+}

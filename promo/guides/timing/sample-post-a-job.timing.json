@@ -1,0 +1,323 @@
+{
+  "fps": 30,
+  "durationFrames": 993,
+  "steps": [
+    {
+      "startFrame": 20,
+      "endFrame": 203,
+      "tapFrame": 70
+    },
+    {
+      "startFrame": 203,
+      "endFrame": 374,
+      "tapFrame": 310
+    },
+    {
+      "startFrame": 374,
+      "endFrame": 589,
+      "tapFrame": 465
+    },
+    {
+      "startFrame": 589,
+      "endFrame": 763,
+      "tapFrame": 636
+    },
+    {
+      "startFrame": 763,
+      "endFrame": 993,
+      "tapFrame": 848
+    }
+  ],
+  "words": [
+    {
+      "text": "To",
+      "startFrame": 20,
+      "endFrame": 34
+    },
+    {
+      "text": "start,",
+      "startFrame": 36,
+      "endFrame": 51
+    },
+    {
+      "text": "tap",
+      "startFrame": 53,
+      "endFrame": 68
+    },
+    {
+      "text": "Post",
+      "startFrame": 70,
+      "endFrame": 84
+    },
+    {
+      "text": "a",
+      "startFrame": 86,
+      "endFrame": 100
+    },
+    {
+      "text": "job",
+      "startFrame": 102,
+      "endFrame": 117
+    },
+    {
+      "text": "on",
+      "startFrame": 119,
+      "endFrame": 134
+    },
+    {
+      "text": "your",
+      "startFrame": 136,
+      "endFrame": 150
+    },
+    {
+      "text": "Home",
+      "startFrame": 152,
+      "endFrame": 166
+    },
+    {
+      "text": "screen.",
+      "startFrame": 168,
+      "endFrame": 183
+    },
+    {
+      "text": "Next,",
+      "startFrame": 203,
+      "endFrame": 214
+    },
+    {
+      "text": "choose",
+      "startFrame": 222,
+      "endFrame": 236
+    },
+    {
+      "text": "the",
+      "startFrame": 238,
+      "endFrame": 247
+    },
+    {
+      "text": "service",
+      "startFrame": 249,
+      "endFrame": 265
+    },
+    {
+      "text": "you",
+      "startFrame": 267,
+      "endFrame": 276
+    },
+    {
+      "text": "need,",
+      "startFrame": 278,
+      "endFrame": 289
+    },
+    {
+      "text": "like",
+      "startFrame": 297,
+      "endFrame": 308
+    },
+    {
+      "text": "plumbing",
+      "startFrame": 310,
+      "endFrame": 327
+    },
+    {
+      "text": "or",
+      "startFrame": 329,
+      "endFrame": 337
+    },
+    {
+      "text": "cleaning.",
+      "startFrame": 339,
+      "endFrame": 356
+    },
+    {
+      "text": "Then",
+      "startFrame": 374,
+      "endFrame": 385
+    },
+    {
+      "text": "describe",
+      "startFrame": 387,
+      "endFrame": 404
+    },
+    {
+      "text": "the",
+      "startFrame": 406,
+      "endFrame": 415
+    },
+    {
+      "text": "work",
+      "startFrame": 417,
+      "endFrame": 428
+    },
+    {
+      "text": "and",
+      "startFrame": 430,
+      "endFrame": 439
+    },
+    {
+      "text": "add",
+      "startFrame": 441,
+      "endFrame": 450
+    },
+    {
+      "text": "your",
+      "startFrame": 452,
+      "endFrame": 463
+    },
+    {
+      "text": "location,",
+      "startFrame": 465,
+      "endFrame": 482
+    },
+    {
+      "text": "so",
+      "startFrame": 490,
+      "endFrame": 498
+    },
+    {
+      "text": "providers",
+      "startFrame": 500,
+      "endFrame": 519
+    },
+    {
+      "text": "know",
+      "startFrame": 521,
+      "endFrame": 532
+    },
+    {
+      "text": "what",
+      "startFrame": 534,
+      "endFrame": 545
+    },
+    {
+      "text": "to",
+      "startFrame": 547,
+      "endFrame": 555
+    },
+    {
+      "text": "expect.",
+      "startFrame": 557,
+      "endFrame": 571
+    },
+    {
+      "text": "After",
+      "startFrame": 589,
+      "endFrame": 603
+    },
+    {
+      "text": "that,",
+      "startFrame": 605,
+      "endFrame": 618
+    },
+    {
+      "text": "pick",
+      "startFrame": 620,
+      "endFrame": 634
+    },
+    {
+      "text": "when",
+      "startFrame": 636,
+      "endFrame": 649
+    },
+    {
+      "text": "you",
+      "startFrame": 651,
+      "endFrame": 665
+    },
+    {
+      "text": "would",
+      "startFrame": 667,
+      "endFrame": 681
+    },
+    {
+      "text": "like",
+      "startFrame": 683,
+      "endFrame": 696
+    },
+    {
+      "text": "the",
+      "startFrame": 698,
+      "endFrame": 712
+    },
+    {
+      "text": "work",
+      "startFrame": 714,
+      "endFrame": 727
+    },
+    {
+      "text": "done.",
+      "startFrame": 729,
+      "endFrame": 743
+    },
+    {
+      "text": "Finally,",
+      "startFrame": 763,
+      "endFrame": 779
+    },
+    {
+      "text": "review",
+      "startFrame": 787,
+      "endFrame": 801
+    },
+    {
+      "text": "everything",
+      "startFrame": 803,
+      "endFrame": 824
+    },
+    {
+      "text": "and",
+      "startFrame": 826,
+      "endFrame": 835
+    },
+    {
+      "text": "tap",
+      "startFrame": 837,
+      "endFrame": 846
+    },
+    {
+      "text": "post",
+      "startFrame": 848,
+      "endFrame": 859
+    },
+    {
+      "text": "job.",
+      "startFrame": 861,
+      "endFrame": 870
+    },
+    {
+      "text": "Nearby",
+      "startFrame": 878,
+      "endFrame": 892
+    },
+    {
+      "text": "providers",
+      "startFrame": 894,
+      "endFrame": 913
+    },
+    {
+      "text": "will",
+      "startFrame": 915,
+      "endFrame": 926
+    },
+    {
+      "text": "see",
+      "startFrame": 928,
+      "endFrame": 937
+    },
+    {
+      "text": "it",
+      "startFrame": 939,
+      "endFrame": 947
+    },
+    {
+      "text": "right",
+      "startFrame": 949,
+      "endFrame": 962
+    },
+    {
+      "text": "away.",
+      "startFrame": 964,
+      "endFrame": 975
+    }
+  ]
+}

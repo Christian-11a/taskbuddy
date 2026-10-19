@@ -1,0 +1,26 @@
+{
+  "name": "taskbuddy-promo",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "music": "node scripts/music.mjs",
+    "studio": "remotion studio",
+    "render": "remotion render TaskBuddyPromo out/taskbuddy-promo.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.529",
+    "@remotion/google-fonts": "^4.0.529",
+    "@remotion/noise": "^4.0.529",
+    "@remotion/paths": "^4.0.529",
+    "@remotion/shapes": "^4.0.529",
+    "@types/react": "^19.3.0",
+    "lucide-react": "^1.48.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "remotion": "^4.0.529",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
+  }
+}

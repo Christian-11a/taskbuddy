@@ -1,27 +1,9 @@
 import "../../styles/promo.css";
-import { HOME_MARKUP } from "./HomePage.markup";
+import { legalTitleHtml, renderLegalBody } from "@/lib/legalHtml";
 
 export type LegalDoc = "terms" | "privacy";
 
-const TITLES: Record<LegalDoc, string> = {
-  terms: "Terms &amp; Conditions",
-  privacy: "Privacy Policy",
-};
-
-/**
- * The document text lives once, in the sign-up modal's doc panel inside
- * HOME_MARKUP (where "I agree" ticks the matching consent box). These
- * standalone pages reuse that exact body so the two can never drift apart.
- */
-function docBody(doc: LegalDoc): string {
-  const block = HOME_MARKUP.indexOf(`data-doc="${doc}"`);
-  const start = HOME_MARKUP.indexOf('<div class="auth-doc-body">', block);
-  const end = HOME_MARKUP.indexOf("<button", start);
-  if (block < 0 || start < 0 || end < 0) {
-    throw new Error(`Legal text for "${doc}" not found in HOME_MARKUP`);
-  }
-  return HOME_MARKUP.slice(start, end).replace('class="auth-doc-body"', 'class="auth-doc-body legal-body"');
-}
+// Text comes from the shared module (src/lib/legalText.ts, copied from the app).
 
 export function LegalPage({ doc }: { doc: LegalDoc }) {
   const other: LegalDoc = doc === "terms" ? "privacy" : "terms";
@@ -33,11 +15,11 @@ export function LegalPage({ doc }: { doc: LegalDoc }) {
       <main class="account-main">
         <article class="account-card legal-card">
           <p class="eyebrow">Legal</p>
-          <h1 class="account-heading">${TITLES[doc]}</h1>
-          ${docBody(doc)}
+          <h1 class="account-heading">${legalTitleHtml(doc)}</h1>
+          ${renderLegalBody(doc, "legal-body")}
           <nav class="legal-links" aria-label="Legal pages">
             <a class="button button--quiet" href="/">Back to homepage</a>
-            <a class="button button--quiet" href="/${other}">${TITLES[other]}</a>
+            <a class="button button--quiet" href="/${other}">${legalTitleHtml(other)}</a>
           </nav>
         </article>
       </main>

@@ -3,11 +3,13 @@
 import Script from "next/script";
 import { useState } from "react";
 import "../../styles/promo.css";
+import { injectLegalBodies } from "@/lib/legalHtml";
 import { HOME_MARKUP } from "./HomePage.markup";
 
-const HOME_MARKUP_WITH_MOBILE_JOIN_CTA = HOME_MARKUP.replace(
-  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a></nav>',
-  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a class="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="#join">Join TaskBuddy</a></nav>',
+// Terms/Privacy text in the sign-up modal comes from the shared legal module.
+const HOME_MARKUP_WITH_MOBILE_JOIN_CTA = injectLegalBodies(HOME_MARKUP).replace(
+  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="/guide">Guide</a></nav>',
+  '<nav class="site-nav" id="site-nav" aria-label="Primary navigation"><a href="#stories">How it works</a><a href="#features">Features</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="/guide">Guide</a><a class="site-nav__cta site-nav__cta--primary site-nav__cta--mobile" href="#download">Get the app</a></nav>',
 );
 
 const HOME_MARKUP_WITHOUT_DUPLICATE_SKIP_LINK = HOME_MARKUP_WITH_MOBILE_JOIN_CTA.replace(
@@ -48,12 +50,6 @@ export function HomePage() {
     <div className="promo-site">
       <a className="skip-link" href="#main">Skip to content</a>
       <div dangerouslySetInnerHTML={{ __html: HOME_MARKUP_WITH_CLICKABLE_CONSENT_LINKS }} />
-
-      {/* Switzer remains on Fontshare because no licensed local font files are
-          part of this repository. Bricolage Grotesque is self-hosted by
-          next/font in the root layout. */}
-      <link rel="preconnect" href="https://api.fontshare.com" />
-      <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700&display=swap" />
 
       {/* Load the motion dependencies sequentially. Next's afterInteractive
           scripts can otherwise race: script.js may initialize before

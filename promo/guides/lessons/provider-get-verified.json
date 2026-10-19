@@ -1,0 +1,98 @@
+{
+  "id": "provider-get-verified",
+  "track": "providers",
+  "number": 2,
+  "title": "Get verified and set up payouts",
+  "summary": "Add your documents and payout account.",
+  "next": "Your Feed",
+  "steps": [
+    {
+      "headline": "Get verified",
+      "body": "From Home or Profile, tap Get verified.",
+      "narration": "You need to get verified before you can send proposals. Tap Get verified on Home or in Profile.",
+      "tapWord": "verified",
+      "screenshot": "placeholder:Provider Profile",
+      "tap": {
+        "x": 0.5,
+        "y": 0.25
+      }
+    },
+    {
+      "headline": "Choose your ID",
+      "body": "Pick the kind of ID you will use, like PhilSys or a driver's licence.",
+      "narration": "First, choose your ID, like PhilSys, a driver's licence or a passport.",
+      "tapWord": "ID",
+      "screenshot": "placeholder:Verification: Choose your ID",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Photo of your ID",
+      "body": "Take a clear, full photo of your ID.",
+      "narration": "Take a clear, full photo of your ID. Then tap Use this photo.",
+      "tapWord": "photo",
+      "screenshot": "placeholder:Verification: Photo of your ID",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Selfie",
+      "body": "Take a selfie so we can match you with your ID.",
+      "narration": "Next, take a selfie so we can match you with your ID.",
+      "tapWord": "selfie",
+      "screenshot": "placeholder:Verification: Selfie",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Certificate",
+      "body": "Upload a certificate for each service you offer, like TESDA or PRC.",
+      "narration": "Then upload a certificate for each service you offer, like a TESDA or PRC certificate.",
+      "tapWord": "certificate",
+      "screenshot": "placeholder:Verification: Certificate for your service",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Review and send",
+      "body": "Check your documents, then send them for review.",
+      "narration": "Check your documents, then send them. We review them automatically, and an admin makes the final check.",
+      "tapWord": "review",
+      "screenshot": "placeholder:Verification: Review and send",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Payout account",
+      "body": "Open Profile, then Payout account. Choose GCash, Maya or Bank.",
+      "narration": "Last, open Profile, then Payout account. Choose GCash, Maya or Bank, then tap Save account.",
+      "tapWord": "Payout",
+      "screenshot": "placeholder:Payout account",
+      "tap": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    },
+    {
+      "headline": "Check your status",
+      "body": "Tap Check again to see the result, then See jobs near you.",
+      "narration": "Then wait while we check your documents. Tap Check again to see the result, then tap See jobs near you.",
+      "tapWord": "Check",
+      "screenshot": "placeholder:Verification: Checking",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    }
+  ]
+}

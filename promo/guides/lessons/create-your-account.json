@@ -1,0 +1,98 @@
+{
+  "id": "create-your-account",
+  "track": "clients",
+  "number": 1,
+  "title": "Create your account",
+  "summary": "Sign up as a client in a few minutes.",
+  "next": "Your Home screen",
+  "steps": [
+    {
+      "headline": "Choose your role",
+      "body": "Pick I need help at home to set up a client account.",
+      "narration": "Welcome to TaskBuddy. To begin, choose I need help at home. This sets up a client account.",
+      "tapWord": "choose",
+      "screenshot": "placeholder:Choose your role",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Continue",
+      "body": "Tap Continue to open the sign-up form.",
+      "narration": "Then tap Continue to open the sign-up form.",
+      "tapWord": "Continue",
+      "screenshot": "placeholder:Choose your role",
+      "tap": {
+        "x": 0.5,
+        "y": 0.88
+      }
+    },
+    {
+      "headline": "Enter your details",
+      "body": "Add your full name, email and a password.",
+      "narration": "Type your full name, your email and a password you will remember. It only takes a minute.",
+      "tapWord": "email",
+      "screenshot": "placeholder:Create your account form",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Agree and create",
+      "body": "Read the consents, then tap Create account.",
+      "narration": "Read the consents and agreements. When you agree, tap Create account.",
+      "tapWord": "Create",
+      "screenshot": "placeholder:Consents and Create account",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Check your email",
+      "body": "Enter the 6-digit code we sent you, then tap Verify Email.",
+      "narration": "We email you a six digit code. Type it in, then tap Verify Email.",
+      "tapWord": "code",
+      "screenshot": "placeholder:Check your email",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Welcome slides",
+      "body": "Swipe through three short slides, or tap Skip.",
+      "narration": "Next come three short welcome slides. Tap Next to read them, or tap Skip.",
+      "tapWord": "Next",
+      "screenshot": "placeholder:Welcome slides",
+      "tap": {
+        "x": 0.5,
+        "y": 0.92
+      }
+    },
+    {
+      "headline": "Take the tour",
+      "body": "On Home, tap Take the tour to see where things are.",
+      "narration": "On your Home screen, tap Take the tour. It shows you where everything is, step by step.",
+      "tapWord": "tour",
+      "screenshot": "placeholder:Client Home",
+      "tap": {
+        "x": 0.8,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Sign in next time",
+      "body": "Use your email and password, or tap Continue with Google.",
+      "narration": "Next time, sign in with your email and password. You can also tap Continue with Google.",
+      "tapWord": "Google",
+      "screenshot": "placeholder:Sign in",
+      "tap": {
+        "x": 0.5,
+        "y": 0.8
+      }
+    }
+  ]
+}

@@ -1,20 +1,20 @@
 /* Ported from taskbuddy-product-reference/public-site/tokens.css — scoped under .promo-site
  * so these tokens and the ported styles below never leak into the admin app's own dark theme. */
 .promo-site {
-  --color-paper: oklch(97% .012 205);
-  --color-surface: oklch(100% 0 0);
-  --color-surface-tint: oklch(94% .025 205);
-  --color-ink: oklch(22% .045 220);
-  --color-muted: oklch(48% .035 220);
-  --color-rule: oklch(86% .025 210);
-  --color-accent: oklch(65% .16 205);
-  --color-accent-deep: oklch(42% .12 220);
-  --color-accent-soft: oklch(91% .06 205);
-  --color-dark: oklch(20% .04 225);
-  --color-error: oklch(52% .19 25);
-  --color-error-soft: oklch(95% .04 25);
+  --color-paper: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-tint: #f0f9ff;
+  --color-ink: #0f172a;
+  --color-muted: #586a7f;
+  --color-rule: #e2e8f0;
+  --color-accent: #0369a1;
+  --color-accent-deep: #0c4a6e;
+  --color-accent-soft: #e0f2fe;
+  --color-dark: #13283c;
+  --color-error: #b91c1c;
+  --color-error-soft: #fef2f2;
   --font-display: var(--font-bricolage-grotesque), "Bricolage Grotesque", system-ui, sans-serif;
-  --font-body: "Switzer", system-ui, sans-serif;
+  --font-body: var(--font-inter-promo), "Inter", system-ui, sans-serif;
   --space-1: .25rem; --space-2: .5rem; --space-3: .75rem; --space-4: 1rem; --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem; --space-16: 4rem; --space-24: 6rem; --space-32: 8rem;
   --radius-sm: .5rem; --radius-md: 1rem; --radius-lg: 1.75rem;
   --ease-out: cubic-bezier(.22,1,.36,1); --ease-in-out: cubic-bezier(.65,0,.35,1); --dur-fast: 160ms; --dur-base: 300ms;
@@ -63,7 +63,7 @@ section[id] { scroll-margin-top: 6rem; }
 .button { display: inline-flex; align-items: center; justify-content: center; gap: .6rem; min-height: 2.9rem; padding: .85rem 1.2rem; border-radius: 999px; font-weight: 600; transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out); }
 .button:hover { transform: translateY(-2px); }
 .button:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--color-accent); outline-offset: 3px; }
-.button--primary { background: var(--color-accent); color: var(--color-dark); }
+.button--primary { background: var(--color-accent); color: var(--color-surface); }
 .button--quiet { border: 1px solid var(--color-rule); color: var(--color-ink); }
 .hero__note { margin-top: 1.4rem; color: var(--color-muted); font-size: .9rem; }
 .status-dot { display: inline-block; width: .5rem; height: .5rem; margin-right: .5rem; border-radius: 50%; background: var(--color-accent); }
@@ -116,14 +116,15 @@ section[id] { scroll-margin-top: 6rem; }
 .story-capture figcaption { align-self: end; justify-self: start; color: var(--color-muted); font-size: .82rem; }
 .story-copy { position: relative; display: block; min-width: 0; min-height: 0; overflow: hidden; padding: clamp(2rem, 4vw, 4rem) clamp(2rem, 5vw, 5rem) 8rem; }
 .story-copy__topline { display: flex; align-items: center; gap: .75rem; color: var(--color-accent-deep); font-size: .73rem; letter-spacing: .1em; text-transform: uppercase; }
-.story-copy__topline, .story-copy h3, .story-copy [data-story-body], .story-copy .story-points { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
-.story-copy.is-changing .story-copy__topline, .story-copy.is-changing h3, .story-copy.is-changing [data-story-body], .story-copy.is-changing .story-points { opacity: 0; transform: translateY(.5rem); }
+.story-copy__topline, .story-copy h3, .story-copy [data-story-body], .story-copy .story-points, .story-copy [data-story-guide] { transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out); }
+.story-copy.is-changing .story-copy__topline, .story-copy.is-changing h3, .story-copy.is-changing [data-story-body], .story-copy.is-changing .story-points, .story-copy.is-changing [data-story-guide] { opacity: 0; transform: translateY(.5rem); }
 .story-number { color: var(--color-ink); font-family: var(--font-display); font-size: 1.5rem; letter-spacing: 0; }
 .story-copy h3 { margin-top: 1.25rem; font-size: clamp(1.85rem, 3.5vw, 3.3rem); }
 .story-copy > p { margin-top: 1rem; color: var(--color-muted); font-size: 1.06rem; line-height: 1.55; }
 .story-points { display: grid; gap: .7rem; margin: 1.5rem 0 2rem; padding: 0; list-style: none; }
 .story-points li { display: flex; align-items: baseline; gap: .65rem; }
 .story-points li::before { content: ""; width: .45rem; height: .45rem; flex: 0 0 auto; border-radius: 50%; background: var(--color-accent); }
+.story-copy .story-guide { margin-top: 1.25rem; }
 .story-controls { position: absolute; right: clamp(2rem, 5vw, 5rem); bottom: 3rem; left: clamp(2rem, 5vw, 5rem); display: flex; align-items: center; gap: .8rem; min-height: 3.2rem; }
 .arrow-button { display: grid; width: 3rem; height: 3rem; place-items: center; flex: 0 0 auto; border: 1px solid var(--color-rule); border-radius: 50%; background: var(--color-surface); color: var(--color-ink); transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
 .arrow-button:hover { border-color: var(--color-accent); background: var(--color-accent-soft); transform: translateY(-2px); }
@@ -1440,7 +1441,7 @@ section[id] { scroll-margin-top: 6rem; }
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  background: oklch(20% .04 225 / 55%);
+  background: rgb(19 40 60 / 55%);
   -webkit-backdrop-filter: blur(7px);
   backdrop-filter: blur(7px);
 }
@@ -1455,7 +1456,7 @@ section[id] { scroll-margin-top: 6rem; }
   flex-direction: column;
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: 0 2rem 4rem -1.5rem oklch(20% .04 225 / 45%);
+  box-shadow: 0 2rem 4rem -1.5rem rgb(19 40 60 / 45%);
 }
 
 .auth-discard-prompt[hidden] { display: none; }
@@ -1468,7 +1469,7 @@ section[id] { scroll-margin-top: 6rem; }
   place-items: center;
   padding: 1.25rem;
   border-radius: inherit;
-  background: oklch(20% .04 225 / 42%);
+  background: rgb(19 40 60 / 42%);
 }
 
 .auth-discard-prompt__card {
@@ -1477,7 +1478,7 @@ section[id] { scroll-margin-top: 6rem; }
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  box-shadow: 0 1rem 2.5rem oklch(20% .04 225 / 22%);
+  box-shadow: 0 1rem 2.5rem rgb(19 40 60 / 22%);
 }
 
 .auth-discard-prompt__card h2 {
@@ -1898,7 +1899,7 @@ section[id] { scroll-margin-top: 6rem; }
   border: 1px solid var(--color-rule);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  box-shadow: 0 1.5rem 3rem -2rem oklch(22% .045 220 / 25%);
+  box-shadow: 0 1.5rem 3rem -2rem rgb(15 23 42 / 25%);
   text-align: center;
 }
 
@@ -2091,7 +2092,7 @@ html.motion-override-off .film-modal:not([hidden]) .film-modal__panel { animatio
    frame has no visible edge at any panel shape. Colours sampled from the clips. */
 .story-media { padding: 1.25rem 0 1rem; }
 .story-media::before { display: none; }
-.story--customer .story-media { background: #e0f3f9; }
+.story--customer .story-media { background: #075985; }
 .story--provider .story-media { background: #0d1a2a; }
 .story-capture img.story-image-layer,
 .story-capture video.story-video {
@@ -2111,7 +2112,8 @@ html.motion-override-off .film-modal:not([hidden]) .film-modal__panel { animatio
   transition: opacity 240ms var(--ease-out);
 }
 .story-capture video.story-video.is-visible { opacity: 1; }
-.story--provider .story-capture figcaption { color: color-mix(in oklch, white 72%, transparent); }
+.story--customer .story-capture figcaption,
+.story--provider .story-capture figcaption { color: color-mix(in oklch, white 78%, transparent); }
 /* Phones/tablets: the carousel grows to fit its copy (it used to clip the last
    lines at a fixed height), the clip gets a taller area, and the caption that
    repeats the step title gives its row to the phone. */

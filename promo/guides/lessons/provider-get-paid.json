@@ -1,0 +1,97 @@
+{
+  "id": "provider-get-paid",
+  "track": "providers",
+  "number": 6,
+  "title": "Get paid",
+  "summary": "Your pay goes straight to your account.",
+  "steps": [
+    {
+      "headline": "Your pay up front",
+      "body": "The job shows Job price, Platform fee and You receive.",
+      "narration": "Before you apply, every job shows the job price, the platform fee, and what you receive.",
+      "tapWord": "receive",
+      "screenshot": "placeholder:Provider Job details: pay",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Client confirms",
+      "body": "When the client confirms the job is done, your pay is released.",
+      "narration": "When the client confirms the job is done, your pay is released right away. You do not need to ask for it.",
+      "tapWord": "confirms",
+      "screenshot": "placeholder:Provider Job details",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Sent automatically",
+      "body": "Your pay goes automatically to your linked GCash, Maya or bank account.",
+      "narration": "It goes automatically to the GCash, Maya or bank account you linked.",
+      "tapWord": "automatically",
+      "screenshot": "placeholder:Payout account",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Payout account",
+      "body": "Open Profile, then Payout account, to check or change where pay goes.",
+      "narration": "To check where your pay goes, open Profile, then Payout account.",
+      "tapWord": "Payout",
+      "screenshot": "placeholder:Payout account",
+      "tap": {
+        "x": 0.5,
+        "y": 0.35
+      }
+    },
+    {
+      "headline": "Earnings",
+      "body": "Open Profile, then Earnings, to see your pay.",
+      "narration": "Open Profile, then Earnings, to see your pay. It is a simple list.",
+      "tapWord": "Earnings",
+      "screenshot": "placeholder:Earnings",
+      "tap": {
+        "x": 0.5,
+        "y": 0.45
+      }
+    },
+    {
+      "headline": "Released to you",
+      "body": "See what was released to you, and what is on its way.",
+      "narration": "See what was released to you, what is on its way, and the platform fees. Everything is in one place.",
+      "tapWord": "way",
+      "screenshot": "placeholder:Earnings",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Sent to your account",
+      "body": "Each payout is listed once it is sent to your account.",
+      "narration": "Each payout is listed here once it is sent to your account.",
+      "tapWord": "listed",
+      "screenshot": "placeholder:Earnings: Sent to your account",
+      "tap": {
+        "x": 0.5,
+        "y": 0.7
+      }
+    },
+    {
+      "headline": "Next job",
+      "body": "Back to the Feed for your next job.",
+      "narration": "That is it. Head back to the Feed to find your next job.",
+      "tapWord": "Feed",
+      "screenshot": "placeholder:Provider Feed",
+      "tap": {
+        "x": 0.13,
+        "y": 0.97
+      }
+    }
+  ]
+}

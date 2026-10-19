@@ -133,7 +133,7 @@ export function CompleteProfileForm() {
                 aria-selected={role === "provider"}
                 onClick={() => setRole("provider")}
               >
-                <span>Service Provider</span>
+                <span>Provider</span>
               </button>
             </div>
           </div>

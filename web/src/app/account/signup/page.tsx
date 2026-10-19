@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import { GET_APP_HREF } from "@/lib/getApp";
 
-/** Same idea as account/login/page.tsx, for the Sign Up panel. */
+/** Web sign-up is hidden (mobile-only marketplace); send visitors to Get the app. */
 export default function AccountSignupPage() {
-  redirect("/#signup");
+  redirect(GET_APP_HREF);
 }

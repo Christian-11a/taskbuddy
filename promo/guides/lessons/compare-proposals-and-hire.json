@@ -1,0 +1,98 @@
+{
+  "id": "compare-proposals-and-hire",
+  "track": "clients",
+  "number": 4,
+  "title": "Compare proposals and hire",
+  "summary": "Pick the right provider and pay safely.",
+  "next": "Track, confirm and review",
+  "steps": [
+    {
+      "headline": "Waiting for proposals",
+      "body": "Providers near you send proposals. You will get a notification.",
+      "narration": "Providers near you will send proposals. You get a notification when one arrives. There is no need to wait by your phone.",
+      "tapWord": "notification",
+      "screenshot": "placeholder:Job details: Waiting for proposals",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Proposals",
+      "body": "Open Proposals to see every provider who applied.",
+      "narration": "Open the job and tap Proposals to see every provider who applied.",
+      "tapWord": "Proposals",
+      "screenshot": "placeholder:Proposals",
+      "tap": {
+        "x": 0.88,
+        "y": 0.2
+      }
+    },
+    {
+      "headline": "View profile",
+      "body": "Check their rating, reviews and photos of their work.",
+      "narration": "Tap View profile to check a provider's rating, reviews and photos of their work.",
+      "tapWord": "profile",
+      "screenshot": "placeholder:Provider profile",
+      "tap": {
+        "x": 0.2,
+        "y": 0.6
+      }
+    },
+    {
+      "headline": "Hire",
+      "body": "Happy with a proposal? Tap Hire.",
+      "narration": "When you like a proposal, tap Hire. Take your time to choose.",
+      "tapWord": "Hire",
+      "screenshot": "placeholder:Proposals",
+      "tap": {
+        "x": 0.85,
+        "y": 0.55
+      }
+    },
+    {
+      "headline": "Confirm and hire",
+      "body": "Review the summary, then tap Confirm and hire.",
+      "narration": "Check the summary, then tap Confirm and hire.",
+      "tapWord": "Confirm",
+      "screenshot": "placeholder:Hire payment summary",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Pay online",
+      "body": "Pay with GCash, Maya, card or online banking.",
+      "narration": "You pay online with GCash, Maya, a card or online banking. It is quick and secure.",
+      "tapWord": "GCash",
+      "screenshot": "placeholder:Payment methods",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    },
+    {
+      "headline": "Held until done",
+      "body": "TaskBuddy holds your payment and releases it only when you confirm the job is done.",
+      "narration": "TaskBuddy holds your payment and releases it only when you confirm the job is done. So you stay in control.",
+      "tapWord": "holds",
+      "screenshot": "placeholder:Hired",
+      "tap": {
+        "x": 0.5,
+        "y": 0.4
+      }
+    },
+    {
+      "headline": "Message your provider",
+      "body": "Tap Message to agree on the details.",
+      "narration": "Once hired, tap Message to chat with your provider and agree on the details.",
+      "tapWord": "Message",
+      "screenshot": "placeholder:Hired",
+      "tap": {
+        "x": 0.5,
+        "y": 0.75
+      }
+    }
+  ]
+}

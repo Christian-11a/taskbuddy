@@ -9,7 +9,7 @@
   var roleLabel = document.querySelector("[data-story-role]");
   var title = document.querySelector("[data-story-title]");
   var body = document.querySelector("[data-story-body]");
-  var points = document.querySelector("[data-story-points]");
+  var guideLink = document.querySelector("[data-story-guide]");
   var storyCopy = document.querySelector(".story-copy");
   var progress = document.querySelector("[data-story-progress]");
   var status = document.querySelector("[data-story-status]");
@@ -35,108 +35,128 @@
 
   var stories = {
     customer: {
-      kicker: "For homeowners",
-      role: "Homeowner",
+      kicker: "For clients",
+      role: "Client",
       heading: "Find the right person for the job.",
-      lede: "Describe what you need, compare service providers, and choose with confidence.",
+      lede: "Pick a service, compare proposals, and hire with confidence.",
       steps: [
         {
           image: "/film/story/customer-1.jpg",
           video: "/film/story/customer-1.mp4",
-          alt: "TaskBuddy homeowner home screen with wallet balance, services, and the Post button",
-          caption: "Start with what you need.",
-          title: "Start with what you need.",
-          body: "Find a service, check your active jobs, and take the next step.",
-          points: ["See your active jobs", "Know what to do next", "Move at your own pace"]
+          alt: "TaskBuddy sign-up: choosing Client, entering details and verifying the email",
+          caption: "Create your account.",
+          title: "Create your account.",
+          body: "Sign up in the app and verify your email to start posting jobs.",
+          lesson: "create-your-account",
+          lessonTitle: "Create your account"
         },
         {
           image: "/film/story/customer-2.jpg",
           video: "/film/story/customer-2.mp4",
-          alt: "Homeowner posting a job: title, location, urgency, and budget",
-          caption: "Tell service providers what you need.",
-          title: "Tell service providers what you need.",
-          body: "Add the service, location, schedule, and details in one request.",
-          points: ["Describe the task clearly", "Choose a schedule", "Edit the request later"]
+          alt: "TaskBuddy client home screen with the Post a job card",
+          caption: "Start with what you need.",
+          title: "Start with what you need.",
+          body: "Find a service, check your active jobs, and take the next step.",
+          lesson: "your-home-screen",
+          lessonTitle: "Your Home and My Jobs"
         },
         {
           image: "/film/story/customer-3.jpg",
           video: "/film/story/customer-3.mp4",
-          alt: "Homeowner comparing three proposals and hiring a verified provider",
-          caption: "Compare proposals, then hire.",
-          title: "Compare proposals, then hire.",
-          body: "See each service provider’s price, rating, and message side by side, then hire with one tap.",
-          points: ["Compare prices and ratings", "Read each proposal", "Hire with one tap"]
+          alt: "Client posting a job: service, address, tasks, urgency and a price option",
+          caption: "Tell providers what you need.",
+          title: "Tell providers what you need.",
+          body: "Pick a service, its tasks and urgency, then choose one of three estimated price options.",
+          lesson: "post-a-job",
+          lessonTitle: "Post a job"
         },
         {
           image: "/film/story/customer-4.jpg",
           video: "/film/story/customer-4.mp4",
-          alt: "Homeowner wallet showing payment held in escrow, then released",
-          caption: "Know what you will pay.",
-          title: "Know what you will pay.",
-          body: "See the payment details and what happens next in one place.",
-          points: ["See payment status", "Know what is held", "Keep the details in one place"]
+          alt: "Client reviewing a proposal, hiring the provider and paying",
+          caption: "Compare proposals, then hire.",
+          title: "Compare proposals, then hire.",
+          body: "Check each provider’s rating, certificate and message, then hire and pay safely.",
+          lesson: "compare-proposals-and-hire",
+          lessonTitle: "Compare proposals and hire"
         },
         {
           image: "/film/story/customer-5.jpg",
           video: "/film/story/customer-5.mp4",
-          alt: "Homeowner rating the provider five stars and submitting a review",
-          caption: "Finish the job and leave a review.",
-          title: "Finish the job and leave a review.",
-          body: "Mark the job complete and share your experience.",
-          points: ["Confirm the job is complete", "Leave a review", "See your finished jobs"]
+          alt: "Client confirming the job is done and rating the provider",
+          caption: "Follow the job, then confirm and review.",
+          title: "Follow the job, then confirm and review.",
+          body: "Follow the checklist and proof photos, confirm the job is done or report a problem, then leave a review.",
+          lesson: "track-confirm-and-review",
+          lessonTitle: "Confirm the job and leave a review"
         }
       ]
     },
     provider: {
-      kicker: "For service providers",
-      role: "Service Provider",
+      kicker: "For providers",
+      role: "Provider",
       heading: "Find jobs that fit your skills.",
-      lede: "Find jobs, show your skills, and get hired.",
+      lede: "Find jobs, send proposals, and get paid.",
       steps: [
         {
           image: "/film/story/provider-1.jpg",
           video: "/film/story/provider-1.mp4",
-          alt: "Service provider feed of jobs near you with a new job arriving",
-          caption: "Find jobs that fit your skills.",
-          title: "Find jobs that fit your skills.",
-          body: "Browse requests and look for jobs that match your services.",
-          points: ["Scan jobs quickly", "See key details first", "Choose the jobs you want"]
+          alt: "TaskBuddy sign-up as a provider with a skill category and email code",
+          caption: "Create your provider account.",
+          title: "Create your provider account.",
+          body: "Sign up as a provider and set up your profile.",
+          lesson: "provider-create-account",
+          lessonTitle: "Create your account"
         },
         {
           image: "/film/story/provider-2.jpg",
           video: "/film/story/provider-2.mp4",
-          alt: "Service provider verification: government ID, face scan, and automated check",
-          caption: "Verify your account first.",
-          title: "Verify your account first.",
-          body: "Verify your account before you apply to a job.",
-          points: ["Know when you can apply", "Complete each step in one place", "Help keep the platform safe"]
+          alt: "Provider setup: ID photo, selfie, certificate and review",
+          caption: "Finish your setup first.",
+          title: "Finish your setup first.",
+          body: "Add your ID, a selfie, a certificate for each service, and a payout account before you send proposals.",
+          lesson: "provider-get-verified",
+          lessonTitle: "Get verified"
         },
         {
           image: "/film/story/provider-3.jpg",
           video: "/film/story/provider-3.mp4",
-          alt: "Service provider profile with jobs done, rating, and a new review",
-          caption: "Show what you can do.",
-          title: "Show what you can do.",
-          body: "Add your services and experience so homeowners know what you offer.",
-          points: ["List your services", "Show your experience", "Help homeowners choose you"]
+          alt: "Provider feed of jobs near you with a new job arriving",
+          caption: "Find jobs that fit your skills.",
+          title: "Find jobs that fit your skills.",
+          body: "Browse requests and look for jobs that match your services.",
+          lesson: "provider-your-feed",
+          lessonTitle: "Your Feed and availability"
         },
         {
           image: "/film/story/provider-4.jpg",
           video: "/film/story/provider-4.mp4",
-          alt: "Service provider reviewing job details and submitting a proposal",
+          alt: "Provider reviewing job details and sending a proposal",
           caption: "See the job details first.",
           title: "See the job details first.",
-          body: "Check the request, schedule, location, and homeowner details before you apply.",
-          points: ["See the work and schedule", "Read the homeowner’s request", "Decide before you apply"]
+          body: "Check the work, schedule, location and the price you would receive before you send a proposal.",
+          lesson: "provider-send-a-proposal",
+          lessonTitle: "Send a proposal"
         },
         {
           image: "/film/story/provider-5.jpg",
           video: "/film/story/provider-5.mp4",
-          alt: "Service provider accepting a booking request after being hired",
+          alt: "Provider starting the job and adding a proof photo for each task",
           caption: "You got the job. Now get started.",
           title: "You got the job. Now get started.",
-          body: "See the job details and start when you are ready.",
-          points: ["Know when you are selected", "See booking details", "Start from the job screen"]
+          body: "Do the tasks and add proof photos, then wait for the client to confirm.",
+          lesson: "provider-do-the-job",
+          lessonTitle: "Do the job"
+        },
+        {
+          image: "/film/story/provider-6.jpg",
+          video: "/film/story/provider-6.mp4",
+          alt: "Provider Earnings screen with a payment released to GCash",
+          caption: "Get paid automatically.",
+          title: "Get paid automatically.",
+          body: "Once the client confirms, your pay arrives in your payout account automatically, listed in Earnings.",
+          lesson: "provider-get-paid",
+          lessonTitle: "Get paid"
         }
       ]
     }
@@ -312,12 +332,8 @@
     roleLabel.textContent = set.role;
     title.textContent = step.title;
     body.textContent = step.body;
-    points.textContent = "";
-    step.points.forEach(function (point) {
-      var item = document.createElement("li");
-      item.textContent = point;
-      points.appendChild(item);
-    });
+    guideLink.setAttribute("href", "/guide#" + step.lesson);
+    guideLink.setAttribute("aria-label", "Watch the guide: " + step.lessonTitle);
     status.textContent = set.role + " step " + (currentIndex + 1) + " of " + set.steps.length;
     renderProgress();
     syncHeroFilm();

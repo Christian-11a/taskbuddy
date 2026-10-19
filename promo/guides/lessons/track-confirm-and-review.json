@@ -1,0 +1,97 @@
+{
+  "id": "track-confirm-and-review",
+  "track": "clients",
+  "number": 5,
+  "title": "Track, confirm and review",
+  "summary": "Follow the job to the finish.",
+  "steps": [
+    {
+      "headline": "Job details",
+      "body": "Open the job from Home or My Jobs to follow its progress.",
+      "narration": "Open your job from Home or My Jobs to follow its progress.",
+      "tapWord": "progress",
+      "screenshot": "placeholder:Client Job details",
+      "tap": {
+        "x": 0.5,
+        "y": 0.3
+      }
+    },
+    {
+      "headline": "Messages",
+      "body": "Chat with your provider and share photos.",
+      "narration": "Use Messages to chat with your provider and share photos.",
+      "tapWord": "photos",
+      "screenshot": "placeholder:Chat",
+      "tap": {
+        "x": 0.5,
+        "y": 0.85
+      }
+    },
+    {
+      "headline": "Tasks",
+      "body": "Your provider ticks each task and adds proof photos.",
+      "narration": "Your provider ticks off each task and adds proof photos, so you can see the work.",
+      "tapWord": "proof",
+      "screenshot": "placeholder:Client Job details: Tasks",
+      "tap": {
+        "x": 0.5,
+        "y": 0.6
+      }
+    },
+    {
+      "headline": "Change date or time",
+      "body": "Tap the menu, then Change date or time. The other side accepts or declines.",
+      "narration": "Need a new schedule? Open the menu and tap Change date or time. The other side can accept or decline.",
+      "tapWord": "schedule",
+      "screenshot": "placeholder:Change date or time",
+      "tap": {
+        "x": 0.93,
+        "y": 0.08
+      }
+    },
+    {
+      "headline": "Report a problem",
+      "body": "Raise any complaint before you confirm.",
+      "narration": "If something is wrong, tap Report a problem before you confirm.",
+      "tapWord": "problem",
+      "screenshot": "placeholder:Report a problem",
+      "tap": {
+        "x": 0.5,
+        "y": 0.8
+      }
+    },
+    {
+      "headline": "Confirm job is done",
+      "body": "Happy with the work? Tap Confirm job is done. Payment goes to your provider.",
+      "narration": "If you are happy with the work, tap Confirm job is done. The payment is then released to your provider.",
+      "tapWord": "Confirm",
+      "screenshot": "placeholder:Client Job details",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Leave a review",
+      "body": "Rate your provider and tell others what went well.",
+      "narration": "Finally, tap Leave a review. Rate your provider and tell others what went well.",
+      "tapWord": "review",
+      "screenshot": "placeholder:Rate your provider",
+      "tap": {
+        "x": 0.5,
+        "y": 0.9
+      }
+    },
+    {
+      "headline": "Payments",
+      "body": "Open Profile, then Payments, to see what you paid.",
+      "narration": "Any time, open Profile, then Payments, to see what you paid.",
+      "tapWord": "Payments",
+      "screenshot": "placeholder:Payments",
+      "tap": {
+        "x": 0.5,
+        "y": 0.5
+      }
+    }
+  ]
+}
