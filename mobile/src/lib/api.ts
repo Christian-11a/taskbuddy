@@ -641,6 +641,12 @@ export interface CheckoutSession {
   amount: number;
 }
 
+export interface HirePaymentStatus {
+  application_status: JobApplication['status'];
+  payment_status: 'confirmed' | 'confirming' | 'not_applied' | 'not_paid' | 'needs_review' | 'not_found';
+  invoice_id: string | null;
+}
+
 /** The card limits live in cardLimits.ts, with no network code; re-exported here for the screens. */
 export { MAX_CARD_PHP, MIN_TOPUP_PHP } from './cardLimits';
 
@@ -1681,6 +1687,12 @@ export const api = {
       method: 'POST',
       body: input,
     });
+  },
+  /** Checks the proposal state and asks the backend to reconcile a known Xendit invoice. */
+  hirePaymentStatus(input: { application_id: string; invoice_id?: string }) {
+    const params = new URLSearchParams({ application_id: input.application_id });
+    if (input.invoice_id) params.set('invoice_id', input.invoice_id);
+    return authRequest<HirePaymentStatus>(`/payments/hire-status?${params.toString()}`);
   },
 
   // ── Payouts (migration 0056: no wallet) ─────────────────────────────────────

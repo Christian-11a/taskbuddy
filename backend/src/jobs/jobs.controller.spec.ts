@@ -16,12 +16,18 @@ import { SupabaseService } from '../supabase/supabase.service';
  * ValidationPipe (configured as in main.ts) and throttler, with Supabase and
  * the geocoder stubbed. The unit spec for GeocodingService covers Geoapify's answers;
  * this covers what only the wiring can get wrong — route order against
- * `:id`, the client-only role, query validation, and the 10/min limit.
+ * `:id`, client/provider access, query validation, and the 10/min limit.
  */
 describe('GET /jobs/geocode (HTTP)', () => {
   let app: INestApplication<App>;
   const geocode = jest.fn();
   const staticMap = jest.fn();
+  const issueLocationReference = jest.fn(
+    (_userId: string, location: unknown) => ({
+      ...(location as Record<string, unknown>),
+      location_reference: 'signed-reference',
+    }),
+  );
 
   /** Token → role. Anything else is rejected by the stubbed auth.getUser. */
   const roles: Record<string, string> = {
@@ -67,6 +73,7 @@ describe('GET /jobs/geocode (HTTP)', () => {
   beforeEach(async () => {
     geocode.mockReset();
     staticMap.mockReset();
+    issueLocationReference.mockClear();
     const moduleRef = await Test.createTestingModule({
       imports: [
         ThrottlerModule.forRoot({
@@ -79,7 +86,10 @@ describe('GET /jobs/geocode (HTTP)', () => {
         { provide: APP_GUARD, useClass: ThrottlerGuard },
         { provide: SupabaseService, useValue: supabase },
         { provide: JobsService, useValue: {} },
-        { provide: GeocodingService, useValue: { geocode, staticMap } },
+        {
+          provide: GeocodingService,
+          useValue: { geocode, staticMap, issueLocationReference },
+        },
       ],
     }).compile();
 
@@ -120,8 +130,13 @@ describe('GET /jobs/geocode (HTTP)', () => {
       latitude: 14.676,
       longitude: 121.0437,
       formatted_address: '12 Mabini St, Quezon City',
+      location_reference: 'signed-reference',
     });
     expect(geocode).toHaveBeenCalledWith('12 Mabini St, Quezon City');
+    expect(issueLocationReference).toHaveBeenCalledWith(
+      'client-token',
+      expect.objectContaining({ latitude: 14.676 }),
+    );
   });
 
   it('requires a token', async () => {
@@ -130,10 +145,21 @@ describe('GET /jobs/geocode (HTTP)', () => {
     expect(geocode).not.toHaveBeenCalled();
   });
 
-  it('is client-only', async () => {
+  it('lets providers verify a typed booking address', async () => {
+    geocode.mockResolvedValue({
+      latitude: 14.676,
+      longitude: 121.0437,
+      formatted_address: '12 Mabini St, Quezon City',
+    });
+
     const res = await get('?address=12%20Mabini%20St', 'provider-token');
-    expect(res.status).toBe(403);
-    expect(geocode).not.toHaveBeenCalled();
+
+    expect(res.status).toBe(200);
+    expect(res.body.location_reference).toBe('signed-reference');
+    expect(issueLocationReference).toHaveBeenCalledWith(
+      'provider-token',
+      expect.any(Object),
+    );
   });
 
   it.each([

@@ -40,6 +40,10 @@ export interface XenditPaidInvoice {
   channel: string;
 }
 
+export interface XenditInvoiceStatus extends XenditPaidInvoice {
+  status: string;
+}
+
 export interface XenditPayoutResult {
   id: string;
   status: string;
@@ -231,16 +235,28 @@ export class XenditService {
    * Throws when Xendit cannot be asked, so the callback is retried.
    */
   async confirmPaidInvoice(paid: XenditPaidInvoice): Promise<boolean> {
+    const invoice = await this.invoiceStatus(paid.invoiceId);
+    return (
+      invoice !== null &&
+      invoice.externalId === paid.externalId &&
+      (invoice.status === 'PAID' || invoice.status === 'SETTLED') &&
+      invoice.amountCentavos === paid.amountCentavos &&
+      invoice.currency === paid.currency
+    );
+  }
+
+  /** Reads one invoice from Xendit so a delayed or missed callback can recover. */
+  async invoiceStatus(invoiceId: string): Promise<XenditInvoiceStatus | null> {
     this.assertTestMode();
     const response = await fetch(
-      `${API}/v2/invoices/${encodeURIComponent(paid.invoiceId)}`,
+      `${API}/v2/invoices/${encodeURIComponent(invoiceId)}`,
       {
         headers: {
           authorization: `Basic ${Buffer.from(`${this.secretKey}:`).toString('base64')}`,
         },
       },
     );
-    if (response.status === 404) return false;
+    if (response.status === 404) return null;
     if (!response.ok) {
       throw new XenditRequestError(
         `Xendit invoice lookup failed (${response.status})`,
@@ -248,17 +264,32 @@ export class XenditService {
       );
     }
     const invoice = (await response.json()) as {
+      id?: string;
       external_id?: string;
       status?: string;
       paid_amount?: number;
       amount?: number;
+      currency?: string;
+      payment_channel?: string;
+      payment_method?: string;
     };
     const amount = Number(invoice.paid_amount ?? invoice.amount ?? NaN);
-    return (
-      invoice.external_id === paid.externalId &&
-      (invoice.status === 'PAID' || invoice.status === 'SETTLED') &&
-      Math.round(amount * 100) === paid.amountCentavos
-    );
+    if (!invoice.external_id || !invoice.status || !Number.isFinite(amount)) {
+      throw new XenditRequestError(
+        `Xendit invoice ${invoiceId} response is missing required fields`,
+        response.status,
+      );
+    }
+    return {
+      invoiceId: invoice.id ?? invoiceId,
+      externalId: invoice.external_id,
+      purpose: invoice.external_id.split('_')[0] ?? '',
+      subjectId: invoice.external_id.split('_')[1] ?? '',
+      status: invoice.status.toUpperCase(),
+      amountCentavos: Math.round(amount * 100),
+      currency: (invoice.currency ?? 'PHP').toLowerCase(),
+      channel: invoice.payment_channel ?? invoice.payment_method ?? 'payment',
+    };
   }
 
   /**

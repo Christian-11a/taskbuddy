@@ -23,6 +23,7 @@ jest.mock('../../../../src/lib/api', () => ({
     acceptApplication: jest.fn(),
     rejectApplication: jest.fn(),
     createHireCheckoutSession: jest.fn(),
+    hirePaymentStatus: jest.fn(),
     getProvider: jest.fn(),
     getProviderReviews: jest.fn(),
     getProviderWork: jest.fn(),
@@ -121,7 +122,16 @@ beforeEach(() => {
   (api.getProviderReviews as jest.Mock).mockResolvedValue([]);
   (api.getProviderWork as jest.Mock).mockResolvedValue([]);
   (api.providerPortfolio as jest.Mock).mockResolvedValue([]);
-  (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({ url: 'https://checkout.example/session' });
+  (api.createHireCheckoutSession as jest.Mock).mockResolvedValue({
+    url: 'https://checkout.example/session',
+    session_id: 'inv-1',
+    amount: 1000,
+  });
+  (api.hirePaymentStatus as jest.Mock).mockResolvedValue({
+    application_status: 'pending',
+    payment_status: 'not_found',
+    invoice_id: null,
+  });
   (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'cancel' });
   mockJob(1000);
 });
@@ -786,7 +796,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
   });
 
-  it('Start a new payment asks first: Keep waiting leaves the wait, and Yes, start over brings the pay buttons back', async () => {
+  it('Start a new payment asks first and only clears the wait after the server confirms the invoice did not pay', async () => {
     (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=success' });
     await renderScreen();
     await payByCard();
@@ -803,6 +813,11 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
 
     fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    (api.hirePaymentStatus as jest.Mock).mockResolvedValueOnce({
+      application_status: 'pending',
+      payment_status: 'not_paid',
+      invoice_id: 'inv-1',
+    });
     fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
 
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
@@ -926,7 +941,7 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
 
   it('after an app restart the wait is read from the device, keeps what the browser reported, and still offers no pay option', async () => {
     const view = await startWaitingCardPayment();
-    expect(await storedWaits()).toEqual({ 'app-1': { returnedPaid: true, startedAt: expect.any(Number) } });
+    expect(await storedWaits()).toEqual({ 'app-1': { returnedPaid: true, startedAt: expect.any(Number), invoiceId: 'inv-1' } });
     view.unmount();
     // A restart: this session's memory is gone, but the device still holds the wait.
     await resetPendingHirePaymentsForTests();
@@ -955,7 +970,7 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     await payByCard();
 
     await waitFor(() => expect(onDeviceWhenPageOpened).not.toBe('page not opened'));
-    expect(onDeviceWhenPageOpened).toEqual({ 'app-1': { returnedPaid: false, startedAt: expect.any(Number) } });
+    expect(onDeviceWhenPageOpened).toEqual({ 'app-1': { returnedPaid: false, startedAt: expect.any(Number), invoiceId: 'inv-1' } });
   });
 
   it('a payment the browser reports as cancelled is not remembered', async () => {
@@ -970,6 +985,11 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
   it('starting a new payment forgets the device copy too, so after a restart the pay options come back', async () => {
     const view = await startWaitingCardPayment();
     fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
+    (api.hirePaymentStatus as jest.Mock).mockResolvedValueOnce({
+      application_status: 'pending',
+      payment_status: 'not_paid',
+      invoice_id: 'inv-1',
+    });
     fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
     await waitFor(async () => expect(await storedWaits()).toEqual({}));
 
@@ -986,6 +1006,11 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     const DECLINE = 'Decline Alex Reyes';
     const WAITING_FOR_PROPOSAL = "We're still confirming your payment for this proposal.";
     await startWaitingCardPayment();
+    (api.hirePaymentStatus as jest.Mock).mockResolvedValue({
+      application_status: 'pending',
+      payment_status: 'not_paid',
+      invoice_id: 'inv-1',
+    });
     fireEvent.press(screen.getByRole('button', { name: 'Close' }));
 
     expect(await screen.findByText(WAITING_FOR_PROPOSAL)).toBeTruthy();
@@ -996,6 +1021,7 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
     fireEvent.press(screen.getByRole('button', { name: 'Start a new payment' }));
     fireEvent.press(await screen.findByRole('button', { name: 'Yes, start over' }));
+    await waitFor(async () => expect(await storedWaits()).toEqual({}));
     fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(await screen.findByRole('button', { name: DECLINE, disabled: false })).toBeTruthy();
@@ -1003,26 +1029,27 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     expect(api.rejectApplication).not.toHaveBeenCalled();
   });
 
-  it('a wait open on this screen for 24 hours is over at the next Check payment status, here and on the device', async () => {
+  it('a pending invoice stays blocked after 24 hours until the server reports a terminal payment status', async () => {
     await startWaitingCardPayment();
-    // A minute short of 24 hours since the checkout started, the check still keeps the wait.
-    await passTime(PENDING_HIRE_PAYMENT_TTL_MS - 60_000 - FULL_WAIT_MS);
+    await passTime(PENDING_HIRE_PAYMENT_TTL_MS + FULL_WAIT_MS);
     fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
     await passTime(FULL_WAIT_MS);
     expect(screen.getByText(STILL_CONFIRMING)).toBeTruthy();
 
-    await passTime(60_001);
+    (api.hirePaymentStatus as jest.Mock).mockResolvedValueOnce({
+      application_status: 'pending',
+      payment_status: 'not_paid',
+      invoice_id: 'inv-1',
+    });
     fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
 
-    expect(await screen.findByText('This payment was not confirmed within 24 hours, so it is no longer waiting.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' })).toBeTruthy();
-    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
+    expect(await screen.findByText('This payment did not complete. You can start a new payment when you are ready.')).toBeTruthy();
     await waitFor(async () => expect(await storedWaits()).toEqual({}));
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
     expect(api.acceptApplication).not.toHaveBeenCalled();
   });
 
-  it("a wait open on this screen for 24 hours is cleared when the screen's proposals reload", async () => {
+  it("a server-confirming invoice remains blocked when the screen's proposals reload after 24 hours", async () => {
     const blair = application({
       id: 'app-2',
       provider: {
@@ -1035,6 +1062,17 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     });
     // A new list each time, as the server gives one, so a reload is a change the screen can see.
     (api.jobApplications as jest.Mock).mockImplementation(async () => [pendingApp, blair]);
+    (api.hirePaymentStatus as jest.Mock)
+      .mockResolvedValueOnce({
+        application_status: 'pending',
+        payment_status: 'not_found',
+        invoice_id: null,
+      })
+      .mockResolvedValue({
+        application_status: 'pending',
+        payment_status: 'confirming',
+        invoice_id: 'inv-1',
+      });
     await startWaitingCardPayment();
     fireEvent.press(screen.getByRole('button', { name: 'Close' }));
     await passTime(PENDING_HIRE_PAYMENT_TTL_MS);
@@ -1044,9 +1082,11 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     fireEvent.press(screen.getByRole('button', { name: 'Reject' }));
 
     await waitFor(() => expect(api.rejectApplication).toHaveBeenCalledWith('app-2'));
+    await waitFor(() => expect(screen.queryByLabelText('Loading content')).toBeNull());
     expect(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false })).toBeTruthy();
-    expect(screen.queryByText(WAITING_NOTE)).toBeNull();
-    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+    fireEvent.press(screen.getByRole('button', { name: HIRE_ALEX, disabled: false }));
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
   });
 });
 
@@ -1134,18 +1174,23 @@ describe('HOJobApplicationsScreen: what a remembered wait is checked against whe
     await waitFor(async () => expect(await storedWaits()).toEqual({}));
   });
 
-  it('a remembered wait older than 24 hours is ignored: Hire offers the pay options, and the old entry is removed', async () => {
+  it('a remembered wait older than 24 hours is recovered from the server before Hire offers pay options', async () => {
     await AsyncStorage.setItem(
       PENDING_HIRE_PAYMENTS_KEY,
       JSON.stringify({ 'app-1': { returnedPaid: false, startedAt: Date.now() - PENDING_HIRE_PAYMENT_TTL_MS - 1 } }),
     );
+    (api.hirePaymentStatus as jest.Mock).mockResolvedValueOnce({
+      application_status: 'pending',
+      payment_status: 'confirming',
+      invoice_id: 'inv-1',
+    });
     await renderScreen();
 
     fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
 
-    expect(await screen.findByRole('radio', { name: ONLINE })).toBeTruthy();
-    expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
-    await waitFor(async () => expect(await storedWaits()).toEqual({}));
+    expect(await screen.findByText(STILL_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByRole('radio')).toBeNull();
+    expect(await storedWaits()).toEqual({ 'app-1': { returnedPaid: false, startedAt: expect.any(Number), invoiceId: 'inv-1' } });
   });
 
   it("a wait on a proposal that is not on this job is not this screen's, does not block Hire, and stays on the device", async () => {

@@ -22,5 +22,6 @@ import { EscrowModule } from '../escrow/escrow.module';
   ],
   controllers: [PaymentsController],
   providers: [PaymentsService, HireFundingService],
+  exports: [HireFundingService],
 })
 export class PaymentsModule {}

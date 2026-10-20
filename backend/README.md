@@ -15,12 +15,12 @@ The full data-schema and product spec lives in [`BACKEND_SCHEMA.md`](./BACKEND_S
 > [Base URL](#base-url) below). Status page: <https://taskbuddy-kpek.onrender.com/> ·
 > JSON health: <https://taskbuddy-kpek.onrender.com/health>
 
-> **Release check (2026-10-18):** migrations through **0074** are applied to
-> the linked Supabase project, each verified by the objects it creates (some
-> were applied outside the migration history, so check objects rather than
-> `supabase migration list`). Render deploys the fork's `main`; `/health`
-> reports the deployed commit in its `commit` field. Status of the open work:
-> [`docs/backend-handoff-plan-2026-10-18.md`](../docs/backend-handoff-plan-2026-10-18.md).
+> **Release check (2026-10-18):** historical checkpoint — migrations through
+> **0074** were verified against the linked Supabase project. The proposal
+> quote handoff says 0075 was applied manually; this task did not inspect the
+> live database. Migrations **0076** and **0077** below are new and have not
+> been applied or verified live. See the current
+> [backend implementation plan](../docs/backend-handoff-plan-2026-10-20.md).
 
 ## Architecture
 
@@ -148,9 +148,12 @@ Job lifecycle: `open → recommending → assigned → in_progress → completed
    | `0069_defer_job_dispute_sync.sql` | Fixes 0063: the dispute-state sync becomes a deferred constraint trigger, so client cancellations of hired jobs no longer abort. |
    | `0070_signup_role_whitelist.sql` | `handle_new_user` accepts only `client` or `provider` from sign-up metadata; anything else becomes `client`. Admins are created only by `POST /admin/admins` (audit C3). |
    | `0071_oauth_handoff_binding.sql` | `oauth_handoffs.challenge` and `secret_hash`: a Google sign-in claim needs the app's verifier and the redirect's secret (audit C2). |
+   | `0072_lockdown_direct_reads_and_uploads.sql` | Direct PostgREST reads: a user reads only their own profile; open jobs only by providers; `stripe_events` closed to anon/authenticated. `avatars`, `chat-attachments`, `job-photos` and `verification-docs` limited to 10 MB JPEG/PNG/WebP (audit H7, H8, M5). |
    | `0073_money_holds_and_sweeps.sql` | A cancelled hold can be re-held for another provider at the current price; `pass_through_balances` leaves client payments younger than 15 minutes for their hold; price-difference holds take the wallet lock and check the balance (audit H3, H5, H6). |
    | `0074_admin_users_certificate_status.sql` | `admin_user_certificates` view (service role only): `identity_verified` and the main-service `certificate_status` (approved, pending, expired, rejected), attached to `GET /admin/users` rows. |
-   | `0072_lockdown_direct_reads_and_uploads.sql` | Direct PostgREST reads: a user reads only their own profile; open jobs only by providers; `stripe_events` closed to anon/authenticated. `avatars`, `chat-attachments`, `job-photos` and `verification-docs` limited to 10 MB JPEG/PNG/WebP (audit H7, H8, M5). |
+   | `0075_proposal_quotes.sql` | Stores provider proposal quotes and places the escrow hold atomically at the accepted quote. |
+   | `0076_job_address_details.sql` | Optional house, unit, floor, or landmark details, separate from the signed job pin. |
+   | `0077_xendit_hire_invoice_recovery.sql` | Persists Xendit hire invoices and uses a five-minute claim lease so webhooks, manual status checks, and the reconciliation tick can recover delayed payments safely. |
 
    On the linked project, 0001–0052 are recorded in the migration history.
    Later migrations were applied but not all are recorded there (0060 and
@@ -359,15 +362,15 @@ All bodies are JSON. 🔒 = requires auth; (client) / (provider) = role-restrict
 | Method & path | Description |
 |---|---|
 | `POST /jobs/price-estimate` 🔒 (client) | `{ category_id, urgency?, task_efforts?[] }` → `{ options: [{ tier, amount, min, max }] }` — three options (`basic`, `standard`, `premium`): category base price × checklist workload (heaviest task in full, each other at 60%; `light` 1, `moderate` 1.5, `heavy` 2.25) × urgency multiplier × tier factor (`basic` 0.85, `standard` 1, `premium` 1.25), rounded to ₱50 and capped at ₱100,000 (migration 0053). The mobile app currently maps flexible/normal/urgent to basic/standard/premium, so both factors apply to its one displayed price per urgency. |
-| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, location_reference?, latitude?, longitude?, price_tier, scheduled_at?, photo_urls?, tasks?, task_efforts? }` — a signed `location_reference` (1–4096 characters) saves the resolved point without geocoding the address again; invalid, expired, foreign-account, or mismatched references return 400. Without a reference the server geocodes `address`. Legacy client coordinates are accepted and validated when sent but never used to place the job. The server sets `budget` from `price_tier`; a client-sent `budget` is rejected. `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` with their effort (default `moderate`) |
+| `POST /jobs` 🔒 (client) | `{ category_id, title (5–120), description (20–750), urgency?, address, address_details? (1–120), location_reference?, latitude?, longitude?, price_tier, scheduled_at?, photo_urls?, tasks?, task_efforts? }` — `address_details` is an optional house number, unit, floor, or landmark and does not change the map pin. A signed `location_reference` (1–4096 characters) saves the resolved point without geocoding the address again; invalid, expired, foreign-account, or mismatched references return 400. Without a reference the server uses the saved profile point when the address matches, otherwise geocodes `address`. Legacy client coordinates are accepted and validated when sent but never used to place the job. The server sets `budget` from `price_tier`; a client-sent `budget` is rejected. `scheduled_at` in the past is a 400; `tasks` is up to 20 checklist labels (≤120 chars each) stored as `job_tasks` with their effort (default `moderate`) |
 | `GET /jobs?category_id=&limit=&offset=&latitude=&longitude=&radius_km=` 🔒 (provider) | browse `open`/`recommending` jobs, sorted by urgency then distance/newest; `latitude`+`longitude` (both required together) filter to `radius_km` (default 50km) of the provider; returns `{ jobs, summary: { open_count, urgent_count, potential_payout } }` |
-| `GET /jobs/geocode?address=` 🔒 (client) | typed address → `{ latitude, longitude, formatted_address }` via Geoapify, Philippines only, street-level precision or better. `400` when not found, too general (a barangay/city centre), or a low-confidence match; `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
+| `GET /jobs/geocode?address=` 🔒 (client/provider) | typed address → `{ latitude, longitude, formatted_address, location_reference }` via Geoapify, Philippines only, street-level precision or better. The one-hour signed reference can be used when posting a job or accepting a booking. `400` when not found, too general (a barangay/city centre), or a low-confidence match; `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 10/min per IP. `BACKEND_SCHEMA.md` §31 |
 | `GET /jobs/static-map?lat=&lon=` 🔒 (client) | `image/png` 600×300 map of a geocoded point, rendered by Geoapify server-side so the key never reaches the app. Coordinates must fall in the Philippines box (`400` otherwise); `503` when Geoapify fails or `GEOAPIFY_API_KEY` is unset. 20/min per IP. `BACKEND_SCHEMA.md` §31.1 |
 | `GET /jobs/mine` 🔒 (client) | own jobs |
 | `GET /jobs/assigned` 🔒 (provider) | jobs assigned to me |
 | `GET /jobs/:id` 🔒 | job detail; for the job's client and assigned provider it includes `escrow: { status, funding_method } \| null` (null = no payment record yet). Every job read carries `dispute_state` and `display_status` (`disputed` while a dispute is open, otherwise `status`; migration 0063) |
 | `POST /jobs/:id/cancel` 🔒 (client) | any pre-completion state → `cancelled` |
-| `POST /jobs/:id/accept` 🔒 (provider) | accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018) |
+| `POST /jobs/:id/accept` 🔒 (provider) | `{ address?, latitude?, longitude?, location_reference? }` — accept an incoming booking request; `assigned` → `confirmed`, notifies the client (migration 0018). A signed location reference is preferred over client-supplied coordinates |
 | `POST /jobs/:id/start` 🔒 (provider) | `assigned`/`confirmed` → `in_progress` |
 | `POST /jobs/:id/decline` 🔒 (provider) | `{ reason (1–200) }` — assigned provider declines before starting; `assigned`/`confirmed` → `cancelled`, refunds escrow, notifies client |
 | `PATCH /jobs/:id/tasks/:taskId` 🔒 (provider) | `{ is_done, proof_photo_paths? }` — assigned provider ticks a checklist item; allowed only while `in_progress`. Ticking done needs 1–4 proof photos uploaded to the `task-proof` bucket (migration 0059); un-ticking clears them. Returns the whole job; each task carries `proof_photo_urls` for both sides |
@@ -500,7 +503,8 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 |---|---|
 | `POST /payments/config` 🔒 | `{ publishable_key }` — served rather than compiled in, so test↔live is a backend env change |
 | `POST /payments/xendit/webhook` | Xendit (test mode) invoice callback, verified by the `x-callback-token` header; a `PAID` invoice completes the hire or price change named by its `external_id` (`hire_<application>_…` / `pchg_<request>_…`) |
-| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; Checkout for the job's full budget. The hire itself is made by the webhook (credit → hold → accept), not by this call — poll the application afterwards. Same hireability checks as `POST /applications/:id/accept`; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `POST /payments/hire-checkout-session` 🔒 (client) | `{ application_id, app_redirect }` → `{ url, session_id, amount }`. **Pay-at-hire**: a Xendit test-mode invoice (GCash, Maya, GrabPay, card, online banking) when `XENDIT_SECRET_KEY` is set, otherwise Stripe card Checkout; amount is the proposal's `quote_amount`. The hire itself is made by the webhook (credit → hold → accept), not by this call. Same hireability checks as `POST /applications/:id/accept`; 400 `card_amount_out_of_range` outside ₱50–₱100,000. `BACKEND_SCHEMA.md` §29.4 |
+| `GET /payments/hire-status?application_id=&invoice_id=` 🔒 (client) | Verifies proposal ownership, fetches the saved Xendit invoice from Xendit, and retries the idempotent hire application. Returns `application_status`, `payment_status`, and `invoice_id`; do not start another checkout while the server reports `confirming` or `needs_review` (migration 0077). |
 | `GET /payments/return?status=&app_redirect=&flow=` | Where Stripe returns the browser. Redirects to the app deep link with `?hire=…` (or the price-change result). No JWT — it is a plain browser navigation that reveals and changes nothing |
 | `POST /payments/price-change-checkout-session` 🔒 (client) | pay the difference for an approved price increase (migration 0057) |
 | `POST /payments/xendit/payout-webhook` | Xendit payout callback, same token check as invoices: sets a provider payout `completed` or `failed` from Xendit's final result. Set it as the Payouts callback URL in the Xendit dashboard |
@@ -509,6 +513,16 @@ record. Tokens Expo rejects as `DeviceNotRegistered` are deleted.
 **A hire is made by the payment webhook, never by the browser returning from
 checkout.** The checkout calls only open the payment UI; a client that reported
 its own success could get labour without paying.
+
+For Xendit, each hire checkout is recorded in `xendit_hire_payments` (0077).
+The webhook and `GET /payments/hire-status` both fetch the invoice from Xendit
+before acting. A service-role-only claim RPC prevents overlapping processing;
+stale claims can be retried after five minutes. Pending invoices are reconciled
+every five minutes by the in-process cron or `/internal/tick/payments`, according
+to the configured cron driver. The mobile app keeps the invoice id and does not
+offer a new payment while the server reports `confirming` or `needs_review`.
+This task adds the migration and code only; apply the migration and run a
+Xendit sandbox end-to-end check before release.
 
 `app_redirect` is checked against the same allowlist as the Google OAuth flow
 (`isAllowedAppRedirect`) at both session creation and return. Stripe accepts

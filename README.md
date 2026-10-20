@@ -90,9 +90,12 @@ URLs and submit the resulting object path.
 | [`mobile/`](./mobile) | **Expo / React Native app** — the marketplace itself (clients + providers): [`mobile/README.md`](./mobile/README.md) |
 | [`web/`](./web) | **Next.js public promo/auth site and admin console** — marketplace jobs remain in mobile: [`web/README.md`](./web/README.md) |
 
-The authoritative data-schema and product spec is
-[`backend/BACKEND_SCHEMA.md`](./backend/BACKEND_SCHEMA.md). Treat it as the
-source of truth for tables, lifecycle rules and ML feature computation.
+Start with the [project knowledge base](./docs/PROJECT_KNOWLEDGE_BASE.md) for
+the audited architecture, module map, evidence links, and known gaps. The
+authoritative data-schema and product spec is
+[`backend/BACKEND_SCHEMA.md`](./backend/BACKEND_SCHEMA.md), which defines the
+tables, lifecycle rules, and ML feature computation. When documentation and
+implementation disagree, check the current source code and migrations.
 
 ## The recommendation engine
 

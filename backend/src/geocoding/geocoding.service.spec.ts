@@ -10,6 +10,10 @@ function configWith(key: string | undefined) {
     get: jest.fn((name: string) =>
       name === 'GEOAPIFY_API_KEY' ? key : undefined,
     ),
+    getOrThrow: jest.fn((name: string) => {
+      if (name === 'SUPABASE_SERVICE_ROLE_KEY') return 'unit-location-key';
+      throw new Error(`missing config: ${name}`);
+    }),
   } as unknown as ConfigService;
 }
 
@@ -66,6 +70,39 @@ describe('GeocodingService (Geoapify)', () => {
       service('').geocode('12 Mabini St, Quezon City'),
     ).rejects.toThrow(ServiceUnavailableException);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps a signed location reference usable for an hour', () => {
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(issuedAt);
+    try {
+      const geocoding = service();
+      const issued = geocoding.issueLocationReference('client-1', {
+        latitude: 14.676,
+        longitude: 121.0437,
+        formatted_address: '12 Mabini Street, Quezon City, Philippines',
+      });
+
+      clock.mockReturnValue(issuedAt + 59 * 60 * 1000);
+      expect(
+        geocoding.resolveLocationReference(
+          'client-1',
+          issued.location_reference!,
+          issued.formatted_address,
+        ).latitude,
+      ).toBe(14.676);
+
+      clock.mockReturnValue(issuedAt + 61 * 60 * 1000);
+      expect(() =>
+        geocoding.resolveLocationReference(
+          'client-1',
+          issued.location_reference!,
+          issued.formatted_address,
+        ),
+      ).toThrow('Location confirmation expired');
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('rejects a blank address with a 400 instead of calling Geoapify', async () => {

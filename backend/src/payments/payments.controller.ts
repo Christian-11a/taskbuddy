@@ -24,6 +24,7 @@ import { publicOrigin } from './public-origin';
 import {
   CreateHireCheckoutDto,
   CreatePriceChangeCheckoutDto,
+  HirePaymentStatusQueryDto,
 } from './dto/payments.dto';
 import { HireFundingService } from './hire-funding.service';
 import { EscrowService } from '../escrow/escrow.service';
@@ -76,6 +77,25 @@ export class PaymentsController {
     @Req() req: Request,
   ) {
     return this.hireFunding.createCheckout(user, dto, publicOrigin(req));
+  }
+
+  /**
+   * Re-check one hire invoice with Xendit and retry the idempotent application
+   * of a paid invoice before returning the proposal state to the client.
+   */
+  @Get('hire-status')
+  @ThrottlePayments()
+  @UseGuards(JwtAuthGuard)
+  @Roles('client')
+  hirePaymentStatus(
+    @CurrentUser() user: Profile,
+    @Query() query: HirePaymentStatusQueryDto,
+  ) {
+    return this.hireFunding.hirePaymentStatus(
+      user,
+      query.application_id,
+      query.invoice_id,
+    );
   }
 
   /**
@@ -158,14 +178,9 @@ export class PaymentsController {
     }
     const paid = this.xendit.paidInvoice(req.body);
     if (!paid) return { received: true };
-    // Act only on what Xendit itself reports, not on the callback body.
-    if (!(await this.xendit.confirmPaidInvoice(paid))) {
-      this.logger.warn(
-        `Xendit callback for ${paid.invoiceId} does not match the invoice; ignored`,
-      );
-      return { received: true };
-    }
-    await this.hireFunding.completeFromXendit(paid);
+    // The service durably tracks known hire invoices before acknowledging a
+    // callback, then verifies against Xendit and applies the paid hire.
+    await this.hireFunding.handleXenditPaidInvoice(paid);
     return { received: true };
   }
 

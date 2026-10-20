@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsNumber,
+  IsOptional,
   IsPositive,
   IsString,
   IsUUID,
@@ -55,6 +56,16 @@ export class CreateHireCheckoutDto {
 
   @IsString()
   app_redirect!: string;
+}
+
+/** `GET /payments/hire-status` — inspect/reconcile one client's hire payment. */
+export class HirePaymentStatusQueryDto {
+  @IsUUID()
+  application_id!: string;
+
+  @IsOptional()
+  @IsString()
+  invoice_id?: string;
 }
 
 /** `POST /payments/price-change-checkout-session` (migration 0057). */

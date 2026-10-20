@@ -3,6 +3,7 @@ import { CronSecretGuard } from './cron-secret.guard';
 import { PushScheduler } from '../push/push.scheduler';
 import { RecommendationsScheduler } from '../recommendations/recommendations.scheduler';
 import { PaymentsScheduler } from '../escrow/payments.scheduler';
+import { HireFundingService } from '../payments/hire-funding.service';
 
 /**
  * The scheduler ticks, exposed over HTTP so Postgres can drive them.
@@ -22,6 +23,7 @@ export class InternalController {
     private readonly push: PushScheduler,
     private readonly recommendations: RecommendationsScheduler,
     private readonly payments: PaymentsScheduler,
+    private readonly hireFunding: HireFundingService,
   ) {}
 
   /**
@@ -51,6 +53,7 @@ export class InternalController {
   @HttpCode(200)
   async paymentsTick() {
     await this.payments.tick();
+    await this.hireFunding.reconcilePendingHireInvoices();
     return { ok: true };
   }
 }

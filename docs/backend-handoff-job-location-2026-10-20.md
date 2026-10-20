@@ -2,6 +2,11 @@
 
 Written 2026-10-20. Self-contained. Code is `backend/` on `main` (live `/health` commit `1b25d454`, which includes UAT-B2 `db24614b`).
 
+> **Implementation update (2026-10-20):** JL-1 through JL-5 are implemented
+> in the current worktree with backend unit/SQL coverage. Migration 0076 is
+> not applied or verified in a live environment yet. See the
+> [current implementation plan](./backend-handoff-plan-2026-10-20.md).
+
 ## Why
 
 A client tapped "Use my current location", got `HSSi BTG 1 Hub, Lipa, 4217 BT, Philippines` and was refused at Post job with

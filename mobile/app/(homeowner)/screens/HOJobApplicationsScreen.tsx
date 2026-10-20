@@ -57,7 +57,6 @@ import { openRedirectSession } from '../../../src/lib/appRedirectSession';
 import {
   clearPendingHirePayment,
   getPendingHirePayment,
-  isPendingHirePaymentExpired,
   loadPendingHirePayments,
   markPendingHirePayment,
   type PendingHirePayment,
@@ -233,7 +232,12 @@ function JobProposals({
     for (const app of apps) {
       const wait = rememberedWaits.get(app.id);
       if (app.status === 'pending' && wait && (restored === null || wait.startedAt > restoredAt)) {
-        restored = { applicationId: app.id, returnedPaid: wait.returnedPaid, startedAt: wait.startedAt };
+        restored = {
+          applicationId: app.id,
+          returnedPaid: wait.returnedPaid,
+          startedAt: wait.startedAt,
+          invoiceId: wait.invoiceId,
+        };
         restoredAt = wait.startedAt;
       }
     }
@@ -255,10 +259,14 @@ function JobProposals({
    * A card payment has started for this proposal: the wait shows here and is remembered on the device.
    * Marking again keeps the time the checkout first started, so the screen takes that time from the device.
    */
-  const beginWait = (applicationId: string, returnedPaid: boolean) => {
-    const marking = markPendingHirePayment(applicationId, returnedPaid);
+  const beginWait = (
+    applicationId: string,
+    returnedPaid: boolean,
+    invoiceId?: string,
+  ) => {
+    const marking = markPendingHirePayment(applicationId, returnedPaid, invoiceId);
     const startedAt = getPendingHirePayment(applicationId)?.startedAt ?? Date.now();
-    setAwaitingConfirmation({ applicationId, returnedPaid, startedAt });
+    setAwaitingConfirmation({ applicationId, returnedPaid, startedAt, invoiceId });
     return marking;
   };
 
@@ -267,15 +275,6 @@ function JobProposals({
     setAwaitingConfirmation(null);
     return clearPendingHirePayment(applicationId);
   };
-
-  // A wait open on this screen for 24 hours is over, as a remembered one is. It is checked each time the
-  // proposals load, so a screen left open cannot hold its proposal longer than the device's copy would.
-  useEffect(() => {
-    if (!awaitingConfirmation || !apps) return;
-    if (!isPendingHirePaymentExpired(awaitingConfirmation, Date.now())) return;
-    setAwaitingConfirmation(null);
-    void clearPendingHirePayment(awaitingConfirmation.applicationId);
-  }, [apps, awaitingConfirmation]);
 
   const openHire = async (app: JobApplication) => {
     if (!jobId || !hydrated || waitingOnAnother(app.id)) return;
@@ -297,6 +296,21 @@ function JobProposals({
       setJobTitle(job.title);
       setHireScheduledAt(job.scheduled_at ?? null);
       setBudget(app.quote_amount == null ? null : Number(app.quote_amount));
+      const payment = await api.hirePaymentStatus({ application_id: app.id });
+      if (payment.application_status === 'accepted') {
+        setHired({
+          providerName: app.provider?.full_name ?? 'Your provider',
+          budget: app.quote_amount == null ? null : Number(app.quote_amount),
+          scheduledAt: job.scheduled_at ?? null,
+        });
+        setHireTarget(null);
+        reload();
+      } else if (
+        payment.payment_status === 'confirming' ||
+        payment.payment_status === 'needs_review'
+      ) {
+        await beginWait(app.id, false, payment.invoice_id ?? undefined);
+      }
     } catch (e) {
       // A failed read leaves the budget unknown. It must not fall through to the
       // no-budget "hire straight away" path, so the sheet offers no hire.
@@ -358,8 +372,17 @@ function JobProposals({
     }
   };
 
-  /** Re-reads the proposal until the webhook has decided it, or we give up waiting. */
-  const awaitHire = async (applicationId: string) => {
+  /** Reconciles a known invoice, then re-reads the proposal while its webhook finishes. */
+  const awaitHire = async (applicationId: string, invoiceId?: string) => {
+    const payment = await api.hirePaymentStatus({
+      application_id: applicationId,
+      invoice_id: invoiceId,
+    });
+    if (payment.application_status !== 'pending')
+      return payment.application_status;
+    if (payment.payment_status === 'not_paid') return 'payment_not_paid' as const;
+    if (payment.payment_status === 'not_applied') return 'payment_not_applied' as const;
+    if (payment.payment_status === 'needs_review') return 'needs_review' as const;
     for (let attempt = 0; attempt < HIRE_POLL_ATTEMPTS; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, HIRE_POLL_INTERVAL_MS));
       const latest = (await api.jobApplications(jobId!)).find((a) => a.id === applicationId);
@@ -372,8 +395,12 @@ function JobProposals({
    * Asks the server what it decided about a card payment, and shows it: hired (the hired
    * screen), still unconfirmed (the wait goes on), or no longer available (the wait ends).
    */
-  const settleCardPayment = async (app: JobApplication, returnedPaid: boolean) => {
-    const status = await awaitHire(app.id);
+  const settleCardPayment = async (
+    app: JobApplication,
+    returnedPaid: boolean,
+    invoiceId?: string,
+  ) => {
+    const status = await awaitHire(app.id, invoiceId);
     reload();
     if (status === 'accepted') {
       void endWait(app.id);
@@ -385,6 +412,23 @@ function JobProposals({
           ? 'Payment received. Your hire is still being confirmed — check back in a moment.'
           : 'No payment was confirmed. If you did pay, your hire will appear shortly.',
         tone: 'info',
+      });
+    } else if (status === 'needs_review') {
+      setHireMessage({
+        text: 'Your payment needs review. Please do not pay again; check back later.',
+        tone: 'info',
+      });
+    } else if (status === 'payment_not_paid') {
+      void endWait(app.id);
+      setHireMessage({
+        text: 'This payment did not complete. You can start a new payment when you are ready.',
+        tone: 'info',
+      });
+    } else if (status === 'payment_not_applied') {
+      void endWait(app.id);
+      setHireMessage({
+        text: 'The payment could not complete this hire and is being refunded. Refresh proposals before trying again.',
+        tone: 'error',
       });
     } else {
       void endWait(app.id);
@@ -415,7 +459,7 @@ function JobProposals({
       // A checkout now exists, so a payment can be made. From here the proposal
       // waits until the server decides it, whatever the browser reports; only an
       // explicit cancel ends the wait. The wait is on the device before the browser opens.
-      await beginWait(hireTarget.id, false);
+      await beginWait(hireTarget.id, false, session.session_id);
       const result = await openRedirectSession(session.url, appRedirect);
       const outcome =
         result.type === 'success'
@@ -429,9 +473,9 @@ function JobProposals({
       }
       // Paid, or the browser was dismissed — which is not proof they didn't
       // pay. Either way only the server knows, so ask it.
-      await beginWait(hireTarget.id, outcome === 'success');
+      await beginWait(hireTarget.id, outcome === 'success', session.session_id);
       setHireMessage({ text: 'Confirming your payment…', tone: 'info' });
-      await settleCardPayment(hireTarget, outcome === 'success');
+      await settleCardPayment(hireTarget, outcome === 'success', session.session_id);
     } catch (e) {
       const capacity = hireVerificationMessage(e) ?? capacityConflictMessage(e);
       if (capacity) {
@@ -456,22 +500,15 @@ function JobProposals({
       return;
     }
     if (!awaitingConfirmation || !hireTarget || hireTarget.id !== awaitingConfirmation.applicationId) return;
-    if (isPendingHirePaymentExpired(awaitingConfirmation, Date.now())) {
-      // Open for 24 hours without a decision: the wait is over, so the proposal can be paid for again.
-      // The proposals reload, so a hire the server did decide in the meantime shows as it is.
-      void endWait(awaitingConfirmation.applicationId);
-      reload();
-      setHireMessage({
-        text: 'This payment was not confirmed within 24 hours, so it is no longer waiting.',
-        tone: 'info',
-      });
-      return;
-    }
     hireInFlight.current = true;
     setHireBusy('check');
     setHireMessage(null);
     try {
-      await settleCardPayment(hireTarget, awaitingConfirmation.returnedPaid);
+      await settleCardPayment(
+        hireTarget,
+        awaitingConfirmation.returnedPaid,
+        awaitingConfirmation.invoiceId,
+      );
     } catch (e) {
       setHireMessage({
         text: e instanceof Error ? e.message : 'Something went wrong. Please try again.',
@@ -484,9 +521,26 @@ function JobProposals({
   };
 
   /** The person chose to start over, so the pay options come back. */
-  const startNewPayment = () => {
-    if (awaitingConfirmation) void endWait(awaitingConfirmation.applicationId);
-    setHireMessage(null);
+  const startNewPayment = async () => {
+    if (!awaitingConfirmation) return;
+    const payment = await api.hirePaymentStatus({
+      application_id: awaitingConfirmation.applicationId,
+      invoice_id: awaitingConfirmation.invoiceId,
+    });
+    if (
+      payment.application_status !== 'pending' ||
+      payment.payment_status === 'not_paid' ||
+      payment.payment_status === 'not_applied'
+    ) {
+      await endWait(awaitingConfirmation.applicationId);
+      reload();
+      setHireMessage(null);
+      return;
+    }
+    setHireMessage({
+      text: 'This payment is still being confirmed. Please do not pay again yet.',
+      tone: 'info',
+    });
   };
 
   const subline = hiredApp
@@ -828,6 +882,7 @@ interface AwaitingConfirmation {
   returnedPaid: boolean;
   /** When the checkout started, the same time the device keeps. The wait is over 24 hours after it. */
   startedAt: number;
+  invoiceId?: string;
 }
 
 /** How long to wait for Stripe's webhook to turn a card payment into a hire. */
