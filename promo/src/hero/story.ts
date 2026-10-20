@@ -49,7 +49,7 @@ export const CHAT = [
 
 /** Every tap frame on each phone, so guides can play taps at real speed. */
 export const TAPS: Record<'c' | 'p', number[]> = {
-  c: [K.cPostTap, K.cPickSvc, K.cStep1Next, K.cStep2Next, K.cTask1, K.cTask2, K.cStep3Next, K.cUrgent, K.cPickPrice, K.cStep4Next, K.cPost,
+  c: [K.cPostTap, K.cPickSvc, K.cStep1Next, K.cStep2Next, K.cTask1, K.cTask2, K.cStep3Next, K.cStep4Next, K.cPost,
     K.cOpenProps, K.cConfirm, K.cLeaveReview, K.cHireTap, K.cContinue, K.cPay, ...K.stars, K.chip1, K.chip2, K.submit],
   p: [K.pVerifyTap, K.pOpenJob, K.pPickId, K.pStep1Next, K.pUsePhoto, K.pSelfieNext, K.pCertNext, K.pAgree, K.pSecure, K.pSendTap,
     K.pStart, K.pTick2Tap, K.proofAdd, K.proofDone, K.pSend],

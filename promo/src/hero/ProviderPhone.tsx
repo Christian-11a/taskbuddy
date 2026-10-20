@@ -24,10 +24,10 @@ const Header: React.FC<{ dot?: boolean }> = ({ dot }) => (
   </div>
 );
 
-// Setup panel while the provider is not verified yet (SetupPanel + providerSetup.ts, 5 steps).
+// Setup panel while the provider is not verified yet (SetupPanel + providerSetup.ts, 4 steps).
 const SETUP = [
   ['Add your address', JOB.address, 'done'], ['Add a short bio', 'Licensed plumber, 8 years of home repairs.', 'done'],
-  ['Verify your ID', 'ID photo + selfie · about 2 minutes', 'next'], ['Upload your certificate', 'TESDA, PRC or trade certificate for your service', 'later'],
+  ['Get verified', 'ID photo, selfie and certificate · about 5 minutes', 'next'],
   ['Link payout account', 'Linked', 'done'],
 ] as const;
 const FeedSetup = (f: number) => (
@@ -35,9 +35,9 @@ const FeedSetup = (f: number) => (
     <Header />
     <div style={{ position: 'absolute', top: 158, left: 20, right: 20, display: 'flex', flexDirection: 'column', gap: 18 }}>
       <div style={{ background: N.primary, borderRadius: 20, padding: 18, display: 'flex', flexDirection: 'column', gap: 8, color: T.white }}>
-        <div style={{ alignSelf: 'flex-start', padding: '4px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', fontSize: 12, fontWeight: 600, lineHeight: '16px', color: 'rgba(255,255,255,0.82)' }}>Finish setting up · 3 of 5</div>
+        <div style={{ alignSelf: 'flex-start', padding: '4px 10px', borderRadius: 999, background: 'rgba(255,255,255,0.12)', fontSize: 12, fontWeight: 600, lineHeight: '16px', color: 'rgba(255,255,255,0.82)' }}>Finish setting up · 3 of 4</div>
         <div style={{ fontSize: 20, fontWeight: 700, lineHeight: '26px' }}>Get verified to see jobs near you</div>
-        <div style={{ fontSize: 13, lineHeight: '18px' }}>Clients only see verified providers. It takes about 2 minutes.</div>
+        <div style={{ fontSize: 13, lineHeight: '18px' }}>Clients only see verified providers. It takes about 5 minutes.</div>
         <div style={{ display: 'flex', gap: 6, paddingTop: 6 }}>{SETUP.map(([l, , s]) => <div key={l} style={{ flex: 1, height: 6, borderRadius: 3, background: s === 'done' ? T.white : 'rgba(255,255,255,0.22)' }} />)}</div>
       </div>
       <div style={{ background: T.surface, border: `1px solid ${T.line}`, borderRadius: 20, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -47,17 +47,17 @@ const FeedSetup = (f: number) => (
               {s === 'done' ? <Check size={16} color={T.okText} strokeWidth={2.6} /> : <span style={{ fontSize: 14, fontWeight: 700, color: s === 'next' ? N.deep : T.ink500 }}>{i + 1}</span>}
             </div>
             <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <div style={{ fontSize: 15, lineHeight: '20px', fontWeight: s === 'next' ? 700 : 600, color: s === 'next' ? T.ink900 : s === 'later' ? T.ink500 : T.ink700 }}>{l}</div>
+              <div style={{ fontSize: 15, lineHeight: '20px', fontWeight: s === 'next' ? 700 : 600, color: s === 'next' ? T.ink900 : T.ink700 }}>{l}</div>
               <div style={{ fontSize: 13, lineHeight: '18px', color: T.ink500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>
             </div>
           </div>
         ))}
-        <div style={{ minHeight: 48, borderRadius: 16, background: N.primary, color: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, transform: `scale(${1 - hit(f, K.pVerifyTap, 3) * 0.04})` }}>Verify your ID <ArrowRight size={16} strokeWidth={2.4} /></div>
+        <div style={{ minHeight: 48, borderRadius: 16, background: N.primary, color: T.white, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontWeight: 600, transform: `scale(${1 - hit(f, K.pVerifyTap, 3) * 0.04})` }}>Get verified <ArrowRight size={16} strokeWidth={2.4} /></div>
       </div>
       <Section title="Jobs near you" tone="provider" />
     </div>
     <TabBar tone="provider" active={0} />
-    <Tap f={f} at={K.pVerifyTap} x={205} y={656} />
+    <Tap f={f} at={K.pVerifyTap} x={205} y={591} />
   </div>
 );
 
@@ -409,17 +409,23 @@ const Proposal = (f: number) => {
       <Sheet p={p}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div><div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>Send a proposal</div><div style={{ fontSize: 14, color: T.ink500, marginTop: 4 }}>For &quot;{JOB.title}&quot;</div></div>
-          <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[['Job price', peso(JOB.price)], ['Platform fee', `−${peso(JOB.fee)}`], ['You receive', peso(JOB.net)]].map(([k, v], i) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}><span style={{ color: T.ink700 }}>{k}</span><span style={{ fontWeight: 700, fontSize: i === 2 ? 15 : 14 }}>{v}</span></div>)}
-            <div style={{ fontSize: 12.5, color: T.ink500 }}>You receive {peso(JOB.net)} when the client confirms the job is done</div>
+          {/* ProposalModal: accept the posted budget (pre-selected) or quote a different total */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ border: `1px solid ${N.primary}`, background: T.well, borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 600, lineHeight: '20px' }}>Accept posted budget · {peso(JOB.price)}</div>
+            <div style={{ border: `1px solid ${T.line}`, borderRadius: 12, padding: 12, fontSize: 14, fontWeight: 600, lineHeight: '20px' }}>Quote a different total</div>
           </div>
-          <div style={{ background: N.tonal, borderRadius: 14, padding: '12px 14px' }}>
-            <div style={{ fontSize: 13.5, fontWeight: 700 }}>Good proposals mention:</div>
-            {['When you can come', "What's included (tools, parts)", "Similar jobs you've done"].map((t) => <div key={t} style={{ fontSize: 13.5, color: T.ink700, marginTop: 4 }}>• {t}</div>)}
+          <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {[['Job price', peso(JOB.price)], ['Platform fee', `−${peso(JOB.fee)}`], ['You receive', peso(JOB.net)]].map(([k, v], i) => <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, lineHeight: '20px' }}><span style={{ color: T.ink700 }}>{k}</span><span style={{ fontWeight: i === 2 ? 700 : 600, fontSize: i === 2 ? 15 : 14 }}>{v}</span></div>)}
+            <div style={{ fontSize: 12.5, lineHeight: '17px', color: T.ink500 }}>You receive {peso(JOB.net)} when the client confirms the job is done</div>
+          </div>
+          <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: '18px' }}>Good proposals mention:</div>
+            {['When you can come', 'How you will handle the listed tasks', "Similar jobs you've done"].map((t) => <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, lineHeight: '20px', color: T.ink700 }}><Check size={14} color={T.ink700} strokeWidth={2.6} />{t}</div>)}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: T.ink700, marginBottom: 6 }}>Your message</div>
-            <div style={{ minHeight: 88, borderRadius: 12, border: f >= K.pTypeA && f < K.pTypeB + 4 ? `2px solid ${N.link}` : `1px solid ${T.field}`, padding: '12px 14px', fontSize: 15, lineHeight: '21px' }}>{f < K.pTypeA ? <span style={{ color: T.ink500 }}>Hi! I can come on Oct 14 at 2 PM…</span> : typed(f, K.pTypeA, K.pTypeB, MSG)}<Caret f={f} until={K.pTypeB + 4} tone="provider" /></div>
+            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: '18px', color: T.ink700, marginBottom: 6 }}>Your message (optional)</div>
+            <div style={{ minHeight: 70, borderRadius: 14, border: f >= K.pTypeA && f < K.pTypeB + 4 ? `1.5px solid ${N.link}` : `1px solid ${T.field}`, padding: '12px 14px', fontSize: 15, lineHeight: '21px' }}>{f < K.pTypeA ? <span style={{ color: T.ink500 }}>Hi! I can come on Oct 14 at 2 PM…</span> : typed(f, K.pTypeA, K.pTypeB, MSG)}<Caret f={f} until={K.pTypeB + 4} tone="provider" /></div>
+            <div style={{ fontSize: 13, lineHeight: '18px', color: T.ink500, marginTop: 6 }}>Optional · {f < K.pTypeA ? 0 : typed(f, K.pTypeA, K.pTypeB, MSG).length} / 300</div>
           </div>
           <div style={{ fontSize: 13, lineHeight: '18px', color: T.ink500 }}>The client compares proposals and hires one provider. You&apos;ll be notified.</div>
           <Btn f={f} press={K.pSend} tone="provider" label="Send proposal" r={16} style={{ fontWeight: 600 }} />

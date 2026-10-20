@@ -137,9 +137,15 @@ const Post3 = (f: number) => {
   );
 };
 
-const URGENCY = [['Flexible', 'Any day that works for you', CalendarDays], ['Normal', 'Within a few days', Clock], ['Urgent', 'As soon as possible', Zap]] as const;
-const PRICES = [['Basic', 'Lower rate. Fewer providers may take it.', 1000], ['Standard', 'The typical rate for this job.', 1200], ['Premium', 'Higher rate. Attracts top-rated providers faster.', 1500]] as const;
-const SCROLL = 305;
+// HOCreateJobScreen step 4 (UrgencyRow + urgencyInfo): Normal is pre-selected. Each option says when matching
+// starts and the rate it is priced at; Urgent carries a Premium badge. The client sets a starting budget,
+// pre-filled from the estimate (no local labor range for this job, so the plain suggestion shows).
+const URGENCY = [
+  ['Flexible', 'Any day that works for you', CalendarDays, 'Not hired in 15 min? We invite top-matched providers · Basic rate', ''],
+  ['Normal', 'Within a few days', Clock, 'Not hired in 10 min? We invite top-matched providers · Standard rate', ''],
+  ['Urgent', 'As soon as possible', Zap, 'Not hired in 5 min? We invite top-matched providers · Premium rate', 'Premium'],
+] as const;
+const SCROLL = 150;
 const Post4 = (f: number) => {
   const y = tw(f, K.cScroll, K.cScroll + 16, 0, SCROLL, inOut);
   return (
@@ -149,12 +155,19 @@ const Post4 = (f: number) => {
         <div style={{ position: 'absolute', top: 268, left: 20, right: 20 }}>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>How soon?</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {URGENCY.map(([l, b, I], i) => {
-              const sel = i === 1 && f >= K.cUrgent;
+            {URGENCY.map(([l, b, I, timing, badge], i) => {
+              const sel = i === 1;
               return (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, border: `1.5px solid ${sel ? S.primary : T.line}`, background: sel ? S.tonal : T.surface, transform: `scale(${1 + (i === 1 ? hit(f, K.cUrgent, 4) * 0.03 : 0)})` }}>
-                  <div style={{ width: 40, height: 40, borderRadius: 12, background: sel ? T.surface : S.tonal, display: 'grid', placeItems: 'center' }}><I size={20} color={S.primary} /></div>
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 16, fontWeight: 700, lineHeight: '21px' }}>{l}</div><div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 2 }}>{b}</div></div>
+                <div key={l} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: 14, borderRadius: 16, border: `1.5px solid ${sel ? S.primary : T.line}`, background: sel ? S.tonal : T.surface }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, background: sel ? T.surface : S.tonal, display: 'grid', placeItems: 'center', flexShrink: 0 }}><I size={20} color={S.primary} /></div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 700, lineHeight: '21px' }}>{l}</div>
+                      {badge && <div style={{ padding: '2px 8px', borderRadius: 999, background: '#FEF2F2', color: '#B91C1C', fontSize: 11.5, fontWeight: 800, lineHeight: '15px' }}>{badge}</div>}
+                    </div>
+                    <div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 2 }}>{b}</div>
+                    <div style={{ fontSize: 12.5, lineHeight: '17px', color: T.ink700, marginTop: 4 }}>{timing}</div>
+                  </div>
                   <Radio on={sel} />
                 </div>
               );
@@ -168,28 +181,17 @@ const Post4 = (f: number) => {
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.ink700, marginTop: 16 }}>Price</div>
-          <div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 8 }}>Estimated from your tasks and how soon you need it. Urgent and heavier jobs cost more.</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 12 }}>
-            {PRICES.map(([l, b, v], i) => {
-              const sel = i === 1 && f >= K.cPickPrice;
-              return (
-                <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, border: `1.5px solid ${sel ? S.primary : T.line}`, background: sel ? S.tonal : T.surface, transform: `scale(${1 + (i === 1 ? hit(f, K.cPickPrice, 4) * 0.03 : 0)})` }}>
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 16, fontWeight: 700, lineHeight: '21px' }}>{l}</div><div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 2 }}>{b}</div></div>
-                  <div style={{ fontSize: 17, fontWeight: 800 }}>{peso(v)}</div>
-                  <Radio on={sel} />
-                </div>
-              );
-            })}
+          <div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 24 }}>TaskBuddy starting suggestion: {peso(JOB.price)}. This is an estimate, not a local market rate.</div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, lineHeight: '18px', color: T.ink700, marginBottom: 6 }}>Your starting budget (₱)</div>
+            <div style={{ height: 50, borderRadius: 14, border: `1px solid ${T.field}`, background: T.surface, display: 'flex', alignItems: 'center', padding: '0 14px', fontSize: 15, fontWeight: 500 }}>{JOB.price}</div>
           </div>
-          <div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 8 }}>You only pay when you hire. It&apos;s held safely until the job is done.</div>
+          <div style={{ fontSize: 13.5, lineHeight: '18px', color: T.ink500, marginTop: 8 }}>Providers may accept this budget or quote a different total. You pay only when you hire.</div>
         </div>
       </div>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200, background: T.canvas, zIndex: 3 }} />
-      {PostBar(4, 'When & price', f, K.cStep4)}
+      <div style={{ position: 'absolute', inset: 0, zIndex: 4, pointerEvents: 'none' }}>{PostBar(4, 'When & price', f, K.cStep4)}</div>
       <PostFooter f={f} press={K.cStep4Next} label="Next" />
-      <Tap f={f} at={K.cUrgent} x={200} y={408} />
-      <Tap f={f} at={K.cPickPrice} x={200} y={527} />
       <Tap f={f} at={K.cStep4Next} x={260} y={866} />
     </div>
   );
@@ -301,13 +303,17 @@ const Proposals = (f: number) => (
           <div style={{ fontSize: 12.5, lineHeight: '17px', color: T.ink700 }}>{MSG}</div>
           <div style={{ fontSize: 11.5, color: T.ink500, marginTop: 6 }}>Sent just now</div>
         </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 11 }}>
+          <div style={{ fontSize: 14, fontWeight: 700 }}>Total quote: {peso(JOB.price)}</div>
+          <div style={{ fontSize: 12, color: T.ink500 }}>Provider receives {peso(JOB.net)} after the {peso(JOB.fee)} platform fee</div>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 }}>
           <div style={{ display: 'flex', gap: 14 }}><span style={{ fontSize: 13.5, fontWeight: 700, color: S.link }}>View profile</span><span style={{ fontSize: 13.5, fontWeight: 700, color: T.ink700 }}>Decline</span></div>
           <div style={{ minHeight: 40, minWidth: 84, padding: '0 20px', borderRadius: 999, background: S.primary, color: T.white, fontSize: 14, fontWeight: 700, display: 'grid', placeItems: 'center', transform: `scale(${1 - hit(f, K.cHireTap, 3) * 0.08})` }}>Hire</div>
         </div>
       </div>
     </div>
-    <Tap f={f} at={K.cHireTap} x={334} y={437} />
+    <Tap f={f} at={K.cHireTap} x={334} y={482} />
   </div>
 );
 
@@ -325,7 +331,7 @@ const Hire = (f: number) => {
         {!confirm ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>Hire {P.name}</div>
-            <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}><SumRow k="Job" v={JOB.title} /><SumRow k="Amount" v={peso(JOB.price)} /></div>
+            <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}><SumRow k="Job" v={JOB.title} /><SumRow k="You pay" v={peso(JOB.price)} /><SumRow k="Platform fee" v={peso(JOB.fee)} /><SumRow k="Provider receives" v={peso(JOB.net)} /></div>
             <div style={{ display: 'flex', gap: 8 }}><ShieldCheck size={16} color={S.link} style={{ flexShrink: 0, marginTop: 1 }} /><div style={{ fontSize: 13, lineHeight: '18px', color: T.ink700 }}>{peso(JOB.price)} is held in escrow and released to {P.name} as soon as you confirm the job is done.</div></div>
             <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>Pay with</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14, borderRadius: 16, border: `1.5px solid ${S.link}`, background: S.tonal }}>
@@ -341,9 +347,9 @@ const Hire = (f: number) => {
             <div style={{ fontSize: 13, fontWeight: 600, color: T.ink500, textAlign: 'center', marginTop: 4 }}>You&apos;re paying</div>
             <div style={{ fontSize: 32, fontWeight: 800, letterSpacing: -0.6, textAlign: 'center', marginTop: -10 }}>{peso(JOB.price)}</div>
             <div style={{ fontSize: 14, lineHeight: '19px', color: T.ink500, textAlign: 'center', marginTop: -8 }}>to hire {P.name}</div>
-            <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}><SumRow k="From" v="GCash, Maya, card or bank" /><SumRow k="Held for" v={JOB.title} /></div>
+            <div style={{ background: T.well, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 10 }}><SumRow k="From" v="GCash, Maya, card or bank" /><SumRow k="Held for" v={JOB.title} /><SumRow k="Platform fee" v={peso(JOB.fee)} /><SumRow k="Provider receives" v={peso(JOB.net)} /></div>
             <div style={{ display: 'flex', gap: 8 }}><ShieldCheck size={16} color={S.link} style={{ flexShrink: 0, marginTop: 1 }} /><div style={{ fontSize: 13, lineHeight: '18px', color: T.ink700 }}>If the job is cancelled, the money comes back as the cancellation rules say.</div></div>
-            <Btn f={f} press={K.cPay} label={`Confirm and hire · ${peso(JOB.price)}`} r={16} style={{ marginTop: 4, fontWeight: 600 }} />
+            <Btn f={f} press={K.cPay} label={`Hire and pay ${peso(JOB.price)}`} r={16} style={{ marginTop: 4, fontWeight: 600 }} />
             <div style={{ height: 48, display: 'grid', placeItems: 'center', fontSize: 15, fontWeight: 600, color: S.link, marginTop: -14 }}>Back</div>
           </div>
         )}
