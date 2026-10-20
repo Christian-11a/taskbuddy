@@ -430,7 +430,7 @@ export interface Job {
   photo_urls: string[];
   created_at: string;
   service_categories?: { name: string } | null;
-  assigned_provider?: { full_name: string } | null;
+  assigned_provider?: { full_name: string; avatar_url?: string | null } | null;
   /** The job's checklist, unordered — sort by `position` before rendering. */
   job_tasks?: JobTask[];
   /** A completed job can only receive one homeowner review. */

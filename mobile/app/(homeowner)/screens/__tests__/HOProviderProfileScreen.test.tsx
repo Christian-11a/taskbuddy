@@ -5,6 +5,12 @@ import ContentSkeleton from '../../../../src/components/ui/ContentSkeleton';
 import { api } from '../../../../src/lib/api';
 import { clearAsyncDataCache } from '../../../../src/hooks/useAsyncData';
 
+jest.mock('expo-image', () => {
+  const R = require('react');
+  const { View } = require('react-native');
+  return { Image: (p: any) => R.createElement(View, p) };
+});
+
 jest.mock('../../../../src/lib/api', () => ({
   api: {
     getProvider: jest.fn(),
@@ -55,6 +61,17 @@ beforeEach(() => {
 });
 
 describe('HOProviderProfileScreen: the public profile', () => {
+  it('shows the provider photo when they have one', async () => {
+    (api.getProvider as jest.Mock).mockResolvedValue({ ...provider, profiles: { ...provider.profiles, avatar_url: 'https://x/alex.jpg' } });
+    await renderProfile();
+    expect(await screen.findByLabelText("Alex Reyes's photo")).toBeTruthy();
+  });
+  it('keeps the silhouette when the provider has no photo', async () => {
+    await renderProfile();
+    expect(await screen.findByLabelText("Alex Reyes's avatar")).toBeTruthy();
+    expect(screen.queryByLabelText("Alex Reyes's photo")).toBeNull();
+  });
+
   it('shows rating, jobs done and experience in one stats card', async () => {
     await renderProfile();
 

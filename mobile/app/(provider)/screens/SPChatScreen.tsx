@@ -135,6 +135,7 @@ export default function SPChatScreen({ jobId, onBack, onViewJob }: SPChatScreenP
   return (
     <ChatThread
       counterpartName={conversation?.counterpart_name}
+      counterpartAvatarUrl={conversation?.counterpart_avatar_url}
       subtitle={chatSubtitle(conversation?.job_title ?? job?.title, statusLabel)}
       systemLine={chatSystemLine({
         role: 'provider',

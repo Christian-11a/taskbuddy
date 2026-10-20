@@ -46,7 +46,7 @@ import EmptyRow from '../../../src/components/ui/EmptyRow';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import { dayLabel, peso, plural, timeAgo } from '../../../src/lib/format';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
-import Silhouette from '../../../src/components/ui/Silhouette';
+import Avatar from '../../../src/components/ui/Avatar';
 import { AlertCircle, ArrowLeft, Award, BadgeCheck, CheckCircle2, Inbox, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -522,7 +522,7 @@ function JobProposals({
       <View key={app.id} style={[styles.card, state === 'closed' && styles.cardMuted]}>
         <View style={styles.cardHead}>
           <View style={styles.avatar}>
-            <Silhouette name={provider?.full_name} textStyle={styles.avatarText} />
+            <Avatar uri={provider?.avatar_url} name={provider?.full_name} textStyle={styles.avatarText} />
           </View>
           <View style={styles.copy}>
             <View style={styles.nameRow}>

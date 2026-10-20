@@ -42,6 +42,12 @@ jest.mock('../../../../src/components/Toast', () => ({
   showToast: jest.fn(),
 }));
 
+jest.mock('expo-image', () => {
+  const R = require('react');
+  const { View } = require('react-native');
+  return { Image: (p: any) => R.createElement(View, p) };
+});
+
 const ONLINE = "GCash, Maya, card or bank, ₱1,000.00 on Xendit's secure page (test mode)";
 
 const TWO_HOURS_AGO = new Date(Date.now() - 2 * 3600_000 - 1000).toISOString();
@@ -127,6 +133,15 @@ beforeEach(async () => {
 });
 
 describe('HOJobApplicationsScreen: the proposals list', () => {
+  it('shows the provider photo on a proposal when the provider has one', async () => {
+    mockJob(1000);
+    (api.jobApplications as jest.Mock).mockResolvedValue([
+      application({ id: 'app-1', provider: { ...pendingApp.provider!, avatar_url: 'https://x/alex.jpg' } }),
+    ]);
+    await renderScreen();
+    expect(screen.getAllByLabelText("Alex Reyes's photo").length).toBeGreaterThan(0);
+  });
+
   it('puts Hire first and keeps View profile and Decline as small links', async () => {
     await renderScreen();
 
