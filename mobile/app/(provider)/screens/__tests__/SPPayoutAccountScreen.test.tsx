@@ -84,6 +84,21 @@ describe('SPPayoutAccountScreen', () => {
     expect(await screen.findByText('Account saved.')).toBeTruthy();
   });
 
+  it('saves a +63 GCash number in the 09 form', async () => {
+    render(<SPPayoutAccountScreen onBack={jest.fn()} />);
+
+    expect(await screen.findByTestId('no-account')).toBeTruthy();
+    fireEvent.changeText(screen.getByLabelText('Account holder name'), 'Ana Reyes');
+    fireEvent.changeText(screen.getByLabelText('GCash mobile number'), '+639171234567');
+    expect(screen.getByLabelText('GCash mobile number').props.value).toBe('+63 917 123 4567');
+    fireEvent.press(screen.getByRole('button', { name: 'Save account' }));
+
+    await waitFor(() => expect(api.linkPayoutAccount).toHaveBeenCalledTimes(1));
+    expect(api.linkPayoutAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'gcash', account_number: '09171234567' }),
+    );
+  });
+
   it('sends the chosen bank by its Xendit channel code', async () => {
     render(<SPPayoutAccountScreen onBack={jest.fn()} />);
 
@@ -128,7 +143,7 @@ describe('SPPayoutAccountScreen', () => {
     expect(api.linkPayoutAccount).not.toHaveBeenCalled();
   });
 
-  it('rejects a mobile number that does not start with 09', async () => {
+  it('rejects a mobile number that starts with neither 09 nor +63', async () => {
     render(<SPPayoutAccountScreen onBack={jest.fn()} />);
 
     await screen.findByTestId('no-account');
@@ -136,7 +151,7 @@ describe('SPPayoutAccountScreen', () => {
     fireEvent.changeText(screen.getByLabelText('GCash mobile number'), '08171234567');
     fireEvent.press(screen.getByRole('button', { name: 'Save account' }));
 
-    expect(await screen.findByText('Enter an 11-digit mobile number starting with 09.')).toBeTruthy();
+    expect(await screen.findByText('Enter a mobile number like 0917 123 4567 or +63 917 123 4567.')).toBeTruthy();
     expect(api.linkPayoutAccount).not.toHaveBeenCalled();
   });
 

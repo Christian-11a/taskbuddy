@@ -11,6 +11,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setCacheAccount } from '../../../../src/lib/persistentCache';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
 
+// These render the whole Home screen; several take ~5 s when the full suite runs in parallel, so the default limit flakes.
+jest.setTimeout(20000);
+
 jest.mock('../../../../src/context/NotificationsContext', () => ({
   useNotifications: () => ({ notifications: [], unreadCount: 0, loading: false, error: null, reload: jest.fn() }),
 }));
@@ -642,56 +645,23 @@ describe('HOHomeScreen — saved data shows first, and says when it is being upd
       .mockResolvedValue([SAVED_JOB]);
     render(<HOHomeScreen onNavigate={jest.fn()} />);
 
-    const hint = await screen.findByTestId('stale-hint');
+    const hint = await screen.findByTestId('stale-hint', {}, { timeout: 10000 });
     expect(within(hint).getByText("Showing saved data. Couldn't refresh.")).toBeTruthy();
     expect(within(screen.getByTestId('home-job-job-saved')).getByText('Plumbing: Fix toilet')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your jobs")).toBeNull();
 
     fireEvent.press(within(hint).getByRole('button', { name: 'Try again' }));
 
-    await waitFor(() => expect(screen.queryByTestId('stale-hint')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('stale-hint')).toBeNull(), { timeout: 10000 });
     expect(api.myJobs).toHaveBeenCalledTimes(2);
     expect(within(screen.getByTestId('home-job-job-saved')).getByText('Plumbing: Fix toilet')).toBeTruthy();
-  });
-});
-
-describe('HOHomeScreen — a slow first load says the server is waking up', () => {
-  const WAKING = 'The server is waking up. This can take up to a minute.';
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    clearAsyncDataCache();
-    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
-    (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
-    (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
-    (api.notifications as jest.Mock).mockResolvedValue([]);
-    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
-    (api.jobApplications as jest.Mock).mockResolvedValue([]);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('shows the line once 8 seconds pass with nothing to show, and not before', () => {
-    jest.useFakeTimers();
-    render(<HOHomeScreen onNavigate={jest.fn()} />);
-
-    act(() => {
-      jest.advanceTimersByTime(7999);
-    });
-    expect(screen.queryByText(WAKING)).toBeNull();
-
-    act(() => {
-      jest.advanceTimersByTime(1);
-    });
-    expect(screen.getByText(WAKING)).toBeTruthy();
   });
 });
 
 describe('HOHomeScreen — saved copies of the wrong shape', () => {
   // Every lookup stays pending, so only a saved copy could draw anything on the screen.
   beforeEach(() => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
     (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
     (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
   });
@@ -740,5 +710,43 @@ describe('HOHomeScreen — pull to refresh reloads what Home loads', () => {
     await act(async () => answerJobs([OPEN_JOB]));
 
     expect(pullToRefresh().props.refreshing).toBe(false);
+  });
+});
+
+// Last in the file on purpose: it switches to fake timers, and work left queued on them hangs any later test.
+describe('HOHomeScreen — a slow first load says the server is waking up', () => {
+  const WAKING = 'The server is waking up. This can take up to a minute.';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    clearAsyncDataCache();
+    (useAuth as jest.Mock).mockReturnValue({ profile: { full_name: 'Alex', city: null, address: null } });
+    (api.myJobs as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.categories as jest.Mock).mockReturnValue(new Promise(() => {}));
+    (api.notifications as jest.Mock).mockResolvedValue([]);
+    (api.unreadNotificationCount as jest.Mock).mockResolvedValue({ count: 0 });
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shows the line once 8 seconds pass with nothing to show, and not before', () => {
+    jest.useFakeTimers();
+    const { unmount } = render(<HOHomeScreen onNavigate={jest.fn()} />);
+
+    act(() => {
+      jest.advanceTimersByTime(7999);
+    });
+    expect(screen.queryByText(WAKING)).toBeNull();
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(screen.getByText(WAKING)).toBeTruthy();
+
+    // Leave while the fake timers are still on, so nothing is left queued on them.
+    unmount();
   });
 });

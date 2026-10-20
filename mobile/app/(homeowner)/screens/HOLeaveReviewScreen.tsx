@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import Tap from '../../../src/components/ui/Tap';
 import KeyboardAwareScrollView from '../../../src/components/ui/KeyboardAwareScrollView';
-import Silhouette from '../../../src/components/ui/Silhouette';
+import Avatar from '../../../src/components/ui/Avatar';
 import Banner from '../../../src/components/ui/Banner';
 import LoadErrorCard from '../../../src/components/ui/LoadErrorCard';
 import FilterPill from '../../../src/components/ui/FilterPill';
@@ -118,7 +118,7 @@ export default function HOLeaveReviewScreen({ jobId, onSubmitted, onBack }: HOLe
         <KeyboardAwareScrollView keyboardDismissMode="on-drag" contentContainerStyle={styles.bodyContent} keyboardShouldPersistTaps="handled">
           {jobFailed && <LoadErrorCard title="Couldn't load this job" message={jobError} onRetry={reloadJob} />}
           <View style={styles.avatar}>
-            <Silhouette name={providerName} textStyle={styles.avatarText} />
+            <Avatar uri={job?.assigned_provider?.avatar_url} name={providerName} textStyle={styles.avatarText} />
           </View>
           <Text style={styles.providerName}>{providerName}</Text>
           {!!jobLine && <Text style={styles.jobLine}>{jobLine}</Text>}

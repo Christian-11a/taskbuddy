@@ -665,6 +665,17 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     expect(screen.queryByTestId('price-option-premium')).toBeNull();
   });
 
+  it('shows pickup timing on each urgency, and the Premium badge and perks once Urgent is picked', async () => {
+    await openBudgetStep();
+    expect(screen.getByText('Premium')).toBeTruthy();
+    expect(screen.getByText('Not hired in 10 min? We invite top-matched providers · Standard rate')).toBeTruthy();
+    expect(screen.getByText('Not hired in 15 min? We invite top-matched providers · Basic rate')).toBeTruthy();
+    expect(screen.queryByText("Shown first in providers' job feed")).toBeNull();
+    fireEvent.press(screen.getByText('Urgent'));
+    expect(screen.getByText('Not hired in 5 min? We invite top-matched providers · Premium rate')).toBeTruthy();
+    expect(screen.getByText("Shown first in providers' job feed")).toBeTruthy();
+  });
+
   it('says prices are unavailable when the estimate has no price for the urgency, and Try again loads it', async () => {
     const unavailable = "Prices aren't available right now. Please try again in a moment.";
     (api.estimatePrice as jest.Mock).mockResolvedValue({

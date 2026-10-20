@@ -38,6 +38,7 @@ import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { api, type Job } from '../../../src/lib/api';
 import { initials, peso } from '../../../src/lib/format';
+import Avatar from '../../../src/components/ui/Avatar';
 import {
   pendingApplicants,
   pickHomeHero,
@@ -220,7 +221,11 @@ function HomeHeroCard({ hero, onNavigate }: { hero: HomeHero; onNavigate: HOHome
                 key={application.id}
                 style={[styles.attentionAvatar, index < shown.length - 1 && styles.attentionAvatarOverlap]}
               >
-                <Text style={styles.attentionAvatarText}>{initials(application.provider?.full_name)}</Text>
+                <Avatar
+                  uri={application.provider?.avatar_url}
+                  name={application.provider?.full_name}
+                  fallback={<Text style={styles.attentionAvatarText}>{initials(application.provider?.full_name)}</Text>}
+                />
               </View>
             ))}
           </View>
@@ -613,7 +618,7 @@ function createThemedStyles(theme: ThemePalette) {
     attentionAvatars: { flexDirection: 'row' },
     attentionAvatar: {
       width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: Colors.hero,
-      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center',
+      backgroundColor: Colors.primaryTonal, alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     },
     attentionAvatarOverlap: { marginRight: -8 },
     attentionAvatarText: {

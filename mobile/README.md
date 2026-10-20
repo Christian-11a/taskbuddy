@@ -503,8 +503,8 @@ also produced):
 
 **Deferred, not attempted this round:**
 - Dark mode was deferred in that historical pass; Phase 8 now implements it locally.
-- Provider avatars on the client's Proposals list and provider profile (the
-  API already returns `avatar_url`; only initials are rendered).
+- Provider avatars on the client's Proposals list and provider profile. Done in the
+  2026-10-20 feedback round (see "Counterpart avatars" below).
 
 Four other items flagged here as deferred — the header top-inset refactor, tutorial replay,
 declined-job visibility, and push-tap routing — were picked up in a follow-up pass; see
@@ -712,6 +712,8 @@ Done button, so it can no longer start a second charge. The wallet also supports
 ---
 
 ## Remaining Backend Work
+
+> **2026-10-20 feedback round:** Leave-a-review needs `assigned_provider.avatar_url` on the job payload — see [`docs/backend-handoff-avatars-2026-10-20.md`](../docs/backend-handoff-avatars-2026-10-20.md).
 
 > **2026-10-19 smoke run:** one backend bug stops an admin-approved provider from applying in the app
 > (`GET /verifications/me` ignores `provider_profiles`: an ambiguous PostgREST embed). The fix, a test spec and the
@@ -921,7 +923,7 @@ was trimmed to remove rows that duplicated a bottom-nav tab or a header icon.
 | **Wallet Transfer** | Deliberately not built, backend or front. Wallet-to-wallet transfer turns the wallet into a money-transmission service, which is a licensing matter in PH, not an engineering one |
 | **Push delivery** | Code complete end to end, **but not yet functional**: the EAS `projectId` is set, but Firebase (FCM) credentials aren't, so no push token is obtained on Android. Remote push also needs a development build (not Expo Go) on SDK 57. The `notifications` table remains the source of truth and the in-app list is unaffected — see [Live chat and push notifications](#live-chat-and-push-notifications). Tap-routing (which screen a tapped notification opens) is already wired and needs no further mobile work — see "Follow-up pass (2026-09-24)" above — it just has nothing to route yet until a token exists |
 | **Realtime chat** | Message delivery is live through authenticated SSE; attachments are wired (photo picker, upload, rendering). The call button remains inert — no signalling path exists |
-| **Counterpart avatars** | Chat, applicant, and review payloads all carry `avatar_url`; those screens still render initials. (The signed-in user's *own* avatar does render — see `OwnAvatar`) |
+| **Counterpart avatars** | Done 2026-10-20: the counterpart's photo shows on Proposals, the provider profile (and its reviews), the Home attention row and the chat header, and falls back to the silhouette. Leave-a-review still shows the silhouette until the backend adds `assigned_provider.avatar_url` to the job payload — see [`docs/backend-handoff-avatars-2026-10-20.md`](../docs/backend-handoff-avatars-2026-10-20.md). (The signed-in user's *own* avatar renders through `OwnAvatar`) |
 | **Provider calendar write** | Bookings are created by the backend when a job is assigned, not from this screen |
 
 ### Wired against migrations 0022–0024

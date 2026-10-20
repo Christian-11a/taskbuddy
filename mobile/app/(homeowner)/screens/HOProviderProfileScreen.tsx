@@ -35,7 +35,7 @@ import Tap from '../../../src/components/ui/Tap';
 import BottomActionBar from '../../../src/components/ui/BottomActionBar';
 import ContentSkeleton from '../../../src/components/ui/ContentSkeleton';
 import RefreshBar from '../../../src/components/ui/RefreshBar';
-import Silhouette from '../../../src/components/ui/Silhouette';
+import Avatar from '../../../src/components/ui/Avatar';
 import { ArrowLeft, BadgeCheck, CheckCircle2, MessageCircle, ShieldAlert, Star } from 'lucide-react-native';
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
@@ -123,7 +123,7 @@ export default function HOProviderProfileScreen({
           {/* Hero — matches .public-hero */}
           <View style={styles.hero}>
             <View style={styles.avatar}>
-              <Silhouette name={provider.profiles?.full_name} textStyle={styles.avatarText} />
+              <Avatar uri={provider.profiles?.avatar_url} name={provider.profiles?.full_name} textStyle={styles.avatarText} />
             </View>
             <Text style={styles.name}>{provider.profiles?.full_name ?? 'Provider'}</Text>
             {approvedServiceNames(provider).length > 0 && (
@@ -233,7 +233,7 @@ export default function HOProviderProfileScreen({
               {reviews.map((r) => (
                 <View key={r.id} style={styles.reviewRow}>
                   <View style={styles.reviewAvatar}>
-                    <Silhouette name={r.client?.full_name} textStyle={styles.reviewAvatarText} />
+                    <Avatar uri={r.client?.avatar_url} name={r.client?.full_name} textStyle={styles.reviewAvatarText} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={styles.reviewHeader}>
@@ -336,7 +336,7 @@ function createThemedStyles(theme: ThemePalette) {
     bio: { fontSize: 13.5, lineHeight: 20, color: C.ink700, fontFamily: 'Inter' },
 
     reviewRow: { flexDirection: 'row', marginBottom: 14, gap: 10 },
-    reviewAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.ink50, alignItems: 'center', justifyContent: 'center' },
+    reviewAvatar: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.ink50, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
     reviewAvatarText: { color: C.ink700, fontSize: 14.5, fontWeight: '700', fontFamily: 'Inter' },
     reviewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     reviewName: { color: C.ink900, fontSize: 13.5, fontWeight: '700', fontFamily: 'Inter' },

@@ -114,6 +114,7 @@ import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import { effortFor, TIER_FOR_URGENCY } from '../../../src/lib/taskEffort';
+import { URGENT_PERKS, urgencyTiming } from '../../../src/lib/urgencyInfo';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
@@ -1135,6 +1136,9 @@ export default function HOCreateJobScreen({
                 icon={option.icon}
                 selected={urgency === option.value}
                 onSelect={() => setUrgency(option.value)}
+                timing={urgencyTiming(option.value)}
+                badge={option.value === 'urgent' ? 'Premium' : undefined}
+                perks={option.value === 'urgent' ? URGENT_PERKS : undefined}
               />
             ))}
 
@@ -1411,8 +1415,8 @@ function createThemedStyles(theme: ThemePalette) {
     slate: V6Colors.ink500,
     muted: V6Colors.ink400,
   } as const;
-  // What each urgency means, in plain words. The backend's matching windows
-  // (see the note at the top of this file) still apply; they are not repeated here.
+  // What each urgency means, in plain words. The matching windows and the
+  // Premium perks are shown from src/lib/urgencyInfo.ts.
   const URGENCY_OPTIONS = [
     { value: 'flexible' as const, label: 'Flexible', blurb: 'Any day that works for you', icon: CalendarDays },
     { value: 'normal' as const, label: 'Normal', blurb: 'Within a few days', icon: Clock },

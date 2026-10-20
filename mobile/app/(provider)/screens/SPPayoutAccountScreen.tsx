@@ -14,7 +14,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
 import {
-  digitsOnly, formatPayoutNumber, maskedNumber, payoutErrors, payoutNumberHelper, payoutNumberLabel,
+  digitsOnly, formatPayoutNumber, maskedNumber, normalizePhMobile, payoutErrors, payoutNumberHelper, payoutNumberLabel,
   payoutStatus, payoutTitle, type PayoutFormErrors,
 } from '../../../src/lib/payoutLabels';
 import { cleanText } from '../../../src/lib/textRules';
@@ -100,7 +100,7 @@ export default function SPPayoutAccountScreen({ onBack, onOpenEarnings }: { onBa
         method,
         bank_code: method === 'bank' ? bankCode : undefined,
         account_name: cleanText(accountName),
-        account_number: digitsOnly(accountNumber),
+        account_number: method === 'bank' ? digitsOnly(accountNumber) : normalizePhMobile(accountNumber),
       });
       setAccountNumber('');
       setChanging(false);
@@ -253,8 +253,8 @@ export default function SPPayoutAccountScreen({ onBack, onOpenEarnings }: { onBa
                 helper={payoutNumberHelper(method)}
                 error={errors.number}
                 submitted
-                keyboardType="number-pad"
-                maxLength={method === 'bank' ? 16 : 13}
+                keyboardType={method === 'bank' ? 'number-pad' : 'phone-pad'}
+                maxLength={16}
                 editable={!busy}
                 keyboardAppearance={appearance}
               />

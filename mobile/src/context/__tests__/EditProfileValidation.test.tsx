@@ -51,7 +51,7 @@ jest.mock('../../components/AddressField', () => {
 type Role = 'homeowner' | 'provider';
 const ROLES: Role[] = ['homeowner', 'provider'];
 
-const PHONE_FORMAT = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
+const PHONE_FORMAT = 'Enter a mobile number like 09171234567 or +63 917 123 4567';
 
 const BASE_PROFILE = {
   full_name: 'Alex',
@@ -106,12 +106,12 @@ beforeEach(() => {
 });
 
 describe.each<Role>(ROLES)('%s edit profile phone', (role) => {
-  it('shows the 09 placeholder, the 11-digit helper and a number pad', async () => {
+  it('shows the 09 placeholder, a helper naming both forms and a phone pad (it has a + key)', async () => {
     await renderEditor(role);
 
     expect(phoneField().props.placeholder).toBe('09XX XXX XXXX');
-    expect(phoneField().props.keyboardType).toBe('number-pad');
-    expect(screen.getByText('11 digits, starts with 09')).toBeTruthy();
+    expect(phoneField().props.keyboardType).toBe('phone-pad');
+    expect(screen.getByText('Starts with 09 or +63')).toBeTruthy();
   });
 
   it('keeps letters, spaces and symbols out of the phone field', async () => {

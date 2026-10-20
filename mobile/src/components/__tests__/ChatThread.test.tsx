@@ -5,6 +5,12 @@ import ChatThread, { CHAT_MESSAGE_MAX, type ChatThreadProps } from '../ChatThrea
 import type { Message } from '../../lib/api';
 import { lightPalette } from '../../constants/palettes';
 
+jest.mock('expo-image', () => {
+  const R = require('react');
+  const { View } = require('react-native');
+  return { Image: (p: any) => R.createElement(View, p) };
+});
+
 // Mutable window metrics, so a test can set the system text size (fontScale) before rendering.
 const mockDims = { width: 390, height: 844, fontScale: 1, scale: 3 };
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions', () => ({
@@ -80,6 +86,14 @@ describe('ChatThread when the conversation fails to load', () => {
 });
 
 describe('ChatThread header and system line', () => {
+  it("shows the other person's photo in the header when they have one", () => {
+    render(<ChatThread {...baseProps({ counterpartAvatarUrl: 'https://x/p.jpg' })} />);
+    expect(screen.getByLabelText("TaskBuddyProvider's photo")).toBeTruthy();
+  });
+  it('keeps the silhouette in the header without a photo', () => {
+    render(<ChatThread {...baseProps()} />);
+    expect(screen.getByLabelText("TaskBuddyProvider's avatar")).toBeTruthy();
+  });
   it('names the other person, the job and its status, and pins the system line', () => {
     render(<ChatThread {...baseProps()} />);
 

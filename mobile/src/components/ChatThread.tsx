@@ -27,7 +27,7 @@ import Tap from './ui/Tap';
 import Banner from './ui/Banner';
 import ContentSkeleton from './ui/ContentSkeleton';
 import LoadErrorCard from './ui/LoadErrorCard';
-import Silhouette from './ui/Silhouette';
+import Avatar from './ui/Avatar';
 import PhotoViewer from './PhotoViewer';
 import ChatEmptyState from './ChatEmptyState';
 import ChatSafetyNote from './ChatSafetyNote';
@@ -45,6 +45,8 @@ export const CHAT_COUNTER_FROM = 400;
 export interface ChatThreadProps {
   /** The other person's name. The header shows "Chat" until it is known. */
   counterpartName: string | null | undefined;
+  /** The other person's photo URL, when they have one. */
+  counterpartAvatarUrl?: string | null;
   /** "{job title} · {status word}", or null when neither is known. */
   subtitle: string | null;
   /** The plain line pinned under the header, or null. */
@@ -75,7 +77,7 @@ export interface ChatThreadProps {
 }
 
 export default function ChatThread({
-  counterpartName, subtitle, systemLine, notice, dayHeads, messages, profileId, loading, error, sendError, conversationReady, onRetry, listRef,
+  counterpartName, counterpartAvatarUrl, subtitle, systemLine, notice, dayHeads, messages, profileId, loading, error, sendError, conversationReady, onRetry, listRef,
   text, onChangeText, onSend, attaching, onAttach, onBack, onViewJob,
 }: ChatThreadProps) {
   const { C, styles, V6Colors, appearance } = useThemedStyles(createThemedStyles);
@@ -148,7 +150,7 @@ export default function ChatThread({
           <ArrowLeft size={20} color={C.ink700} />
         </Tap>
         <View style={styles.headerAvatar}>
-          <Silhouette name={counterpartName} textStyle={styles.headerAvatarText} />
+          <Avatar uri={counterpartAvatarUrl} name={counterpartName} textStyle={styles.headerAvatarText} />
         </View>
         <View style={styles.headerInfo} testID="chat-header-info">
           <Text style={styles.headerName} numberOfLines={1}>{counterpartName?.trim() || 'Chat'}</Text>
