@@ -80,3 +80,79 @@ describe('api request deadline (F7)', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 });
+
+describe('Find providers gets a longer deadline (UAT item 8)', () => {
+  const NO_RESPONSE_MESSAGE = 'Cannot reach the server. Check your connection and try again.';
+
+  const jsonResponse = (status: number, body: unknown) =>
+    ({
+      ok: status >= 200 && status < 300,
+      status,
+      text: () => Promise.resolve(JSON.stringify(body)),
+    }) as Response;
+
+  beforeEach(() => {
+    jest.restoreAllMocks();
+    jest.useFakeTimers();
+    configureApiAuth(() => 'token', async () => null);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is still waiting at 30 s and up to 90 s, then rejects with the no-response ApiError and aborts the fetch', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => {
+      capturedSignal = (init as RequestInit).signal ?? undefined;
+      return new Promise<Response>(() => {});
+    });
+    let settled = false;
+    const pending = api.triggerRecommendations('job-1').then(
+      () => {
+        settled = true;
+        throw new Error('expected rejection');
+      },
+      (err: unknown) => {
+        settled = true;
+        return err;
+      },
+    );
+
+    await jest.advanceTimersByTimeAsync(30_001);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(89_999 - 30_001);
+    expect(settled).toBe(false);
+
+    await jest.advanceTimersByTimeAsync(1);
+    const err = await pending;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err).toMatchObject({ message: NO_RESPONSE_MESSAGE, status: 0 });
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('an answer after 60 s is returned, and no timer is left behind', async () => {
+    jest.spyOn(globalThis, 'fetch').mockImplementation(
+      () => new Promise<Response>((resolve) => setTimeout(() => resolve(jsonResponse(200, { run_id: null, pool_size: 3, notified: 2 })), 60_000)),
+    );
+    const pending = api.triggerRecommendations('job-1');
+
+    await jest.advanceTimersByTimeAsync(60_000);
+    await expect(pending).resolves.toEqual({ run_id: null, pool_size: 3, notified: 2 });
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('still posts to the trigger route and does not leak the deadline into the fetch options', async () => {
+    const fetchSpy = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(jsonResponse(200, { run_id: null, pool_size: 0, notified: 0 })));
+
+    await api.triggerRecommendations('job-1');
+
+    const [url, init] = fetchSpy.mock.calls[0];
+    expect(String(url)).toMatch(/\/jobs\/job-1\/recommendations\/trigger$/);
+    expect((init as RequestInit).method).toBe('POST');
+    expect(init).not.toHaveProperty('timeoutMs');
+  });
+});

@@ -12,14 +12,13 @@
 export const TERMS_VERSION = 3;
 export const TERMS_UPDATED = 'October 17, 2026';
 
-export type LegalSection = { heading: string; body: string };
+export type LegalSection = { heading?: string; body: string };
 export type LegalDoc = { title: string; sections: LegalSection[]; acceptLabel: string };
 
 export const TERMS_CONTENT: LegalDoc = {
   title: 'Terms & Conditions',
   sections: [
     {
-      heading: `TaskBuddy Terms of Use (version ${TERMS_VERSION}, ${TERMS_UPDATED})`,
       body: 'These Terms govern your use of TaskBuddy. By creating an account or continuing to use the platform, you agree to them. Please read Sections 4 to 7 carefully: they explain how payments are held and released, and that a released payment is final.',
     },
     {

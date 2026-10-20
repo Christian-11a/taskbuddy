@@ -46,3 +46,13 @@ export const TIER_LABELS: Record<PriceTier, { label: string; blurb: string }> = 
   standard: { label: 'Standard', blurb: 'The typical rate for this job.' },
   premium: { label: 'Premium', blurb: 'Higher rate. Attracts top-rated providers faster.' },
 };
+
+/**
+ * One price per urgency: the job is priced at the tier its urgency stands for,
+ * so the client never picks a tier. The server still applies its urgency rate.
+ */
+export const TIER_FOR_URGENCY = {
+  flexible: 'basic',
+  normal: 'standard',
+  urgent: 'premium',
+} as const satisfies Record<'flexible' | 'normal' | 'urgent', PriceTier>;

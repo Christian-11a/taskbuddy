@@ -1,7 +1,8 @@
 import React, { useContext } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
+import { bottomBarPadding } from '../../lib/bottomBarPadding';
 import { InsideScreenFrame } from '../ScreenFrame';
 import Tap from './Tap';
 
@@ -22,7 +23,7 @@ export default function BottomActionBar({
   const insideFrame = useContext(InsideScreenFrame);
   const disabled = busy || primaryDisabled;
   return (
-    <View testID="bottom-action-bar" style={[s.bar, { paddingBottom: insideFrame ? 16 : Math.max(insets.bottom, 16) }]}>
+    <View testID="bottom-action-bar" style={[s.bar, { paddingBottom: insideFrame ? 16 : bottomBarPadding(insets.bottom, Platform.OS) }]}>
       <Tap style={[s.primary, { backgroundColor: tone === 'danger' ? c.danger : c.primary }, disabled && s.disabled]}
         scale onPress={onPrimary} disabled={disabled} hitSlop={{ top: 1, bottom: 1 }}
         accessibilityRole="button" accessibilityLabel={primaryLabel} accessibilityState={{ disabled }}>

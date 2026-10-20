@@ -174,3 +174,18 @@ it('reopening opens on the tab it is asked for', () => {
   view.rerender(<TermsAndConditions visible mode="privacy" {...props} />);
   expect(screen.getByRole('tab', { name: 'Privacy' }).props.accessibilityState).toMatchObject({ selected: true });
 });
+
+const headerTexts = () => screen.queryAllByRole('header').map((h) => String(h.props.children));
+
+it('opens the Terms on the intro paragraph, with no version line above it', () => {
+  renderPopup();
+  expect(screen.getByText(/^These Terms govern your use of TaskBuddy\./)).toBeTruthy();
+  const headers = headerTexts();
+  expect(headers[0]).toBe('1. Nature of the platform');
+  expect(headers).toHaveLength(12);
+  for (const h of headers) {
+    expect(h).not.toMatch(/version/i);
+    expect(h).not.toContain('October 17, 2026');
+  }
+  expect(screen.queryByText(/Terms of Use \(version/)).toBeNull();
+});

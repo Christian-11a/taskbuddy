@@ -717,6 +717,11 @@ Done button, so it can no longer start a second charge. The wallet also supports
 > (`GET /verifications/me` ignores `provider_profiles`: an ambiguous PostgREST embed). The fix, a test spec and the
 > open product questions are in [`docs/backend-handoff-smoke-2026-10-19.md`](../docs/backend-handoff-smoke-2026-10-19.md).
 
+> **2026-10-20 manual e2e:** three more backend items block or weaken the core flow: deploy the `/verifications/me`
+> fix above, accept the signed `location_reference` on `POST /jobs` (a GPS address is refused at Post job), and turn a
+> cold or rate-limited ML service into a clear 503 with one retry. They are listed, with ids `UAT-B1` to `UAT-B6` (B4 is info only), in
+> [`docs/backend-handoff-uat-blockers-2026-10-20.md`](../docs/backend-handoff-uat-blockers-2026-10-20.md).
+
 > **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
 > recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
 > longer apply; see *Current state* at the top.

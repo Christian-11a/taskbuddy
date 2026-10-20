@@ -23,7 +23,7 @@ import { useNotifications } from '../../../src/context/NotificationsContext';
  */
 
 import { StatusBar } from 'expo-status-bar';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   RefreshControl,
   ScrollView,
@@ -47,7 +47,7 @@ import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SPScreen, type VerifyParams } from '../../../src/types/navigation';
-import { certificateExpiry, type ExpiryState } from '../../../src/lib/verificationStatus';
+import { certificateExpiry, reconcileVerification, type ExpiryState } from '../../../src/lib/verificationStatus';
 import { certificateStateFrom } from '../../../src/lib/tourContent';
 import { dateKey } from '../../../src/lib/localDate';
 
@@ -310,10 +310,11 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   // Where an unverified provider's request stands: "under review" or "not approved"
   // changes the setup copy instead of asking them to verify again.
   // The two-part state (ID + certificate) is read for a verified provider too: the setup card and the renewal banner use it.
-  const { data: verification, reload: reloadVerification } = useAsyncData(async () => {
+  const { data: rawVerification, reload: reloadVerification } = useAsyncData(async () => {
     // Not caught: a failed lookup must not be kept under the key Verification shares. It reads as "none".
     return api.myVerification();
   }, [], 'verification-me');
+  const verification = useMemo(() => reconcileVerification(rawVerification, { verified: isVerified, identityVerified: providerProfile?.identity_verified === true }), [rawVerification, isVerified, providerProfile]);
   // The provider's certificates: the setup card's certificate step (old API) and the renewal banner.
   const { data: credentials, reload: reloadCredentials } = useAsyncData(async () => {
     return api.myCredentials();
@@ -414,6 +415,9 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     setTogglingAvail(true);
     try {
       await api.setAvailability(next);
+      // Update the cached profile, or the feed re-reads the old value when it remounts. The save already succeeded,
+      // so a failed refresh changes nothing.
+      refreshProfile().catch(() => {});
     } catch {
       setAvailable(!next); // revert on failure
       showToast("Couldn't update your availability. Check your connection and try again.", 'error');

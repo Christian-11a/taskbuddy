@@ -114,7 +114,7 @@ import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import PriceOptionRow from '../../../src/components/post/PriceOptionRow';
-import { effortFor, type PriceTier } from '../../../src/lib/taskEffort';
+import { effortFor, TIER_FOR_URGENCY, type PriceTier } from '../../../src/lib/taskEffort';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
@@ -258,7 +258,7 @@ export default function HOCreateJobScreen({
   const [tempTime, setTempTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  // The tier the client tapped, and its amount as the server last priced it.
+  // The tier set from the urgency once the estimate lands, and its amount as the server last priced it.
   // `budget` stays the form's amount so the review and rules read one value.
   const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
   const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
@@ -286,6 +286,8 @@ export default function HOCreateJobScreen({
   const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   // Set before the first await, so a second tap in the same frame cannot post the job twice.
   const postInFlight = useRef(false);
+  // The address text a post was just refused for (UAT-B2): its server message stays while that text is unchanged.
+  const refusedAddress = useRef<string | null>(null);
 
   const totalSteps = 5;
   const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & price', 'Review'];
@@ -316,7 +318,20 @@ export default function HOCreateJobScreen({
     setPriceLoading(true);
     setPriceError(null);
     api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
-      .then((res) => { if (live) { setPriceOptions(res.options); setPriceLoading(false); } })
+      .then((res) => {
+        if (!live) return;
+        // One price per urgency, so the tier is set here, never picked. An answer
+        // without that tier cannot be posted: treat it like a failed estimate.
+        const tier = TIER_FOR_URGENCY[urgency];
+        setPriceLoading(false);
+        if (!res.options.some((option) => option.tier === tier)) {
+          setPriceOptions(null);
+          setPriceError("Prices aren't available right now. Please try again in a moment.");
+          return;
+        }
+        setPriceOptions(res.options);
+        setPriceTier(tier);
+      })
       .catch((err) => {
         if (!live) return;
         // An ApiError with a real HTTP status came from the server; anything
@@ -368,7 +383,12 @@ export default function HOCreateJobScreen({
   // that has become valid loses its message the moment it changes. Nothing new
   // appears here: errors come from Next alone.
   useEffect(() => {
-    setFieldErrors((prev) => reviseStepErrors(prev, step, formValues(), new Date()));
+    // The server's refusal of the address stays while that text is unchanged: local rules accept it, so revising would drop it.
+    setFieldErrors((prev) =>
+      step === 2 && prev.location && refusedAddress.current === location
+        ? prev
+        : reviseStepErrors(prev, step, formValues(), new Date()),
+    );
   }, [step, categoryId, location, tasks, title, description, date, time, budget]);
   useEffect(() => {
     // Once only: "Post another job" clears the form back to step 1, and it
@@ -591,7 +611,17 @@ export default function HOCreateJobScreen({
     } catch (e) {
       const capacity = capacityConflictMessage(e);
       if (capacity) setCapacityNotice(capacity);
-      else setError(e instanceof Error ? e.message : 'Could not post the job.');
+      else if (e instanceof ApiError && e.status === 400 && /address|location/i.test(e.message)) {
+        // POST /jobs geocodes the address text again and can refuse one the app already confirmed
+        // (UAT-B2, docs/backend-handoff-uat-blockers-2026-10-20.md). Send the client back to the
+        // address instead of a dead end on Review. setStep, not goToStep: goToStep clears this error,
+        // and refusedAddress keeps the revise effect from dropping it, because local rules accept the text.
+        refusedAddress.current = location;
+        setResolvedCoordinates(null);
+        setGeocodedAddress('');
+        setFieldErrors((prev) => ({ ...prev, location: `${e.message} Pick a suggestion from the list, or edit the address.` }));
+        setStep(2);
+      } else setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
       postInFlight.current = false;
       setSubmitting(false);
@@ -1116,14 +1146,9 @@ export default function HOCreateJobScreen({
               <Text style={styles.budgetHint}>
                 Estimated from your tasks and how soon you need it. Urgent and heavier jobs cost more.
               </Text>
-              <View accessibilityRole="radiogroup" style={styles.priceOptions}>
-                {priceOptions?.map((option) => (
-                  <PriceOptionRow
-                    key={option.tier}
-                    option={option}
-                    selected={priceTier === option.tier}
-                    onSelect={() => setPriceTier(option.tier)}
-                  />
+              <View style={styles.priceOptions}>
+                {priceOptions?.filter((option) => option.tier === TIER_FOR_URGENCY[urgency]).map((option) => (
+                  <PriceOptionRow key={option.tier} option={option} selected onSelect={() => {}} />
                 ))}
                 {!priceOptions && !priceError && <ActivityIndicator />}
                 {priceError && (

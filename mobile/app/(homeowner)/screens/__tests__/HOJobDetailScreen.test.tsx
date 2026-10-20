@@ -856,6 +856,131 @@ describe('HOJobDetailScreen — Find providers says why it failed', () => {
   });
 });
 
+describe('HOJobDetailScreen — a slow Find providers says the matching service is waking up (UAT item 8)', () => {
+  const WAKING = 'Waking up the matching service. This can take up to a minute.';
+  const openJob = { ...inProgressJob, status: 'open' as const, assigned_provider_id: null, job_tasks: [] };
+
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
+    return { promise, resolve, reject };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    (api.jobApplications as jest.Mock).mockResolvedValue([]);
+    (api.jobDispute as jest.Mock).mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shows the line once the request has run 8 seconds, and not before', async () => {
+    const invite = deferred<unknown>();
+    (api.triggerRecommendations as jest.Mock).mockReturnValue(invite.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    const find = await screen.findByText('Find providers');
+
+    jest.useFakeTimers();
+    fireEvent.press(find);
+    act(() => {
+      jest.advanceTimersByTime(7999);
+    });
+    expect(screen.queryByText(WAKING)).toBeNull();
+
+    act(() => {
+      jest.advanceTimersByTime(1);
+    });
+    expect(screen.getByText(WAKING)).toBeTruthy();
+    await act(async () => invite.resolve({ run_id: null, pool_size: 0, notified: 0 }));
+  });
+
+  it('the line goes away when the invitation answers, and the result is shown', async () => {
+    const invite = deferred<unknown>();
+    (api.triggerRecommendations as jest.Mock).mockReturnValue(invite.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    const find = await screen.findByText('Find providers');
+
+    jest.useFakeTimers();
+    fireEvent.press(find);
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(screen.getByText(WAKING)).toBeTruthy();
+
+    await act(async () => invite.resolve({ run_id: null, pool_size: 4, notified: 2 }));
+    expect(screen.queryByText(WAKING)).toBeNull();
+    expect(screen.getByText('We invited 2 matched providers to apply.')).toBeTruthy();
+  });
+
+  it('the line goes away when the invitation fails, and the error is shown', async () => {
+    const invite = deferred<unknown>();
+    (api.triggerRecommendations as jest.Mock).mockReturnValue(invite.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    const find = await screen.findByText('Find providers');
+
+    jest.useFakeTimers();
+    fireEvent.press(find);
+    act(() => {
+      jest.advanceTimersByTime(8000);
+    });
+    expect(screen.getByText(WAKING)).toBeTruthy();
+
+    await act(async () => invite.reject(new ApiError('Service Unavailable', 503)));
+    expect(screen.queryByText(WAKING)).toBeNull();
+    expect(
+      screen.getByText(
+        "We couldn't reach the matching service just now. Your job is still open and providers can see it. Try again in a few minutes.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it('an answer in under 8 seconds never shows the line', async () => {
+    const invite = deferred<unknown>();
+    (api.triggerRecommendations as jest.Mock).mockReturnValue(invite.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+    const find = await screen.findByText('Find providers');
+
+    jest.useFakeTimers();
+    fireEvent.press(find);
+    act(() => {
+      jest.advanceTimersByTime(3000);
+    });
+    await act(async () => invite.resolve({ run_id: null, pool_size: 0, notified: 0 }));
+    act(() => {
+      jest.advanceTimersByTime(10_000);
+    });
+    expect(screen.queryByText(WAKING)).toBeNull();
+    expect(screen.getByText('No providers matched yet. You can try again later while the job remains open.')).toBeTruthy();
+  });
+
+  it('a slow cancel does not show the matching-service line', async () => {
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    const cancel = deferred<unknown>();
+    (api.cancelJob as jest.Mock).mockReturnValue(cancel.promise);
+    render(<HOJobDetailScreen jobId="job-1" onBack={jest.fn()} onNavigate={jest.fn()} />);
+
+    fireEvent.press(await screen.findByLabelText('More job actions'));
+    fireEvent.press(await screen.findByText('Cancel job'));
+    const confirm = await screen.findByLabelText('Cancel Job');
+
+    jest.useFakeTimers();
+    fireEvent.press(confirm);
+    act(() => {
+      jest.advanceTimersByTime(10_000);
+    });
+    expect(api.cancelJob).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(WAKING)).toBeNull();
+    await act(async () => cancel.resolve({}));
+  });
+});
+
 describe('HOJobDetailScreen — the automatic invite line on an open job', () => {
   const AUTO_INVITE = 'We also invite matched providers automatically if nobody applies soon.';
   const openJob = { ...inProgressJob, status: 'open' as const, assigned_provider_id: null, job_tasks: [] };

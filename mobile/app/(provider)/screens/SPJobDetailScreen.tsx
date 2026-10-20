@@ -11,8 +11,9 @@
  * come from the job's conversation, so the card shows "Client" until it loads.
  */
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useRefreshOnForeground } from '../../../src/hooks/useRefreshOnForeground';
+import { reconcileVerification } from '../../../src/lib/verificationStatus';
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ArrowLeft,
@@ -109,14 +110,15 @@ function dayAndTime(iso: string | null | undefined): string | null {
 export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDetailScreenProps) {
   const { V6Colors, Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
-  const { profile, isVerified, refreshProfile } = useAuth();
+  const { profile, providerProfile, isVerified, refreshProfile } = useAuth();
   // The two-part check (ID + this service's certificate). Not caught: a failed lookup is not kept under the key the
   // Verification screen shares, and reads as "unknown" (the cached isVerified decides).
-  const { data: verification, reload: reloadVerification } = useAsyncData(
+  const { data: rawVerification, reload: reloadVerification } = useAsyncData(
     async () => api.myVerification(),
     [],
     'verification-me',
   );
+  const verification = useMemo(() => reconcileVerification(rawVerification, { verified: isVerified, identityVerified: providerProfile?.identity_verified === true }), [rawVerification, isVerified, providerProfile]);
   const { data: job, loading, error, reload } = useAsyncData(() => {
     if (!jobId) return Promise.reject(new Error('No job selected.'));
     return api.getJob(jobId);

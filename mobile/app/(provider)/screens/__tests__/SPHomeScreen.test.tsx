@@ -866,7 +866,9 @@ describe('SPHomeScreen - feed states, paging and availability', () => {
     expect(screen.queryByLabelText('Load more jobs')).toBeNull();
   });
 
-  it('a failed availability change reverts the switch and shows a message', async () => {
+  it('a failed availability change reverts the switch, shows a message and does not refresh the profile', async () => {
+    const refreshProfile = jest.fn().mockResolvedValue(undefined);
+    (useAuth as jest.Mock).mockReturnValue({ ...(useAuth as jest.Mock)(), refreshProfile });
     (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
     (api.setAvailability as jest.Mock).mockRejectedValue(new Error('offline'));
     render(<SPHomeScreen onNavigate={jest.fn()} />);
@@ -876,6 +878,39 @@ describe('SPHomeScreen - feed states, paging and availability', () => {
 
     await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringContaining('availability'), 'error'));
     expect(screen.getByText('Available for jobs')).toBeTruthy();
+    expect(refreshProfile).not.toHaveBeenCalled();
+  });
+
+  // The cached profile must learn the new value, or the feed re-reads the old one when it remounts (UAT item 3).
+  it('a saved availability change refreshes the profile once and keeps the new state', async () => {
+    const refreshProfile = jest.fn().mockResolvedValue(undefined);
+    (useAuth as jest.Mock).mockReturnValue({ ...(useAuth as jest.Mock)(), refreshProfile });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.setAvailability as jest.Mock).mockResolvedValue(undefined);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('No open jobs near you');
+
+    fireEvent.press(screen.getByTestId('home-availability'));
+
+    await waitFor(() => expect(refreshProfile).toHaveBeenCalledTimes(1));
+    expect(api.setAvailability).toHaveBeenCalledWith(false);
+    expect(screen.getByText('Not available')).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('a failed profile refresh after a saved change keeps the new state and shows no error', async () => {
+    const refreshProfile = jest.fn().mockRejectedValue(new Error('offline'));
+    (useAuth as jest.Mock).mockReturnValue({ ...(useAuth as jest.Mock)(), refreshProfile });
+    (api.browseJobs as jest.Mock).mockResolvedValue({ jobs: [], summary: null });
+    (api.setAvailability as jest.Mock).mockResolvedValue(undefined);
+    render(<SPHomeScreen onNavigate={jest.fn()} />);
+    await screen.findByText('No open jobs near you');
+
+    fireEvent.press(screen.getByTestId('home-availability'));
+
+    await waitFor(() => expect(refreshProfile).toHaveBeenCalledTimes(1));
+    expect(screen.getByText('Not available')).toBeTruthy();
+    expect(showToast).not.toHaveBeenCalled();
   });
 
   it('the avatar and bell reach 48 dp', async () => {

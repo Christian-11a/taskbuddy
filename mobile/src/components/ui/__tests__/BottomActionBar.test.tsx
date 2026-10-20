@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet } from 'react-native';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import BottomActionBar from '../BottomActionBar';
 import ScreenFrame from '../../ScreenFrame';
@@ -72,13 +72,30 @@ it('renders the danger tone with the same behaviour', () => {
 
 describe('BottomActionBar — the bottom inset is owned once', () => {
   const paddingOf = () => StyleSheet.flatten(screen.getByTestId('bottom-action-bar').props.style).paddingBottom;
+  const onAndroid = () => jest.replaceProperty(Platform, 'OS', 'android');
 
-  // Outside a ScreenFrame nothing else clears the navigation bar, so the bar does, with at least 16 dp.
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  // Android is edge-to-edge: the inset is the navigation bar itself, so outside a ScreenFrame the bar adds 16 dp above it.
   it.each([
     [0, 16],
-    [24, 24],
-    [48, 48],
-  ])('outside a frame, under a %i dp navigation bar, pads the bar by %i dp', (bottom, padding) => {
+    [24, 40],
+    [48, 64],
+  ])('on Android, outside a frame, under a %i dp navigation bar, pads the bar by %i dp', (bottom, padding) => {
+    onAndroid();
+    mockInsets.bottom = bottom;
+    render(<BottomActionBar primaryLabel="Save" onPrimary={jest.fn()} />);
+
+    expect(paddingOf()).toBe(padding);
+  });
+
+  // iOS keeps the old rule: at least 16 dp, never 16 dp on top of the home indicator.
+  it.each([
+    [0, 16],
+    [34, 34],
+  ])('on iOS, outside a frame, with a %i dp inset, pads the bar by %i dp', (bottom, padding) => {
     mockInsets.bottom = bottom;
     render(<BottomActionBar primaryLabel="Save" onPrimary={jest.fn()} />);
 
@@ -90,7 +107,8 @@ describe('BottomActionBar — the bottom inset is owned once', () => {
     [0, 16],
     [24, 40],
     [48, 64],
-  ])('inside a frame, under a %i dp navigation bar, leaves %i dp under the button in all', (bottom, total) => {
+  ])('on Android, inside a frame, under a %i dp navigation bar, leaves %i dp under the button in all', (bottom, total) => {
+    onAndroid();
     mockInsets.bottom = bottom;
     render(<ScreenFrame><BottomActionBar primaryLabel="Save" onPrimary={jest.fn()} /></ScreenFrame>);
 

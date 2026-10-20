@@ -147,9 +147,11 @@ export default function TermsAndConditions({
               if (e.nativeEvent.actionName === 'markAsRead') setRead((r) => ({ ...r, [tab]: true }));
             }}
           >
-            {content.sections.map((section) => (
-              <View key={section.heading} style={styles.section}>
-                <Text style={styles.sectionTitle} accessibilityRole="header">{section.heading}</Text>
+            {content.sections.map((section, index) => (
+              <View key={index} style={styles.section}>
+                {section.heading ? (
+                  <Text style={styles.sectionTitle} accessibilityRole="header">{section.heading}</Text>
+                ) : null}
                 <Text style={styles.bodyText}>{section.body}</Text>
               </View>
             ))}

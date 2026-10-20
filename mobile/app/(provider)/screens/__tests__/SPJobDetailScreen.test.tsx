@@ -50,6 +50,7 @@ const PROVIDER_ID = 'provider-1';
 // The job, complaint and applications reads are cached per job; every test starts from an empty cache.
 beforeEach(() => {
   clearAsyncDataCache();
+  (api.myVerification as jest.Mock).mockReset();
 });
 
 const openJob = {
@@ -147,6 +148,18 @@ describe('FullTest provider job details', () => {
     jest.clearAllMocks();
     (useAuth as jest.Mock).mockReturnValue({ profile: { id: PROVIDER_ID }, isVerified: true, refreshProfile: jest.fn() });
     (api.myApplications as jest.Mock).mockResolvedValue([]);
+  });
+
+  it('a verified provider can send a proposal even when /verifications/me answers the empty shape', async () => {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: PROVIDER_ID }, providerProfile: { identity_verified: true, is_verified: true },
+      isVerified: true, refreshProfile: jest.fn(),
+    });
+    (api.myVerification as jest.Mock).mockResolvedValue({ identity: 'none', certificate: 'none', verified: false, services: [] });
+    (api.getJob as jest.Mock).mockResolvedValue(openJob);
+    render(<SPJobDetailScreen jobId={JOB_ID} onBack={jest.fn()} onNavigate={jest.fn()} />);
+    expect(await screen.findByLabelText('Send proposal')).toBeTruthy();
+    expect(screen.queryByLabelText('Get verified')).toBeNull();
   });
 
   it('renders job photos before the provider submits a proposal', async () => {

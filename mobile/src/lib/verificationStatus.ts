@@ -84,6 +84,25 @@ export function canWorkService(me: VerificationMe, categoryId: number | null | u
   return me.services === undefined ? me.verified === true : false;
 }
 
+export interface ProfileVerificationFlags { verified: boolean; identityVerified: boolean }
+
+/**
+ * Stopgap for the live /verifications/me bug (docs/backend-handoff-smoke-2026-10-19.md section 1): for an approved
+ * provider it answers identity 'none' with no services. When the answer has exactly that shape, trust the signed-in
+ * profile: `is_verified` (ID + certificate, migration 0068) or `identity_verified` (ID only; the certificate is still
+ * missing). Remove once the backend fix is deployed.
+ */
+export function reconcileVerification(me: VerificationMe, flags: ProfileVerificationFlags): VerificationMe {
+  if (!me || me.verified === true) return me;
+  const buggyShape = me.identity === 'none' && Array.isArray(me.services) && me.services.length === 0;
+  if (!buggyShape) return me;
+  // services undefined: canWorkService then falls back to the overall flag.
+  if (flags.verified) return { ...me, identity: 'approved', certificate: 'approved', verified: true, services: undefined };
+  // ID approved, certificate not yet: the certificate state stays as the server said (the screen also reads credentials).
+  if (flags.identityVerified) return { ...me, identity: 'approved', services: undefined };
+  return me;
+}
+
 export type ExpiryState =
   | { categoryId: number; state: 'ok'; daysLeft: number | null }
   | { categoryId: number; state: 'expiring'; daysLeft: number }
