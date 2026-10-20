@@ -1,7 +1,8 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemedStyles, type Palette } from '../../context/ThemeContext';
+import { bottomBarPadding } from '../../lib/bottomBarPadding';
 import Tap from '../ui/Tap';
 
 export type PostFooterProps = {
@@ -15,7 +16,7 @@ export type PostFooterProps = {
   busy?: boolean;
 };
 
-/** The job form's bottom bar: a tonal Back beside a primary Next. Clears the home indicator. */
+/** The job form's bottom bar: a tonal Back beside a primary Next. Clears the home indicator and the Android navigation bar. */
 export default function PostFooter({
   onBack, backDisabled = false, onNext, nextLabel, nextDisabled = false, busy = false,
 }: PostFooterProps) {
@@ -23,7 +24,7 @@ export default function PostFooter({
   const insets = useSafeAreaInsets();
   const nextOff = nextDisabled || busy;
   return (
-    <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <View testID="post-footer" style={[s.bar, { paddingBottom: bottomBarPadding(insets.bottom, Platform.OS) }]}>
       {!!onBack && (
         <Tap
           style={[s.back, backDisabled && s.off]}
