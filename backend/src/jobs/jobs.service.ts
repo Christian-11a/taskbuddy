@@ -22,7 +22,7 @@ import {
   PriceEstimateDto,
 } from './dto/jobs.dto';
 import type { JobUrgency, Profile } from '../common/types';
-import { priceFor, priceOptions } from './pricing';
+import { laborGuide, priceFor, priceOptions } from './pricing';
 import type { PriceTier, TaskEffort } from './pricing';
 
 const URGENCY_RANK: Record<string, number> = {
@@ -104,7 +104,7 @@ export class JobsService {
     const [category, setting] = await Promise.all([
       this.supabase.admin
         .from('service_categories')
-        .select('base_price')
+        .select('base_price, name')
         .eq('id', categoryId)
         .maybeSingle(),
       this.supabase.admin
@@ -117,6 +117,7 @@ export class JobsService {
     if (!category.data) throw new BadRequestException('Unknown category');
     return {
       basePrice: Number(category.data.base_price),
+      categoryName: category.data.name,
       urgencyMultiplier: Number(setting.data?.price_multiplier ?? 1),
     };
   }
@@ -144,6 +145,7 @@ export class JobsService {
     );
     return {
       options: priceOptions({ ...rates, efforts: dto.task_efforts ?? [] }),
+      guide: laborGuide(rates.categoryName, dto.address ?? '', dto.tasks ?? []),
     };
   }
 
@@ -153,8 +155,15 @@ export class JobsService {
       (_, i) => dto.task_efforts?.[i] ?? 'moderate',
     );
     const urgency = dto.urgency ?? 'normal';
-    const rates = await this.pricingRates(dto.category_id, urgency);
-    const budget = priceFor({ ...rates, efforts }, dto.price_tier);
+    if (dto.budget == null && dto.price_tier == null) {
+      throw new BadRequestException('A starting budget is required');
+    }
+    const budget =
+      dto.budget ??
+      priceFor(
+        { ...(await this.pricingRates(dto.category_id, urgency)), efforts },
+        dto.price_tier!,
+      );
     const location =
       dto.location_reference === undefined
         ? await this.geocoding.geocode(dto.address)
@@ -178,7 +187,7 @@ export class JobsService {
         latitude: location.latitude,
         longitude: location.longitude,
         budget,
-        price_tier: dto.price_tier,
+        price_tier: dto.price_tier ?? null,
         scheduled_at: dto.scheduled_at ?? null,
         photo_urls: dto.photo_urls ?? [],
         // recommendation_deadline is filled in by the DB trigger; the column is

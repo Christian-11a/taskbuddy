@@ -23,13 +23,25 @@ export class ApplicationsService {
   async apply(user: Profile, jobId: string, dto: ApplyDto) {
     const { data: job } = await this.supabase.admin
       .from('jobs')
-      .select('id, title, status, client_id, category_id')
+      .select('id, title, status, client_id, category_id, budget')
       .eq('id', jobId)
       .maybeSingle();
     if (!job) throw new NotFoundException('Job not found');
     if (!['open', 'recommending'].includes(job.status)) {
       throw new BadRequestException(
         `Job is no longer accepting applications (${job.status})`,
+      );
+    }
+    const quoteAmount =
+      dto.quote_amount ?? (job.budget == null ? null : Number(job.budget));
+    if (
+      quoteAmount !== null &&
+      (!Number.isFinite(quoteAmount) ||
+        quoteAmount < 50 ||
+        quoteAmount > 100000)
+    ) {
+      throw new BadRequestException(
+        'A total quote from ₱50 to ₱100,000 is required',
       );
     }
 
@@ -92,6 +104,8 @@ export class ApplicationsService {
         job_id: jobId,
         provider_id: user.id,
         cover_message: dto.cover_message ?? null,
+        quote_amount: quoteAmount,
+        posted_budget: job.budget,
         source: candidate ? 'recommended' : 'organic',
       })
       .select()
@@ -157,10 +171,16 @@ export class ApplicationsService {
     const certified = await this.certifiedProviders(
       applications.map((a) => a.provider_id),
     );
-    return applications.map((a) => ({
-      ...a,
-      certifications: certified.get(a.provider_id) ?? [],
-    }));
+    return Promise.all(
+      applications.map(async (a) => ({
+        ...a,
+        fee:
+          a.quote_amount == null
+            ? null
+            : await this.escrow.feePreview(Number(a.quote_amount)),
+        certifications: certified.get(a.provider_id) ?? [],
+      })),
+    );
   }
 
   /**
@@ -240,7 +260,7 @@ export class ApplicationsService {
 
     // There is no wallet to pay from (migration 0056): a job with a price is
     // hired by paying at checkout, and the payment webhook accepts it.
-    if (Number(application.jobs.budget ?? 0) > 0) {
+    if (Number(application.quote_amount ?? 0) > 0) {
       throw new BadRequestException({
         code: 'payment_required',
         message:

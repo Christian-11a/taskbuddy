@@ -253,12 +253,12 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
 
   // The two dialogs keep their own error line, so they run their request
   // here rather than through runAction (which reports under the buttons).
-  const submitProposal = async (message: string) => {
+  const submitProposal = async (message: string, quoteAmount: number) => {
     if (!job) return;
     setBusy(true);
     setActionError(null);
     try {
-      await api.applyToJob(job.id, message || undefined);
+      await api.applyToJob(job.id, message || undefined, quoteAmount);
       setProposalOpen(false);
       showToast('Proposal sent', 'success');
       reload();
@@ -703,7 +703,7 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
           setProposalOpen(false);
           onNavigate('Payout Account');
         }}
-        onSubmit={(message) => void submitProposal(message)}
+        onSubmit={(message, quoteAmount) => void submitProposal(message, quoteAmount)}
         onCancel={() => {
           setProposalOpen(false);
           setActionError(null);

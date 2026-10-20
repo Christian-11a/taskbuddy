@@ -430,6 +430,35 @@ class FakeDb {
       return { data: { ...dispute }, error: null };
     }
 
+    if (fn === 'escrow_place_proposal_hold') {
+      const application = this.rows('job_applications').find(
+        (a) => a.id === args.p_application_id,
+      );
+      if (!application) return refuse('TB404', 'Proposal not found');
+      const job = this.rows('jobs').find((j) => j.id === application.job_id);
+      if (
+        !job ||
+        application.status !== 'pending' ||
+        !['open', 'recommending'].includes(job.status)
+      ) {
+        return refuse('TB409', 'Proposal is no longer available');
+      }
+      if (Number(application.quote_amount) !== Number(args.p_amount)) {
+        return refuse('TB409', 'Payment does not match the proposal quote');
+      }
+      const oldBudget = job.budget;
+      job.budget = application.quote_amount;
+      const result = this.rpc('escrow_place_hold', {
+        p_job_id: job.id,
+        p_provider_id: application.provider_id,
+        p_funding_method: args.p_funding_method,
+        p_payment_intent_id: args.p_payment_intent_id,
+        p_charge_id: args.p_charge_id,
+      });
+      if (result.error) job.budget = oldBudget;
+      return result;
+    }
+
     if (fn === 'escrow_place_hold') {
       const job = this.rows('jobs').find((j) => j.id === args.p_job_id);
       if (!job) return refuse('TB404', 'Job not found');
@@ -457,7 +486,7 @@ class FakeDb {
           `This job's escrow is already '${existing.status}'`,
         );
       }
-      const amount = Number(existing?.amount ?? job.budget);
+      const amount = Number(job.budget);
       const available = this.available(job.client_id);
       if (available < amount) {
         return refuse(

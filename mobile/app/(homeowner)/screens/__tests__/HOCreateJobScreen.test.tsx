@@ -55,11 +55,11 @@ it('keeps the urgency step visible and reports missing required fields when Next
   fireEvent.press(screen.getByText('Fix leaking faucet'));
   fireEvent.press(screen.getByText('Next'));
   await screen.findByText('Pick a date');
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   await waitFor(() => expect(screen.getAllByText('Please select a preferred date.').length).toBeGreaterThan(0));
-  // The price comes from the urgency, so there is nothing to pick and no price error.
-  expect(screen.queryByText('Please pick a price for this job.')).toBeNull();
+  // The starting budget is prefilled, so there is no price error.
+  expect(screen.queryByText('Enter a starting budget from ₱50 to ₱100,000.')).toBeNull();
   expect(screen.queryByTestId('create-job-review')).toBeNull();
 });
 
@@ -79,7 +79,7 @@ it('posts from review without another terms acceptance and retains form state af
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   fireEvent.press(await screen.findByLabelText('Open selected photo 2'));
   expect(screen.getByTestId('full-photo').props.source.uri).toBe('file:///landscape');
@@ -87,7 +87,7 @@ it('posts from review without another terms acceptance and retains form state af
   expect(screen.getByTestId('create-job-review')).toBeTruthy();
   expect(screen.queryByText(/I agree to the/)).toBeNull();
   await act(async () => fireEvent.press(screen.getByText('Post job')));
-  expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({price_tier: 'standard', tasks: ['Fix leaking faucet'], task_efforts: ['moderate']}));
+  expect(api.createJob).toHaveBeenCalledWith(expect.objectContaining({budget: 1500, tasks: ['Fix leaking faucet'], task_efforts: ['moderate']}));
   expect(await screen.findByText('Post another job')).toBeTruthy();
 });
 
@@ -106,7 +106,7 @@ it('opens a job-limit dialog with the server message when posting answers 409', 
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   await act(async () => fireEvent.press(await screen.findByText('Post job')));
   expect(await screen.findByText('Job limit reached')).toBeTruthy();
@@ -161,11 +161,11 @@ it('clears the price error once prices load after a failure, and leaves other er
   await screen.findByRole('button', { name: 'Try loading prices again' });
   fireEvent.press(screen.getByText('Next'));
 
-  const budgetMessage = 'Please pick a price for this job.';
+  const budgetMessage = 'Enter a starting budget from ₱50 to ₱100,000.';
   expect(await screen.findByText(budgetMessage)).toBeTruthy();
   (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
   fireEvent.press(screen.getByRole('button', { name: 'Try loading prices again' }));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   expect(screen.queryByText(budgetMessage)).toBeNull();
   expect(screen.getByText('Please select a preferred date.')).toBeTruthy();
 });
@@ -182,7 +182,7 @@ it('the review lists everything entered, and each Edit link goes back to its ste
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
 
   const review = await screen.findByTestId('create-job-review');
@@ -205,7 +205,7 @@ async function postTheJob() {
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   await act(async () => fireEvent.press(screen.getByText('Post job')));
 }
@@ -277,7 +277,7 @@ it('while posting shows only the steps that really run, and a failed post return
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   await act(async () => fireEvent.press(screen.getByText('Post job')));
 
@@ -302,7 +302,7 @@ async function reachReview() {
   fireEvent.press(screen.getByText('Pick a time'));
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-  await screen.findByTestId('price-option-standard');
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
   fireEvent.press(screen.getByText('Next'));
   await screen.findByTestId('create-job-review');
 }
@@ -412,7 +412,7 @@ describe('HOCreateJobScreen — posting cannot place the address', () => {
   });
 });
 
-/** Like reachReview, but picks an urgency first and waits for that urgency's one price. */
+/** Like reachReview, but picks an urgency before the suggested budget settles. */
 async function reachReviewAt(urgency: 'Flexible' | 'Normal' | 'Urgent', tier: 'basic' | 'standard' | 'premium') {
   fireEvent.press(screen.getByText('Next'));
   fireEvent.press(await screen.findByText('Fix leaking faucet'));
@@ -423,7 +423,7 @@ async function reachReviewAt(urgency: 'Flexible' | 'Normal' | 'Urgent', tier: 'b
   fireEvent.press(screen.getByText('Choose test time'));
   if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
   fireEvent.press(screen.getByText(urgency));
-  await screen.findByTestId(`price-option-${tier}`);
+  await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe(String(PRICE_OPTIONS.find((option) => option.tier === tier)!.amount)));
   fireEvent.press(screen.getByText('Next'));
   await screen.findByTestId('create-job-review');
 }
@@ -431,7 +431,7 @@ async function reachReviewAt(urgency: 'Flexible' | 'Normal' | 'Urgent', tier: 'b
 it.each([
   ['Urgent', 'premium'],
   ['Flexible', 'basic'],
-] as const)('a %s job is posted at the %s price, with no tier to pick', async (urgency, tier) => {
+] as const)('a %s job starts at the %s suggested budget', async (urgency, tier) => {
   (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
   (api.createJob as jest.Mock).mockClear().mockResolvedValue({ id: 'new-job' });
   render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
@@ -439,11 +439,11 @@ it.each([
   await reachReviewAt(urgency, tier);
 
   expect(api.estimatePrice).toHaveBeenLastCalledWith({
-    category_id: 1, urgency: urgency.toLowerCase(), task_efforts: ['moderate'],
+    category_id: 1, urgency: urgency.toLowerCase(), task_efforts: ['moderate'], address: 'Quezon City', tasks: ['Fix leaking faucet'],
   });
   await act(async () => fireEvent.press(screen.getByText('Post job')));
   expect(api.createJob).toHaveBeenCalledWith(
-    expect.objectContaining({ urgency: urgency.toLowerCase(), price_tier: tier }),
+    expect.objectContaining({ urgency: urgency.toLowerCase(), budget: PRICE_OPTIONS.find((option) => option.tier === tier)!.amount }),
   );
 });
 
@@ -505,23 +505,23 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
     fireEvent.press(screen.getByRole('button', { name: 'Try loading prices again' }));
 
-    expect(await screen.findByTestId('price-option-standard')).toBeTruthy();
+    expect(await screen.findByTestId('create-job-budget')).toBeTruthy();
     expect((api.estimatePrice as jest.Mock).mock.calls.length).toBe(callsBefore + 1);
   });
 
-  it('shows the estimated prices instead of a budget field', async () => {
+  it('prefills an editable starting budget from the estimate', async () => {
     await openBudgetStep();
-    expect(await screen.findByText('₱1,500.00')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
     expect(api.estimatePrice).toHaveBeenLastCalledWith({
-      category_id: 1, urgency: 'normal', task_efforts: ['moderate'],
+      category_id: 1, urgency: 'normal', task_efforts: ['moderate'], address: 'Quezon City', tasks: ['Fix leaking faucet'],
     });
-    expect(screen.queryByPlaceholderText('0.00')).toBeNull();
+    fireEvent.changeText(screen.getByTestId('create-job-budget'), '1200');
+    expect(screen.getByTestId('create-job-budget').props.value).toBe('1200');
   });
 
-  it('shows one price, the tier its urgency stands for: Normal is Standard, already chosen', async () => {
+  it('shows a budget field without tier choices', async () => {
     await openBudgetStep();
-    const row = await screen.findByTestId('price-option-standard');
-    expect(row.props.accessibilityState?.selected).toBe(true);
+    expect(await screen.findByTestId('create-job-budget')).toBeTruthy();
     expect(screen.queryByTestId('price-option-basic')).toBeNull();
     expect(screen.queryByTestId('price-option-premium')).toBeNull();
   });
@@ -539,7 +539,7 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
 
     (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
     fireEvent.press(screen.getByRole('button', { name: 'Try loading prices again' }));
-    expect(await screen.findByTestId('price-option-standard')).toBeTruthy();
+    expect(await screen.findByTestId('create-job-budget')).toBeTruthy();
     expect(screen.queryByText(unavailable)).toBeNull();
   });
 
@@ -550,7 +550,7 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     fireEvent.press(screen.getByText('Pick a time'));
     fireEvent.press(screen.getByText('Choose test time'));
     if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-    expect((await screen.findByTestId('price-option-standard')).props.accessibilityState?.selected).toBe(true);
+    await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
 
     let resolveUrgent!: (value: { options: typeof PRICE_OPTIONS }) => void;
     let resolveFlexible!: (value: { options: typeof PRICE_OPTIONS }) => void;
@@ -559,9 +559,8 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
       .mockReturnValueOnce(new Promise((resolve) => { resolveFlexible = resolve; }));
     fireEvent.press(screen.getByText('Urgent'));
 
-    // The old price is gone while the new estimate loads, and Next waits for it.
-    expect(screen.queryByTestId('price-option-standard')).toBeNull();
-    expect(screen.queryByText('₱1,500.00')).toBeNull();
+    // The old suggestion is gone while the new estimate loads, and Next waits for it.
+    expect(screen.getByTestId('create-job-budget')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
 
     // Flexible answers first; the Urgent answer that lands afterwards is stale and ignored.
@@ -569,9 +568,9 @@ describe('HOCreateJobScreen — fields are checked against the backend limits', 
     await act(async () => resolveFlexible({ options: PRICE_OPTIONS }));
     await act(async () => resolveUrgent({ options: PRICE_OPTIONS }));
 
-    expect(screen.getByTestId('price-option-basic').props.accessibilityState?.selected).toBe(true);
+    expect(screen.getByTestId('create-job-budget').props.value).toBe('1250');
     expect(screen.queryByTestId('price-option-premium')).toBeNull();
-    expect(screen.queryByTestId('price-option-standard')).toBeNull();
+    expect(screen.getByTestId('create-job-budget')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Next' })).not.toBeDisabled();
     fireEvent.press(screen.getByRole('button', { name: 'Next' }));
     expect(await screen.findByTestId('create-job-review')).toBeTruthy();
@@ -663,7 +662,7 @@ describe('HOCreateJobScreen — back and exit', () => {
     fireEvent.press(screen.getByText('Pick a time'));
     fireEvent.press(screen.getByText('Choose test time'));
     if (screen.queryByText('Done')) fireEvent.press(screen.getByText('Done'));
-    fireEvent.press(await screen.findByTestId('price-option-standard'));
+    await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
     fireEvent.press(screen.getByText('Next'));
     await screen.findByTestId('create-job-review');
   };

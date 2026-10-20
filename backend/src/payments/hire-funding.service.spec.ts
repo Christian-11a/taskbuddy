@@ -70,6 +70,12 @@ const application = (overrides: Record<string, unknown> = {}) => ({
   job_id: 'j1',
   provider_id: 'p1',
   status: 'pending',
+  quote_amount:
+    overrides.quote_amount !== undefined
+      ? overrides.quote_amount
+      : overrides.jobs
+        ? (overrides.jobs as { budget: number | null }).budget
+        : job.budget,
   jobs: job,
   ...overrides,
 });
@@ -116,7 +122,7 @@ function build(
     customerFor: jest.fn(() => Promise.resolve('cus_1')),
   } as unknown as StripeCustomersService;
   const escrowMock = {
-    hold:
+    holdProposal:
       overrides.hold ??
       jest.fn(() => Promise.resolve({ escrow: { id: 'e1' }, placed: true })),
     findByJob: overrides.findByJob ?? jest.fn(() => Promise.resolve(null)),
@@ -197,6 +203,25 @@ describe('HireFundingService.createCheckout', () => {
         transfer_group: 'job:j1',
       },
       success_url: `${BASE}/payments/return?flow=hire&status=success&app_redirect=${encodeURIComponent(APP)}`,
+    });
+  });
+
+  it('charges the selected counterquote rather than the posted budget', async () => {
+    const { service, create } = build({
+      job_applications: [
+        ok(application({ jobs: { ...job, budget: 1000 }, quote_amount: 1250 })),
+      ],
+    });
+
+    const result = await service.createCheckout(
+      client,
+      { application_id: 'app1', app_redirect: APP },
+      BASE,
+    );
+
+    expect(result.amount).toBe(1250);
+    expect(create.mock.calls[0][0].line_items?.[0]).toMatchObject({
+      price_data: { unit_amount: 125000 },
     });
   });
 
@@ -290,7 +315,7 @@ describe('HireFundingService.completeFromIntent', () => {
         stripe_payment_intent_id: 'pi_1',
       }),
     ]);
-    expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', {
+    expect(escrow.holdProposal).toHaveBeenCalledWith('app1', 1500, {
       paymentIntentId: 'pi_1',
       chargeId: 'ch_1',
     });
@@ -313,7 +338,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent());
 
-    expect(escrow.hold).toHaveBeenCalled();
+    expect(escrow.holdProposal).toHaveBeenCalled();
     expect(applications.acceptFunded).toHaveBeenCalled();
   });
 
@@ -334,7 +359,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent());
 
-    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.holdProposal).not.toHaveBeenCalled();
     expect(applications.acceptFunded).not.toHaveBeenCalled();
   });
 
@@ -345,7 +370,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent());
 
-    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.holdProposal).not.toHaveBeenCalled();
     expect(escrow.passThrough).toHaveBeenCalledWith(['c1']);
     expect(writes(calls, 'wallet_transactions')).toHaveLength(1);
     expect(writes(calls, 'notifications')).toEqual([
@@ -376,7 +401,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent({ amount_received: 100000 }));
 
-    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.holdProposal).not.toHaveBeenCalled();
   });
 
   it('refuses a provider who is no longer verified', async () => {
@@ -387,7 +412,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent());
 
-    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.holdProposal).not.toHaveBeenCalled();
   });
 
   it('treats a hold the wallet can no longer cover as a refusal, not a fault', async () => {
@@ -523,7 +548,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await expect(service.completeFromIntent(intent())).resolves.toBeUndefined();
 
-    expect(escrow.hold).toHaveBeenCalled();
+    expect(escrow.holdProposal).toHaveBeenCalled();
     expect(escrow.releaseHoldForFailedHire).toHaveBeenCalledWith('j1');
     expect(escrow.passThrough).toHaveBeenCalled();
   });
@@ -536,7 +561,7 @@ describe('HireFundingService.completeFromIntent', () => {
 
     await service.completeFromIntent(intent({ latest_charge: null }));
 
-    expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', undefined);
+    expect(escrow.holdProposal).toHaveBeenCalledWith('app1', 1500, undefined);
   });
 
   it('writes nothing for an intent without the metadata it needs', async () => {
@@ -611,7 +636,7 @@ describe('HireFundingService with Xendit (test mode)', () => {
       channel: 'GCASH',
     });
 
-    expect(escrow.hold).toHaveBeenCalledWith('j1', 'p1', undefined);
+    expect(escrow.holdProposal).toHaveBeenCalledWith('app1', 1500, undefined);
     expect(applications.acceptFunded).toHaveBeenCalled();
   });
 
@@ -630,7 +655,7 @@ describe('HireFundingService with Xendit (test mode)', () => {
       channel: 'GCASH',
     });
 
-    expect(escrow.hold).not.toHaveBeenCalled();
+    expect(escrow.holdProposal).not.toHaveBeenCalled();
     expect(calls).toContainEqual(
       expect.objectContaining({
         table: 'rpc:write_admin_alert',

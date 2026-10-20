@@ -41,14 +41,17 @@ import ConfirmationModal from './ConfirmationModal';
 import { CreditCard, ShieldCheck } from 'lucide-react-native';
 import { MAX_CARD_PHP, MIN_TOPUP_PHP } from '../lib/api';
 import { peso } from '../lib/format';
+import type { JobFee } from '../lib/feeBreakdown';
 
 interface HirePaymentModalProps {
   visible: boolean;
   providerName: string;
   /** The job's title, shown in the summary and as "Held for". */
   jobTitle: string | null;
-  /** The job's budget; null for a job posted before pricing existed. */
+  /** The selected proposal's total quote; null for a legacy no-price job. */
   budget: number | null;
+  postedBudget?: number | null;
+  fee?: JobFee | null;
   /** True while the job is still being read: nothing can be paid yet. */
   loading?: boolean;
   /**
@@ -84,6 +87,8 @@ export default function HirePaymentModal({
   providerName,
   jobTitle,
   budget,
+  postedBudget = null,
+  fee = null,
   loading = false,
   loadFailed = false,
   busy,
@@ -146,9 +151,27 @@ export default function HirePaymentModal({
       )}
       {hasBudget && (
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Amount</Text>
+          <Text style={styles.summaryLabel}>You pay</Text>
           <Text style={styles.summaryValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} accessibilityLabel={`Amount ${peso(budget)}`}>{peso(budget)}</Text>
         </View>
+      )}
+      {hasBudget && postedBudget != null && postedBudget !== budget && (
+        <View style={styles.summaryRow}>
+          <Text style={styles.summaryLabel}>Posted budget</Text>
+          <Text style={styles.summaryValue}>{peso(postedBudget)}</Text>
+        </View>
+      )}
+      {hasBudget && fee && (
+        <>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Platform fee</Text>
+            <Text style={styles.summaryValue}>{peso(fee.amount)}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>Provider receives</Text>
+            <Text style={styles.summaryValue}>{peso(fee.provider_receives)}</Text>
+          </View>
+        </>
       )}
     </View>
   );
@@ -219,7 +242,7 @@ export default function HirePaymentModal({
     </>
   );
 
-  const confirmLabel = hasBudget ? `Confirm and hire · ${peso(budget)}` : 'Confirm and hire';
+  const confirmLabel = hasBudget ? `Hire and pay ${peso(budget)}` : 'Confirm and hire';
 
   const confirmPage = (
     <>
@@ -245,6 +268,18 @@ export default function HirePaymentModal({
             <Text style={styles.summaryLabel}>{hasBudget ? 'Held for' : 'Job'}</Text>
             <Text style={styles.summaryValue} numberOfLines={2}>{jobTitle}</Text>
           </View>
+        )}
+        {hasBudget && fee && (
+          <>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Platform fee</Text>
+              <Text style={styles.summaryValue}>{peso(fee.amount)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Provider receives</Text>
+              <Text style={styles.summaryValue}>{peso(fee.provider_receives)}</Text>
+            </View>
+          </>
         )}
       </View>
 

@@ -90,10 +90,17 @@ export class CreateJobDto {
   @Type(() => Number)
   longitude?: number;
 
-  // Which of the three server-computed price options the client tapped
-  // (POST /jobs/price-estimate). The amount is never taken from the client.
+  // Older clients select a server-computed tier; current clients submit an
+  // editable starting budget. A proposal quote becomes final only at hire.
+  @IsOptional()
   @IsIn(PRICE_TIERS)
-  price_tier!: PriceTier;
+  price_tier?: PriceTier;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(50)
+  @Max(100000)
+  budget?: number;
 
   // Preferred start time. When set, accepting an application auto-creates the
   // provider's booking (trigger handle_application_accepted, migration 0007).
@@ -144,6 +151,16 @@ export class PriceEstimateDto {
   @ArrayMaxSize(20)
   @IsIn(TASK_EFFORTS, { each: true })
   task_efforts?: TaskEffort[];
+
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  tasks?: string[];
 }
 
 /** The assigned provider ticking one checklist item off, or back on. */

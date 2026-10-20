@@ -61,6 +61,7 @@ interface HireApplication {
   job_id: string;
   provider_id: string;
   status: string;
+  quote_amount: number | string | null;
   jobs: {
     id: string;
     title: string;
@@ -110,7 +111,7 @@ export class HireFundingService {
   ) {}
 
   /**
-   * Opens a Checkout Session for the full job budget.
+   * Opens a Checkout Session for the selected proposal's total quote.
    *
    * Everything the webhook will need rides on the PaymentIntent's metadata
    * (Session metadata does not propagate to it). The same hireability checks
@@ -134,12 +135,12 @@ export class HireFundingService {
     if (job.client_id !== user.id) throw new ForbiddenException('Not your job');
     await this.applications.assertHireable({ ...application, jobs: job });
 
-    if (job.budget == null) {
+    if (application.quote_amount == null) {
       throw new BadRequestException(
-        'This job has no price to pay — hire the provider without payment instead',
+        'This proposal has no price to pay — hire the provider without payment instead',
       );
     }
-    const budget = Number(job.budget);
+    const budget = Number(application.quote_amount);
     if (budget < MIN_TOPUP_PHP || budget > MAX_TOPUP_PHP) {
       throw new BadRequestException({
         message: `Card payments must be between ${peso(MIN_TOPUP_PHP)} and ${peso(MAX_TOPUP_PHP)}`,
@@ -442,10 +443,11 @@ export class HireFundingService {
     }
     if (
       payment.currency !== CURRENCY ||
-      job.budget == null ||
-      payment.amountCentavos !== Math.round(Number(job.budget) * 100)
+      application.quote_amount == null ||
+      payment.amountCentavos !==
+        Math.round(Number(application.quote_amount) * 100)
     ) {
-      return refuse('the amount paid does not match the job budget');
+      return refuse('the amount paid does not match the proposal quote');
     }
     if (!(await this.providerIsVerified(provider_id, job.category_id))) {
       return refuse(
@@ -455,7 +457,7 @@ export class HireFundingService {
 
     // ── 4. Hold ────────────────────────────────────────────────────────────
     try {
-      await this.escrow.hold(job_id, provider_id, payment.funding);
+      await this.escrow.holdProposal(application_id, amount, payment.funding);
     } catch (err) {
       if (isMoneyRefusal(err)) return refuse((err as Error).message);
       throw err;
@@ -579,7 +581,7 @@ export class HireFundingService {
     const { data, error } = await this.supabase.admin
       .from('job_applications')
       .select(
-        'id, job_id, provider_id, status, jobs(id, title, status, client_id, budget, category_id)',
+        'id, job_id, provider_id, status, quote_amount, jobs(id, title, status, client_id, budget, category_id)',
       )
       .eq('id', applicationId)
       .maybeSingle();

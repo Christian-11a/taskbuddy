@@ -30,6 +30,44 @@ export interface PriceOption {
   max: number;
 }
 
+/** A narrow, sourced local reference. An unmatched job gets no market claim. */
+export interface LaborGuide {
+  min: number;
+  max: number;
+  area: string;
+  scope: string;
+  basis: string;
+}
+
+export const ROSARIO_CLEANING_SCOPE =
+  'Basic cleaning: 2 bedrooms + 1 bathroom (up to 2 hours)';
+
+// A September 2026 Rosario client listing offered ₱700–₱1,000 for this exact
+// scope: https://www.reddit.com/r/classifiedsph/comments/1w8mhfo/looking_for_room_and_bathroom_cleaner/
+// This is a posted budget reference, not a measured market average. Do not
+// extend it to other Batangas towns, deeper cleans or extra tasks.
+export function laborGuide(
+  category: string,
+  address: string,
+  tasks: string[],
+): LaborGuide | null {
+  if (
+    category !== 'Cleaning' ||
+    tasks.length !== 1 ||
+    tasks[0] !== ROSARIO_CLEANING_SCOPE
+  )
+    return null;
+  if (!/\brosario\b/i.test(address) || !/\bbatangas\b/i.test(address))
+    return null;
+  return {
+    min: 700,
+    max: 1000,
+    area: 'Rosario, Batangas',
+    scope: 'Basic cleaning of 2 bedrooms and 1 bathroom, up to 2 hours',
+    basis: 'Local posted budget, September 2026',
+  };
+}
+
 export interface PriceInputs {
   basePrice: number;
   urgencyMultiplier: number;

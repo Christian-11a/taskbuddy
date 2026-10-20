@@ -43,7 +43,7 @@ describe('the messages', () => {
     expect(fieldError('tasks', blank, NOW)).toBe('Pick at least one task so providers know what the job involves.');
     expect(fieldError('date', blank, NOW)).toBe('Please select a preferred date.');
     expect(fieldError('time', blank, NOW)).toBe('Please select a preferred time.');
-    expect(fieldError('budget', blank, NOW)).toBe('Please pick a price for this job.');
+    expect(fieldError('budget', blank, NOW)).toBe('Enter a starting budget from ₱50 to ₱100,000.');
   });
 
   it('treats a blank location as missing', () => {
@@ -81,8 +81,9 @@ describe('the messages', () => {
 });
 
 describe('the price', () => {
-  it('asks the client to pick one of the estimated prices', () => {
-    expect(fieldError('budget', { ...blank, budget: '' }, NOW)).toBe('Please pick a price for this job.');
+  it('requires a valid editable starting budget', () => {
+    expect(fieldError('budget', { ...blank, budget: '' }, NOW)).toBe('Enter a starting budget from ₱50 to ₱100,000.');
+    expect(fieldError('budget', { ...blank, budget: '49' }, NOW)).toBe('Enter a starting budget from ₱50 to ₱100,000.');
     expect(fieldError('budget', { ...blank, budget: '1200' }, NOW)).toBeUndefined();
   });
 });

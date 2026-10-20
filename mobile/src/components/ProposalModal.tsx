@@ -6,6 +6,7 @@ import Tap from './ui/Tap';
 import SheetFrame from './ui/SheetFrame';
 import TextField from './ui/TextField';
 import { cleanText, validateText } from '../lib/textRules';
+import { peso } from '../lib/format';
 import { feeRows, type JobFee } from '../lib/feeBreakdown';
 
 /** Matches ApplyDto.cover_message's MaxLength on the backend. */
@@ -19,7 +20,7 @@ export const PROPOSAL_MIN_LENGTH = 20;
 /** Said wherever a proposal is blocked for want of a payout account. */
 export const PAYOUT_NOTE = 'Link a GCash, Maya or bank account to send proposals';
 
-const TIPS = ['When you can come', "What's included (tools, parts)", "Similar jobs you've done"];
+const TIPS = ['When you can come', 'How you will handle the listed tasks', "Similar jobs you've done"];
 
 /** Why the message can't be sent yet, or null. Spaces at either end do not count. */
 export function proposalError(message: string): string | null {
@@ -51,7 +52,7 @@ interface ProposalModalProps {
   /** The server refused with `certificate_required` (the error holds its message): show it and a way to upload the certificate. */
   certificateRequired?: boolean;
   onUploadCertificate?: () => void;
-  onSubmit: (message: string) => void;
+  onSubmit: (message: string, quoteAmount: number) => void;
   onCancel: () => void;
 }
 
@@ -66,15 +67,24 @@ export default function ProposalModal({
 }: ProposalModalProps) {
   const { C, styles, V6Colors, Colors, appearance } = useThemedStyles(createThemedStyles);
   const [message, setMessage] = useState('');
+  const [quoteMode, setQuoteMode] = useState<'accept' | 'different'>('accept');
+  const [quoteInput, setQuoteInput] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const messageRef = useRef<TextInput>(null);
 
   useEffect(() => {
     if (visible) {
       setMessage('');
+      setQuoteMode(Number(jobBudget) > 0 ? 'accept' : 'different');
+      setQuoteInput('');
       setSubmitted(false);
     }
-  }, [visible]);
+  }, [visible, jobBudget]);
+
+  const quoteAmount = quoteMode === 'accept' ? Number(jobBudget) : Number(quoteInput);
+  const quoteValid = quoteMode === 'accept'
+    ? Number.isFinite(quoteAmount) && quoteAmount >= 50 && quoteAmount <= 100000
+    : /^\d+(?:\.\d{1,2})?$/.test(quoteInput.trim()) && quoteAmount >= 50 && quoteAmount <= 100000;
 
   const trySend = () => {
     if (!canSendProposal(message)) {
@@ -82,10 +92,11 @@ export default function ProposalModal({
       messageRef.current?.focus();
       return;
     }
-    onSubmit(cleanText(message));
+    if (!quoteValid) { setSubmitted(true); return; }
+    onSubmit(cleanText(message), quoteAmount);
   };
 
-  const breakdown = feeRows(jobBudget, fee);
+  const breakdown = quoteMode === 'accept' ? feeRows(jobBudget, fee) : null;
   const ready = canSendProposal(message);
   // Shown once the field is left or Send is tapped, never while the first words are being typed.
   const messageError = proposalError(message) ?? undefined;
@@ -97,6 +108,30 @@ export default function ProposalModal({
     <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.sheet}>
       <Text style={styles.title} accessibilityRole="header">Send a proposal</Text>
       {!!jobTitle && <Text style={styles.forJob} numberOfLines={2}>{`For "${jobTitle}"`}</Text>}
+
+      <View style={styles.quoteChoices}>
+        {Number(jobBudget) > 0 && (
+          <Tap style={[styles.quoteChoice, quoteMode === 'accept' && styles.quoteChoiceSelected]} onPress={() => setQuoteMode('accept')} accessibilityRole="button" accessibilityLabel={`Accept posted budget ${peso(jobBudget)}`}>
+            <Text style={styles.feeValue}>Accept posted budget · {peso(jobBudget)}</Text>
+          </Tap>
+        )}
+        <Tap style={[styles.quoteChoice, quoteMode === 'different' && styles.quoteChoiceSelected]} onPress={() => setQuoteMode('different')} accessibilityRole="button" accessibilityLabel="Quote a different total">
+          <Text style={styles.feeValue}>Quote a different total</Text>
+        </Tap>
+      </View>
+
+      {quoteMode === 'different' && (
+        <TextField
+          label="Your total quote (₱)"
+          value={quoteInput}
+          onChangeText={setQuoteInput}
+          keyboardType="decimal-pad"
+          placeholder="Enter one total amount"
+          error={submitted && !quoteValid ? 'Enter ₱50 to ₱100,000.' : undefined}
+          submitted={submitted}
+          testID="proposal-quote"
+        />
+      )}
 
       {!!breakdown && (
         <View style={styles.fee} accessible accessibilityLabel={breakdown.summary} testID="proposal-fee">
@@ -114,6 +149,9 @@ export default function ProposalModal({
           </View>
           <Text style={styles.feeNote}>{`You receive ${breakdown.receives} when the client confirms the job is done`}</Text>
         </View>
+      )}
+      {quoteMode === 'different' && quoteValid && (
+        <Text style={styles.notice}>Your proposed total is {peso(quoteAmount)}. The platform fee will be deducted from this amount.</Text>
       )}
 
       <View style={styles.tips}>
@@ -214,6 +252,9 @@ function createThemedStyles(theme: ThemePalette) {
     sheet: { paddingHorizontal: 20, gap: 14 },
     title: { color: C.ink900, fontSize: 20, fontWeight: '700', lineHeight: 26, fontFamily: 'Inter' },
     forJob: { color: C.ink500, fontSize: 13, lineHeight: 18, fontFamily: 'Inter', marginTop: -6 },
+    quoteChoices: { gap: 8 },
+    quoteChoice: { borderWidth: 1, borderColor: C.line, borderRadius: 12, padding: 12 },
+    quoteChoiceSelected: { borderColor: Colors.primary, backgroundColor: C.wellBg },
 
     fee: { backgroundColor: C.wellBg, borderRadius: 14, padding: 14, gap: 8 },
     feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },

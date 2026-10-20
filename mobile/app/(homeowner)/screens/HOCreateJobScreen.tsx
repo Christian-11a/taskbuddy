@@ -96,7 +96,7 @@ import { useAsyncData } from '../../../src/hooks/useAsyncData';
 import { isList } from '../../../src/lib/savedShapes';
 import { SEVEN_DAYS_MS } from '../../../src/lib/persistentCache';
 import { useScreenBackHandler } from '../../../src/hooks/useLeaveGuard';
-import { ApiError, api, type GeocodedAddress, type PriceOption } from '../../../src/lib/api';
+import { ApiError, api, type GeocodedAddress, type LaborGuide } from '../../../src/lib/api';
 import { peso } from '../../../src/lib/format';
 import PhotoViewer from '../../../src/components/PhotoViewer';
 import ConfirmationModal from '../../../src/components/ConfirmationModal';
@@ -113,8 +113,7 @@ import PostingChecklist, { type PostingStep } from '../../../src/components/post
 import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
-import PriceOptionRow from '../../../src/components/post/PriceOptionRow';
-import { effortFor, TIER_FOR_URGENCY, type PriceTier } from '../../../src/lib/taskEffort';
+import { effortFor, TIER_FOR_URGENCY } from '../../../src/lib/taskEffort';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
@@ -167,6 +166,7 @@ const TASK_PRESETS: Record<string, string[]> = {
     'Check water heater',
   ],
   Cleaning: [
+    'Basic cleaning: 2 bedrooms + 1 bathroom (up to 2 hours)',
     'General house cleaning',
     'Deep clean',
     'Kitchen cleaning',
@@ -258,17 +258,16 @@ export default function HOCreateJobScreen({
   const [tempTime, setTempTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  // The tier set from the urgency once the estimate lands, and its amount as the server last priced it.
-  // `budget` stays the form's amount so the review and rules read one value.
-  const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
-  const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
+  const [budget, setBudget] = useState('');
+  const [budgetEdited, setBudgetEdited] = useState(false);
+  const [suggestedAmount, setSuggestedAmount] = useState<number | null>(null);
+  const [laborGuide, setLaborGuide] = useState<LaborGuide | null>(null);
   // The message for a failed price request: a connection problem, or a server error.
   const [priceError, setPriceError] = useState<string | null>(null);
   // Bumped by "Try again" to re-request the price options after a failure.
   const [priceRetry, setPriceRetry] = useState(0);
   // True while an estimate for the current price inputs is in flight. Next waits on it (see stepBusy).
   const [priceLoading, setPriceLoading] = useState(false);
-  const budget = priceOptions?.find((o) => o.tier === priceTier)?.amount.toString() ?? '';
   const [photos, setPhotos] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [urgency, setUrgency] = useState<'urgent' | 'normal' | 'flexible'>('normal');
   const [calendarMonth, setCalendarMonth] = useState<string | undefined>(undefined);
@@ -304,40 +303,38 @@ export default function HOCreateJobScreen({
 
   const scheduledAt = date && time ? combineDateAndTime(date, time) : null;
 
-  // Re-price whenever what drives the price changes: the service, the
-  // checklist (more and heavier tasks cost more) and the urgency.
+  // Refresh guidance when the task, location or timing changes. Keep a budget
+  // the client edited instead of silently replacing their offer.
   const taskEfforts = tasks.map(effortFor);
-  const priceKey = `${categoryId}|${urgency}|${taskEfforts.join(',')}`;
+  const guideAddress = resolvedCoordinates && geocodedAddress === location ? location : '';
+  const priceKey = `${categoryId}|${urgency}|${guideAddress}|${tasks.join('|')}`;
   useEffect(() => {
-    // The old options and the tier picked from them belong to the previous
-    // inputs, so both are dropped now; Next waits until the new estimate lands.
-    setPriceOptions(null);
-    setPriceTier(null);
+    setSuggestedAmount(null);
+    setLaborGuide(null);
     if (!categoryId) { setPriceLoading(false); return; }
     let live = true;
     setPriceLoading(true);
     setPriceError(null);
-    api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
+    api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts, address: guideAddress, tasks })
       .then((res) => {
         if (!live) return;
-        // One price per urgency, so the tier is set here, never picked. An answer
-        // without that tier cannot be posted: treat it like a failed estimate.
         const tier = TIER_FOR_URGENCY[urgency];
         setPriceLoading(false);
-        if (!res.options.some((option) => option.tier === tier)) {
-          setPriceOptions(null);
+        const option = res.options.find((item) => item.tier === tier);
+        if (!option) {
           setPriceError("Prices aren't available right now. Please try again in a moment.");
           return;
         }
-        setPriceOptions(res.options);
-        setPriceTier(tier);
+        setSuggestedAmount(option.amount);
+        setLaborGuide(res.guide);
+        if (!budgetEdited) setBudget(String(res.guide ? Math.round((res.guide.min + res.guide.max) / 2) : option.amount));
       })
       .catch((err) => {
         if (!live) return;
         // An ApiError with a real HTTP status came from the server; anything
         // else (status 0 or no ApiError at all) means no response arrived.
         const serverError = err instanceof ApiError && err.status > 0;
-        setPriceOptions(null);
+        setSuggestedAmount(null);
         setPriceLoading(false);
         setPriceError(serverError
           ? "Prices aren't available right now. Please try again in a moment."
@@ -601,7 +598,7 @@ export default function HOCreateJobScreen({
         address: location.trim(),
         latitude: resolvedCoordinates!.latitude,
         longitude: resolvedCoordinates!.longitude,
-        price_tier: priceTier!,
+        budget: Number(budget),
         scheduled_at: scheduledAt!.toISOString(),
         photo_urls,
         tasks,
@@ -659,7 +656,7 @@ export default function HOCreateJobScreen({
   const typedLocation = location.trim() !== '' && location.trim() !== (profile?.address ?? '').trim();
   const hasProgress = Boolean(
     categoryId || titleTouched || descriptionTouched || typedLocation || tasks.length || customTask.trim() ||
-    date || time || priceTier || photos.length,
+    date || time || budget || photos.length,
   );
 
   const handleStepBack = () => {
@@ -695,7 +692,8 @@ export default function HOCreateJobScreen({
     setCustomTask('');
     setDate(null);
     setTime(null);
-    setPriceTier(null);
+    setBudget('');
+    setBudgetEdited(false);
     setPhotos([]);
     setPhotoMessage(null);
     setUrgency('normal');
@@ -1142,15 +1140,27 @@ export default function HOCreateJobScreen({
             </View>
 
             <View onLayout={(event) => { fieldPositions.current.budget = event.nativeEvent.layout.y; }} style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Price</Text>
-              <Text style={styles.budgetHint}>
-                Estimated from your tasks and how soon you need it. Urgent and heavier jobs cost more.
-              </Text>
+              {laborGuide && (
+                <View style={styles.priceOptions}>
+                  <Text style={styles.inputLabel}>Suggested labor range: {peso(laborGuide.min)}–{peso(laborGuide.max)}</Text>
+                  <Text style={styles.budgetHint}>{laborGuide.scope} · {laborGuide.area}. {laborGuide.basis}; your provider sets the final quote.</Text>
+                </View>
+              )}
+              {!laborGuide && suggestedAmount !== null && (
+                <Text style={styles.budgetHint}>TaskBuddy starting suggestion: {peso(suggestedAmount)}. This is an estimate, not a local market rate.</Text>
+              )}
               <View style={styles.priceOptions}>
-                {priceOptions?.filter((option) => option.tier === TIER_FOR_URGENCY[urgency]).map((option) => (
-                  <PriceOptionRow key={option.tier} option={option} selected onSelect={() => {}} />
-                ))}
-                {!priceOptions && !priceError && <ActivityIndicator />}
+                <TextField
+                  label="Your starting budget (₱)"
+                  value={budget}
+                  onChangeText={(value) => { setBudget(value); setBudgetEdited(true); clearError('budget'); }}
+                  keyboardType="decimal-pad"
+                  placeholder="Enter an amount"
+                  error={fieldErrors.budget}
+                  submitted
+                  testID="create-job-budget"
+                />
+                {priceLoading && <ActivityIndicator />}
                 {priceError && (
                   <View style={styles.priceRetryRow}>
                     <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">
@@ -1167,8 +1177,7 @@ export default function HOCreateJobScreen({
                   </View>
                 )}
               </View>
-              {!!fieldErrors.budget && <Text style={styles.inputErrorText} accessibilityLiveRegion="polite">{fieldErrors.budget}</Text>}
-              <Text style={styles.budgetHint}>You only pay when you hire. It's held safely until the job is done.</Text>
+              <Text style={styles.budgetHint}>Providers may accept this budget or quote a different total. You pay only when you hire.</Text>
             </View>
           </View>
         )}

@@ -53,6 +53,9 @@ function application(overrides: Partial<JobApplication> & { id: string }): JobAp
     status: 'pending',
     source: 'organic',
     cover_message: 'I can come Friday evening.',
+    quote_amount: 1000,
+    posted_budget: 1000,
+    fee: { rate: 0.15, amount: 150, provider_receives: 850 },
     applied_at: TWO_HOURS_AGO,
     decided_at: null,
     provider: {
@@ -69,6 +72,9 @@ function application(overrides: Partial<JobApplication> & { id: string }): JobAp
 const pendingApp = application({ id: 'app-1' });
 
 function mockJob(budget: number | null, scheduledAt: string | null = null) {
+  pendingApp.quote_amount = budget;
+  pendingApp.posted_budget = budget;
+  pendingApp.fee = budget == null ? null : { rate: 0.15, amount: budget * 0.15, provider_receives: budget * 0.85 };
   (api.getJob as jest.Mock).mockResolvedValue({
     id: 'job-1',
     title: 'Window cleaning',
@@ -138,6 +144,26 @@ describe('HOJobApplicationsScreen: the proposals list', () => {
     expect(
       screen.getByText('Pick one provider. You only pay when you hire, and the money is held safely until the job is done.'),
     ).toBeTruthy();
+  });
+
+  it('shows a provider counterquote and charges that quote at hire', async () => {
+    (api.jobApplications as jest.Mock).mockResolvedValue([
+      application({
+        id: 'app-1',
+        quote_amount: 1250,
+        posted_budget: 1000,
+        fee: { rate: 0.15, amount: 187.5, provider_receives: 1062.5 },
+      }),
+    ]);
+    await renderScreen();
+
+    expect(await screen.findByText('Total quote: ₱1,250.00')).toBeTruthy();
+    expect(screen.getByText('Your posted budget: ₱1,000.00')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Hire Alex Reyes for this job' }));
+    fireEvent.press(await screen.findByRole('radio', { name: /₱1,250.00/ }));
+    fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
+    expect(screen.getByText('₱1,062.50')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,250.00' })).toBeTruthy();
   });
 
   it('a job with a scheduled date shows the day in the summary', async () => {
@@ -295,7 +321,7 @@ describe('HOJobApplicationsScreen: the provider profile from a proposal', () => 
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     expect(api.createHireCheckoutSession).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
     await waitFor(() => expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1));
     expect(api.createHireCheckoutSession).toHaveBeenCalledWith({ application_id: 'app-1', app_redirect: 'taskbuddy://hire' });
@@ -314,7 +340,7 @@ describe('HOJobApplicationsScreen: the hired screen', () => {
     fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
     await screen.findByRole('header', { name: 'Alex Reyes is hired!' }, { timeout: 5000 });
   }
 
@@ -356,7 +382,7 @@ describe('HOJobApplicationsScreen: the hired screen', () => {
     fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
     expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' }, { timeout: 5000 })).toBeTruthy();
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
@@ -375,11 +401,11 @@ describe('HOJobApplicationsScreen: the hired screen', () => {
     fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
     expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
     // Still on the sheet's confirm page, so the payment can be confirmed again or backed out of.
-    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' })).toBeTruthy();
     // The screen's own Back arrow is labelled too and stays in the tree behind the sheet, so look for Back inside the open sheet.
     const openSheet = screen.UNSAFE_getAllByType(Modal).find((modal) => modal.props.visible === true);
     expect(within(openSheet!).getByRole('button', { name: 'Back' })).toBeTruthy();
@@ -402,7 +428,7 @@ describe('HOJobApplicationsScreen: a hire made from the profile', () => {
       fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes' }));
       fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
       fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-      fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+      fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
       expect(await screen.findByRole('header', { name: 'Alex Reyes is hired!' }, { timeout: 5000 })).toBeTruthy();
       expect(remove).toHaveBeenCalled();
@@ -474,7 +500,7 @@ describe('HOJobApplicationsScreen: paying for a hire', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     expect(api.createHireCheckoutSession).not.toHaveBeenCalled();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
     await waitFor(() => expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1));
     expect(api.acceptApplication).not.toHaveBeenCalled();
@@ -526,7 +552,7 @@ describe('HOJobApplicationsScreen: a hire cannot be submitted twice', () => {
     fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    return screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' });
+    return screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' });
   }
 
   it('two taps on Confirm and hire inside one act() accept a no-budget hire once, and say the payment is still being processed', async () => {
@@ -586,10 +612,10 @@ describe('HOJobApplicationsScreen: a hire cannot be submitted twice', () => {
     (openRedirectSession as jest.Mock).mockResolvedValue({ type: 'success', url: 'taskbuddy://hire?hire=cancelled' });
     await confirmCardHire();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
     expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
     await waitFor(() => expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(2));
     expect(showToast).not.toHaveBeenCalled();
   });
@@ -617,7 +643,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     fireEvent.press(await screen.findByRole('button', { name: 'Hire Alex Reyes for this job' }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
   }
 
   async function passTime(ms: number) {
@@ -705,7 +731,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
     expect(await screen.findByText('Payment was cancelled.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Check payment status' })).toBeNull();
     expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' })).toBeTruthy();
     expect(api.jobApplications).toHaveBeenCalledTimes(1);
   });
 
@@ -766,7 +792,7 @@ describe('HOJobApplicationsScreen: a card payment the server has not confirmed y
 
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
     await passTime(FULL_WAIT_MS);
 
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(2);
@@ -856,7 +882,7 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     fireEvent.press(await screen.findByRole('button', { name: HIRE_ALEX, disabled: false }));
     fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
   }
 
   /** A card payment the browser reports as paid, then the wait the server has not decided yet. */
@@ -974,7 +1000,7 @@ describe('HOJobApplicationsScreen: a card payment waits across leaving the scree
     fireEvent.press(screen.getByRole('button', { name: 'Check payment status' }));
 
     expect(await screen.findByText('This payment was not confirmed within 24 hours, so it is no longer waiting.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' })).toBeTruthy();
     expect(screen.queryByText(STILL_CONFIRMING)).toBeNull();
     await waitFor(async () => expect(await storedWaits()).toEqual({}));
     expect(api.createHireCheckoutSession).toHaveBeenCalledTimes(1);
@@ -1281,7 +1307,7 @@ it('a hire the server refuses with a 409 at the provider limit opens a capacity 
   fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
   fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
   await act(async () => {
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
   });
 
   expect(await screen.findByText('This provider is unavailable')).toBeTruthy();
@@ -1299,7 +1325,7 @@ it('a hire refused with 409 provider_not_certified opens the one-button dialog w
   fireEvent.press(await screen.findByRole('radio', { name: ONLINE }));
   fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
   await act(async () => {
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
   });
 
   expect(await screen.findByText("This provider can't be hired for this service yet.")).toBeTruthy();

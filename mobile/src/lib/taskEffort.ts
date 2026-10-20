@@ -7,6 +7,7 @@ export type PriceTier = 'basic' | 'standard' | 'premium';
  * wording. A task the client types themselves counts as moderate.
  */
 const EFFORT: Record<string, TaskEffort> = {
+  'Basic cleaning: 2 bedrooms + 1 bathroom (up to 2 hours)': 'moderate',
   'Fix leaking faucet': 'moderate',
   'Unclog drain': 'moderate',
   'Repair or replace pipes': 'heavy',
