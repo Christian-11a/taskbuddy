@@ -722,6 +722,12 @@ Done button, so it can no longer start a second charge. The wallet also supports
 > cold or rate-limited ML service into a clear 503 with one retry. They are listed, with ids `UAT-B1` to `UAT-B6` (B4 is info only), in
 > [`docs/backend-handoff-uat-blockers-2026-10-20.md`](../docs/backend-handoff-uat-blockers-2026-10-20.md).
 
+> **2026-10-20 job location:** `POST /jobs` now takes the signed `location_reference` (UAT-B2, live) and the app sends it, so a GPS or
+> suggestion address posts at its pin. Five follow-ups remain: place a job at the saved profile point (JL-1), a longer reference
+> lifetime (JL-2), an optional house no./unit/landmark field (JL-3), a reference from `/jobs/geocode` (JL-4) and letting a provider
+> verify a typed start address in Accept booking (JL-5), in
+> [`docs/backend-handoff-job-location-2026-10-20.md`](../docs/backend-handoff-job-location-2026-10-20.md).
+
 > **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
 > recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
 > longer apply; see *Current state* at the top.
