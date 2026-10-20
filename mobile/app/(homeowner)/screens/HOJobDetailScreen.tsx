@@ -43,6 +43,7 @@ import { useThemedStyles, type Palette as ThemePalette } from '../../../src/cont
 import { Spacing } from '../../../src/constants/theme';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useAsyncData } from '../../../src/hooks/useAsyncData';
+import { useSlowLoad } from '../../../src/hooks/useSlowLoad';
 import { HOScreen } from '../../../src/types/navigation';
 import { api, ApiError, type Job, type JobApplication, type JobChangeRequest, type ProviderCard } from '../../../src/lib/api';
 import ScheduleChangeCard from '../../../src/components/ScheduleChangeCard';
@@ -80,6 +81,8 @@ const HIT_SLOP = { top: 2, bottom: 2, left: 2, right: 2 };
 const AUTO_INVITE_HINT = 'We also invite matched providers automatically if nobody applies soon.';
 /** Said when a tap lands while the last action on this job is still running. */
 const BUSY_MESSAGE = 'Still working on your last request. Please wait.';
+/** Under the proposals while Find providers has run a while: the matching service sleeps on the free tier. */
+const FINDING_SLOW_MESSAGE = 'Waking up the matching service. This can take up to a minute.';
 
 /** Button text for an action, in the main slot or as the link under it. */
 function actionLabel(action: Action, slot: 'main' | 'link'): string {
@@ -143,6 +146,9 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [matchingMessage, setMatchingMessage] = useState<string | null>(null);
+  // Find providers only, not the other actions that share busy, so the waking line speaks of matching alone.
+  const [finding, setFinding] = useState(false);
+  const slowFinding = useSlowLoad(finding, false);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [photoIndex, setPhotoIndex] = useState<number | null>(null);
@@ -222,6 +228,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     setBusy(true);
     setActionError(null);
     setMatchingMessage(null);
+    setFinding(true);
     try {
       const result = await api.triggerRecommendations(job.id);
       setMatchingMessage(
@@ -235,6 +242,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
     } finally {
       inFlight.current = false;
       setBusy(false);
+      setFinding(false);
     }
   };
 
@@ -434,6 +442,7 @@ export default function HOJobDetailScreen({ jobId, onBack, onNavigate }: HOJobDe
                 onLinkPress={() => onNavigate('Job Applications', job.id)}
               />
               {!!matchingMessage && <Text style={styles.matchingMessage}>{matchingMessage}</Text>}
+              {slowFinding && <Text style={styles.muted}>{FINDING_SLOW_MESSAGE}</Text>}
               {pendingOffers.slice(0, 2).map((application) => (
                 <PersonCard
                   key={application.id}

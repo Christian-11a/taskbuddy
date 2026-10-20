@@ -830,10 +830,15 @@ interface RequestOptions {
    * nothing (QA #10).
    */
   skipRefreshOn401?: boolean;
+  /**
+   * Deadline for this request in ms; REQUEST_TIMEOUT_MS when left out. Only for a call the server is
+   * known to hold open longer, like Find providers waiting on a cold matching service.
+   */
+  timeoutMs?: number;
 }
 
 /**
- * Deadline for a JSON request, covering the response headers and the body, so
+ * Default deadline for a JSON request, covering the response headers and the body, so
  * a stalled connection cannot leave the screen spinning forever. Uploads keep
  * their own timeout in putMultipart.
  */
@@ -848,6 +853,7 @@ const REQUEST_TIMEOUT_MS = 30_000;
 async function fetchWithDeadline(
   url: string,
   init: Omit<RequestInit, 'signal'>,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<{ response: Response; text: string }> {
   const controller = new AbortController();
   const noResponse = () =>
@@ -857,7 +863,7 @@ async function fetchWithDeadline(
     timer = setTimeout(() => {
       controller.abort();
       reject(noResponse());
-    }, REQUEST_TIMEOUT_MS);
+    }, timeoutMs);
   });
   const exchange = (async () => {
     const response = await fetch(url, { ...init, signal: controller.signal });
@@ -878,7 +884,7 @@ async function rawRequest<T>(
   path: string,
   options: RequestOptions,
 ): Promise<T> {
-  const { method = 'GET', body, accessToken } = options;
+  const { method = 'GET', body, accessToken, timeoutMs } = options;
 
   // Resolves on the first call of the app's life, then returns a settled
   // promise — so this costs one probe, not one per request.
@@ -893,7 +899,7 @@ async function rawRequest<T>(
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+  }, timeoutMs);
   let data: any = null;
   try {
     data = text ? JSON.parse(text) : null;
@@ -1409,7 +1415,8 @@ export const api = {
   triggerRecommendations(jobId: string) {
     return authRequest<RecommendationTriggerResult>(
       `/jobs/${jobId}/recommendations/trigger`,
-      { method: 'POST' },
+      // The backend waits up to 75 s for a cold matching service, so the 30 s default gave up first (UAT item 8).
+      { method: 'POST', timeoutMs: 90_000 },
     );
   },
 
