@@ -100,6 +100,8 @@ export type { AdminProfile };
 const LIST_PAGE_SIZE = 200;
 /** Safety stop: 25 × 200 = 5,000 rows per list. */
 const MAX_LIST_PAGES = 25;
+/** The credentials list rejects a page larger than 100 rows with a 400 (credentials.dto.ts, @Max(100)). */
+const CREDENTIALS_PAGE_SIZE = 100;
 /**
  * Pages requested at once after the first one (the first reports `total`, which
  * sizes the rest). Six keeps a full 5,000-row list to about five round trips
@@ -1471,7 +1473,7 @@ export async function getVerificationHistory(): Promise<VerificationHistoryEntry
   const results = ["approved", "rejected"] as const;
   const [identity, certs] = await Promise.all([
     Promise.all(results.map((st) => fetchAllRows<AdminVerificationApiRow>(`/admin/verifications?status=${st}&include_documents=false`, "verifications"))),
-    Promise.all(results.map((st) => fetchAllRows<AdminCredentialApiRow>(`/admin/credentials?status=${st}`, "credentials"))),
+    Promise.all(results.map((st) => fetchAllRows<AdminCredentialApiRow>(`/admin/credentials?status=${st}`, "credentials", CREDENTIALS_PAGE_SIZE))),
   ]);
   const entries: VerificationHistoryEntry[] = [];
   for (const row of identity.flat()) {

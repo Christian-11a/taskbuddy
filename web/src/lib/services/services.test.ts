@@ -1683,4 +1683,23 @@ describe("getVerificationHistory", () => {
       ["c:c-old", "expired"],
     ]);
   });
+
+  it("asks the credentials list for no more than 100 rows a page (the API rejects more with a 400)", async () => {
+    const urls: string[] = [];
+    global.fetch = vi.fn((url: string) => {
+      urls.push(String(url));
+      const u = String(url);
+      const limit = Number(/limit=(\d+)/.exec(u)?.[1] ?? 0);
+      if (u.includes("/admin/credentials") && limit > 100) {
+        return Promise.resolve(jsonResponse({ message: ["limit must not be greater than 100"], error: "Bad Request", statusCode: 400 }, 400));
+      }
+      return Promise.resolve(jsonResponse(u.includes("/admin/credentials") ? { credentials: [], total: 0 } : { verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+
+    await expect(services.getVerificationHistory()).resolves.toEqual([]);
+
+    const credentialUrls = urls.filter((u) => u.includes("/admin/credentials"));
+    expect(credentialUrls.length).toBeGreaterThan(0);
+    for (const u of credentialUrls) expect(Number(/limit=(\d+)/.exec(u)?.[1])).toBeLessThanOrEqual(100);
+  });
 });
