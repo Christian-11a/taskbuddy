@@ -7,7 +7,7 @@ import { BrushCleaning, Footprints, Hammer, Wrench } from 'lucide-react-native';
 import HOCreateJobScreen from '../HOCreateJobScreen';
 import ServiceTile from '../../../../src/components/post/ServiceTile';
 import NailPolishIcon from '../../../../src/components/ui/icons/NailPolishIcon';
-import { api } from '../../../../src/lib/api';
+import { api, ApiError } from '../../../../src/lib/api';
 import { showToast } from '../../../../src/components/Toast';
 import { isBackBlockedByScreen } from '../../../../src/hooks/useLeaveGuard';
 import { expectSavedCopyIgnored } from '../../../../src/testing/savedCopy';
@@ -19,7 +19,7 @@ jest.mock('../../../../src/lib/api', () => ({
   },
   api: {
     categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
-    estimatePrice: jest.fn(),
+    estimatePrice: jest.fn(), geocodeAddress: jest.fn(),
   },
 }));
 const PRICE_OPTIONS = [
@@ -347,6 +347,69 @@ it('a post that failed can be tried again, without any notice about a repeated t
   expect(await screen.findByText('Job posted!')).toBeTruthy();
   expect(api.createJob).toHaveBeenCalledTimes(2);
   expect(showToast).not.toHaveBeenCalled();
+});
+
+describe('HOCreateJobScreen — posting cannot place the address', () => {
+  const ADDRESS_MESSAGE = "We couldn't match that address exactly. Check the house number, street and city.";
+
+  /** Fills the job in, presses Post job, and lets createJob fail once with `err`. */
+  const postAndFailWith = async (err: Error) => {
+    jest.clearAllMocks();
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+    (api.createJob as jest.Mock).mockRejectedValueOnce(err);
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed');
+    await reachReview();
+    await act(async () => fireEvent.press(screen.getByText('Post job')));
+  };
+
+  it('a 400 about the address sends the client back to Where, with the message under the field', async () => {
+    await postAndFailWith(new ApiError(ADDRESS_MESSAGE, 400));
+
+    expect(await screen.findByText('Where is the job?')).toBeTruthy();
+    expect(screen.queryByTestId('create-job-review')).toBeNull();
+    // Once, under the field: no banner repeats it.
+    expect(screen.getAllByText(/We couldn't match that address exactly/)).toHaveLength(1);
+    expect(screen.getByText(/Pick a suggestion from the list, or edit the address\./)).toBeTruthy();
+    expect(screen.queryByText('Location confirmed')).toBeNull();
+    // The address the client had is kept for them to fix.
+    expect(screen.getByDisplayValue('Quezon City')).toBeTruthy();
+    expect(api.createJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('the message goes away as soon as the client edits the address', async () => {
+    await postAndFailWith(new ApiError(ADDRESS_MESSAGE, 400));
+    await screen.findByText('Where is the job?');
+    expect(screen.getAllByText(/We couldn't match that address exactly/)).toHaveLength(1);
+
+    fireEvent.changeText(screen.getByTestId('create-job-address'), 'Quezon City Hall, Elliptical Road');
+
+    await waitFor(() => expect(screen.queryByText(/We couldn't match that address exactly/)).toBeNull());
+  });
+
+  it('after the bounce, Next checks the address again and moves on once it is placed', async () => {
+    await postAndFailWith(new ApiError(ADDRESS_MESSAGE, 400));
+    await screen.findByText('Where is the job?');
+    (api.geocodeAddress as jest.Mock).mockResolvedValueOnce({ latitude: 14.61, longitude: 121.01 });
+
+    await act(async () => fireEvent.press(screen.getByText('Next')));
+
+    expect(api.geocodeAddress).toHaveBeenCalledWith('Quezon City');
+    expect(await screen.findByText('Fix leaking faucet')).toBeTruthy();
+    expect(screen.queryByText(/We couldn't match that address exactly/)).toBeNull();
+  });
+
+  it.each([
+    ['a 400 about another field', new ApiError('title must be longer than or equal to 5 characters', 400)],
+    ['a 503 that mentions the address', new ApiError('Address lookup is not configured', 503)],
+    ['a plain error with the address text', new Error(ADDRESS_MESSAGE)],
+  ])('%s keeps the client on Review with the message', async (_label, err) => {
+    await postAndFailWith(err);
+
+    expect(await screen.findByText(err.message)).toBeTruthy();
+    expect(screen.getByTestId('create-job-review')).toBeTruthy();
+    expect(screen.queryByText('Where is the job?')).toBeNull();
+  });
 });
 
 /** Like reachReview, but picks an urgency first and waits for that urgency's one price. */

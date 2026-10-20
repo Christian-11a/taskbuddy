@@ -286,6 +286,8 @@ export default function HOCreateJobScreen({
   const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   // Set before the first await, so a second tap in the same frame cannot post the job twice.
   const postInFlight = useRef(false);
+  // The address text a post was just refused for (UAT-B2): its server message stays while that text is unchanged.
+  const refusedAddress = useRef<string | null>(null);
 
   const totalSteps = 5;
   const STEP_LABELS = ['Service', 'Where', 'Tasks', 'When & price', 'Review'];
@@ -381,7 +383,12 @@ export default function HOCreateJobScreen({
   // that has become valid loses its message the moment it changes. Nothing new
   // appears here: errors come from Next alone.
   useEffect(() => {
-    setFieldErrors((prev) => reviseStepErrors(prev, step, formValues(), new Date()));
+    // The server's refusal of the address stays while that text is unchanged: local rules accept it, so revising would drop it.
+    setFieldErrors((prev) =>
+      step === 2 && prev.location && refusedAddress.current === location
+        ? prev
+        : reviseStepErrors(prev, step, formValues(), new Date()),
+    );
   }, [step, categoryId, location, tasks, title, description, date, time, budget]);
   useEffect(() => {
     // Once only: "Post another job" clears the form back to step 1, and it
@@ -604,7 +611,17 @@ export default function HOCreateJobScreen({
     } catch (e) {
       const capacity = capacityConflictMessage(e);
       if (capacity) setCapacityNotice(capacity);
-      else setError(e instanceof Error ? e.message : 'Could not post the job.');
+      else if (e instanceof ApiError && e.status === 400 && /address|location/i.test(e.message)) {
+        // POST /jobs geocodes the address text again and can refuse one the app already confirmed
+        // (UAT-B2, docs/backend-handoff-uat-blockers-2026-10-20.md). Send the client back to the
+        // address instead of a dead end on Review. setStep, not goToStep: goToStep clears this error,
+        // and refusedAddress keeps the revise effect from dropping it, because local rules accept the text.
+        refusedAddress.current = location;
+        setResolvedCoordinates(null);
+        setGeocodedAddress('');
+        setFieldErrors((prev) => ({ ...prev, location: `${e.message} Pick a suggestion from the list, or edit the address.` }));
+        setStep(2);
+      } else setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
       postInFlight.current = false;
       setSubmitting(false);
