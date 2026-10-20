@@ -1,5 +1,9 @@
 # Backend handoff: proposal send fails, migration 0075 not live (2026-10-20)
 
+> **Status (2026-10-20):** `PQ-B1` was applied by hand in the Supabase SQL Editor (0075 run, then
+> `notify pgrst, 'reload schema';`). Re-sending a proposal from the app is the remaining check. The backend owner should
+> still confirm 0075 is recorded in their migration history so it is not re-applied or skipped on the next deploy.
+
 ## Symptom
 
 A provider opens a job, chooses "Quote a different total", enters ₱5,000 and taps **Send proposal**. The app shows:
