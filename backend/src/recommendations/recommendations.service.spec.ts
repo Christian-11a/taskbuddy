@@ -1,4 +1,8 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RecommendationsService } from './recommendations.service';
 import type { SupabaseService } from '../supabase/supabase.service';
@@ -81,13 +85,17 @@ function featureRow(
   };
 }
 
-function mockModelService(body: unknown, ok = true) {
-  return jest.fn().mockResolvedValue({
-    ok,
-    status: ok ? 200 : 503,
+function modelResponse(body: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
     json: () => Promise.resolve(body),
     text: () => Promise.resolve(JSON.stringify(body)),
-  });
+  };
+}
+
+function mockModelService(body: unknown, status = 200) {
+  return jest.fn().mockResolvedValue(modelResponse(body, status));
 }
 
 function writesTo(
@@ -300,40 +308,175 @@ describe('RecommendationsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('fails loudly when the model service is down', async () => {
-      // ml-service is not kept warm on the free tier. The job stays
-      // 'recommending' and the client can retry — silence here would leave it
-      // looking like nobody matched.
-      const { supabase, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
-      global.fetch = mockModelService({ detail: 'unavailable' }, false);
-      const service = new RecommendationsService(supabase, config);
+    it('retries a 429 once and scores when the model wakes up', async () => {
+      jest.useFakeTimers();
+      try {
+        const { supabase, rpc } = createSupabaseMock({
+          recommendation_runs: [{ data: { id: 'run1' }, error: null }],
+          recommendation_candidates: [{ data: null, error: null }],
+          notifications: [{ data: null, error: null }],
+        });
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        const fetchMock = jest
+          .fn()
+          .mockResolvedValueOnce(modelResponse({ detail: 'warming' }, 429))
+          .mockResolvedValueOnce(
+            modelResponse({ model_version: 'rf-a-v1', scores: [0.9] }),
+          );
+        global.fetch = fetchMock;
+        const service = new RecommendationsService(supabase, config);
 
-      await expect(
-        service.scoreJob('j1', 'Fix sink', 'timeout'),
-      ).rejects.toThrow(/Model service at http:\/\/[^ ]+ returned 503/);
+        const result = expect(
+          service.scoreJob('j1', 'Fix sink', 'timeout'),
+        ).resolves.toMatchObject({
+          run_id: 'run1',
+          pool_size: 1,
+        });
+        await jest.runAllTimersAsync();
+
+        await result;
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
-    it('bounds the call with a timeout and names the host when it fails', async () => {
-      // A hung scorer would otherwise hold the scheduler's `running` flag.
-      const { supabase, rpc } = createSupabaseMock({});
-      rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
-      const timeout = Object.assign(new Error('aborted'), {
-        name: 'TimeoutError',
-      });
-      const fetchMock = jest.fn().mockRejectedValue(timeout);
-      global.fetch = fetchMock;
-      const service = new RecommendationsService(supabase, config);
+    it('returns a clear 503 after two transient scorer responses', async () => {
+      jest.useFakeTimers();
+      try {
+        const { supabase, rpc } = createSupabaseMock({});
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        const fetchMock = mockModelService({ detail: 'warming' }, 429);
+        global.fetch = fetchMock;
+        const service = new RecommendationsService(supabase, config);
+        const logError = jest
+          .spyOn(service['logger'], 'error')
+          .mockImplementation(() => {});
 
-      await expect(
-        service.scoreJob('j1', 'Fix sink', 'timeout'),
-      ).rejects.toThrow(
-        /Model service at http:\/\/[^ ]+ unreachable: timed out/,
-      );
-      expect(
-        (fetchMock.mock.calls[0][1] as { signal?: AbortSignal }).signal,
-      ).toBeInstanceOf(AbortSignal);
+        const failure = service
+          .scoreJob('j1', 'Fix sink', 'timeout')
+          .catch((error: unknown) => error);
+        await jest.runAllTimersAsync();
+        const error = (await failure) as ServiceUnavailableException;
+
+        expect(error).toBeInstanceOf(ServiceUnavailableException);
+        expect(error.getStatus()).toBe(503);
+        expect(error.message).toBe(
+          'The matching service is waking up. Try again in a minute.',
+        );
+        expect(error.message).not.toContain('localhost');
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(logError).toHaveBeenCalledWith(
+          expect.stringContaining(
+            'Model service at http://localhost:8000 returned 429',
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
+
+    it.each([502, 503, 504])(
+      'returns the same 503 when the scorer remains down with %s',
+      async (status) => {
+        jest.useFakeTimers();
+        try {
+          const { supabase, rpc } = createSupabaseMock({});
+          rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+          const fetchMock = mockModelService({ detail: 'unavailable' }, status);
+          global.fetch = fetchMock;
+          const service = new RecommendationsService(supabase, config);
+
+          const failure = service
+            .scoreJob('j1', 'Fix sink', 'timeout')
+            .catch((error: unknown) => error);
+          await jest.runAllTimersAsync();
+          expect(await failure).toBeInstanceOf(ServiceUnavailableException);
+          expect(fetchMock).toHaveBeenCalledTimes(2);
+        } finally {
+          jest.useRealTimers();
+        }
+      },
+    );
+
+    it('retries a timeout once, then returns 503 and logs the host', async () => {
+      jest.useFakeTimers();
+      try {
+        const { supabase, rpc } = createSupabaseMock({});
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        const timeout = Object.assign(new Error('aborted'), {
+          name: 'TimeoutError',
+        });
+        const fetchMock = jest.fn().mockRejectedValue(timeout);
+        global.fetch = fetchMock;
+        const service = new RecommendationsService(supabase, config);
+        const logError = jest
+          .spyOn(service['logger'], 'error')
+          .mockImplementation(() => {});
+
+        const failure = service
+          .scoreJob('j1', 'Fix sink', 'timeout')
+          .catch((error: unknown) => error);
+        await jest.runAllTimersAsync();
+        const error = (await failure) as ServiceUnavailableException;
+        expect(error).toBeInstanceOf(ServiceUnavailableException);
+        expect(error.message).toBe(
+          'The matching service is waking up. Try again in a minute.',
+        );
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(
+          (fetchMock.mock.calls[0][1] as { signal?: AbortSignal }).signal,
+        ).toBeInstanceOf(AbortSignal);
+        expect(logError).toHaveBeenCalledWith(
+          expect.stringMatching(
+            /Model service at http:\/\/[^ ]+ unreachable: timed out/,
+          ),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('retries an unreachable scorer once, then returns 503', async () => {
+      jest.useFakeTimers();
+      try {
+        const { supabase, rpc } = createSupabaseMock({});
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        const fetchMock = jest
+          .fn()
+          .mockRejectedValue(new TypeError('fetch failed'));
+        global.fetch = fetchMock;
+        const service = new RecommendationsService(supabase, config);
+
+        const failure = service
+          .scoreJob('j1', 'Fix sink', 'timeout')
+          .catch((error: unknown) => error);
+        await jest.runAllTimersAsync();
+
+        expect(await failure).toBeInstanceOf(ServiceUnavailableException);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it.each([500, 422])(
+      'does not retry a scorer response of %s',
+      async (status) => {
+        const { supabase, rpc } = createSupabaseMock({});
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        const fetchMock = mockModelService({ detail: 'bad request' }, status);
+        global.fetch = fetchMock;
+        const service = new RecommendationsService(supabase, config);
+
+        await expect(
+          service.scoreJob('j1', 'Fix sink', 'timeout'),
+        ).rejects.toThrow(
+          `Model service at http://localhost:8000 returned ${status}`,
+        );
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('refuses a score array that does not line up with the pool', async () => {
       // Scores are matched to providers by position. A short array would
@@ -384,6 +527,42 @@ describe('RecommendationsService', () => {
       expect(
         calls.find((c) => c.table === 'jobs' && c.method === 'in')?.args,
       ).toEqual(['status', ['open', 'recommending']]);
+    });
+
+    it('keeps the attempt stamp when the scorer remains unavailable', async () => {
+      jest.useFakeTimers();
+      try {
+        const { supabase, calls, rpc } = createSupabaseMock({
+          jobs: [
+            {
+              data: {
+                id: 'j1',
+                title: 'Fix sink',
+                status: 'open',
+                client_id: 'c1',
+              },
+              error: null,
+            },
+            { data: { id: 'j1' }, error: null },
+          ],
+        });
+        rpc.mockResolvedValue({ data: [featureRow('p1')], error: null });
+        global.fetch = mockModelService({ detail: 'warming' }, 429);
+        const service = new RecommendationsService(supabase, config);
+
+        const failure = service
+          .triggerManual(client, 'j1')
+          .catch((error: unknown) => error);
+        await jest.runAllTimersAsync();
+
+        expect(await failure).toBeInstanceOf(ServiceUnavailableException);
+        expect(writesTo(calls, 'jobs', 'update')[0]).toMatchObject({
+          status: 'recommending',
+          recommendation_attempted_at: expect.any(String),
+        });
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('stamps the attempt on a job already in recommending, so a retry does not overlap it', async () => {

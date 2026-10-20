@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   ServiceUnavailableException,
@@ -55,14 +56,6 @@ function isStripeError(e: unknown): boolean {
   const type = (e as { type?: unknown } | null)?.type;
   return typeof type === 'string' && type.startsWith('Stripe');
 }
-
-/**
- * `is_verified` lives on provider_profiles, which only exists once the provider
- * has picked a service. Approving without it used to mark the review approved
- * while the flag had nowhere to land (BACKEND_SCHEMA.md §17).
- */
-const PROFILE_MISSING_FOR_APPROVAL =
-  'This provider has not set up their service profile yet, so there is nothing to mark verified. Ask them to complete Edit Profile, then approve.';
 
 type CertificateState =
   'none' | 'pending' | 'approved' | 'rejected' | 'expired';
@@ -417,13 +410,21 @@ export class VerificationsService {
       certificate: CertificateState;
     }[];
   }> {
-    const { data: profile } = await this.supabase.admin
+    const { data: profile, error: profileError } = await this.supabase.admin
       .from('provider_profiles')
       .select(
-        'category_id, is_verified, identity_verified, service_categories(name)',
+        'category_id, is_verified, identity_verified, service_categories!category_id(name)',
       )
       .eq('profile_id', providerId)
       .maybeSingle();
+    if (profileError) {
+      this.logger.error(
+        `Provider profile lookup failed for ${providerId}: ${profileError.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Could not load verification status',
+      );
+    }
     const pp = profile as {
       category_id: number;
       is_verified: boolean | null;
@@ -442,7 +443,7 @@ export class VerificationsService {
       certificate: CertificateState;
     }[] = [];
     if (pp) {
-      const [{ data: creds }, { data: secondary }] = await Promise.all([
+      const [credentialsResult, secondaryResult] = await Promise.all([
         this.supabase.admin
           .from('provider_credentials')
           .select('category_id, status, expires_on')
@@ -452,6 +453,16 @@ export class VerificationsService {
           .select('category_id, service_categories(name)')
           .eq('provider_id', providerId),
       ]);
+      if (credentialsResult.error || secondaryResult.error) {
+        this.logger.error(
+          `Provider services lookup failed for ${providerId}: ${credentialsResult.error?.message ?? secondaryResult.error?.message}`,
+        );
+        throw new InternalServerErrorException(
+          'Could not load verification status',
+        );
+      }
+      const creds = credentialsResult.data;
+      const secondary = secondaryResult.data;
       const today = new Date(Date.now() + 8 * 3600_000)
         .toISOString()
         .slice(0, 10);

@@ -155,7 +155,14 @@ export class JobsService {
     const urgency = dto.urgency ?? 'normal';
     const rates = await this.pricingRates(dto.category_id, urgency);
     const budget = priceFor({ ...rates, efforts }, dto.price_tier);
-    const location = await this.geocoding.geocode(dto.address);
+    const location =
+      dto.location_reference === undefined
+        ? await this.geocoding.geocode(dto.address)
+        : this.geocoding.resolveLocationReference(
+            user.id,
+            dto.location_reference,
+            dto.address,
+          );
     if (dto.photo_urls?.length) {
       this.uploads.assertOwnedPaths(user, dto.photo_urls);
     }
@@ -352,7 +359,8 @@ export class JobsService {
     }
     const escrow = await this.escrowSummary(jobId);
     // The hired provider sees the fee locked at hire; clients never do.
-    const fee = isAssigned && !isOwner ? await this.feeFor(job, jobId) : undefined;
+    const fee =
+      isAssigned && !isOwner ? await this.feeFor(job, jobId) : undefined;
     return fee === undefined ? { ...job, escrow } : { ...job, escrow, fee };
   }
 

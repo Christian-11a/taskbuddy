@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  InternalServerErrorException,
   ConflictException,
   NotFoundException,
   ServiceUnavailableException,
@@ -285,19 +286,13 @@ describe('VerificationsService', () => {
     );
     return { service, calls, record };
   };
-  const noteTitles = (
-    calls: { table: string; method: string; args: unknown[] }[],
-  ) =>
-    calls
-      .filter((c) => c.table === 'notifications' && c.method === 'insert')
-      .map((c) => (c.args[0] as { title: string }).title);
   const decideCall = (
     calls: { table: string; method: string; args: unknown[] }[],
   ) => calls.find((c) => c.table === 'rpc:decide_identity_verification');
 
   describe('approve', () => {
     it('decides in one SQL call, audits and notifies', async () => {
-      const { service, calls, record } = makeService(
+      const { service, calls } = makeService(
         {
           provider_verifications: [
             { data: { id: 'v1', status: 'approved' }, error: null },
@@ -321,7 +316,7 @@ describe('VerificationsService', () => {
     });
 
     it('409s on a verification that was already decided, without notifying', async () => {
-      const { service, calls, record } = makeService(
+      const { service, record } = makeService(
         {},
         {
           decide_identity_verification: {
@@ -443,7 +438,7 @@ describe('VerificationsService', () => {
     });
 
     it('ignores the outcome, without a retry, when an admin decided the submission first', async () => {
-      const { supabase, calls } = createSupabaseMock(
+      const { supabase } = createSupabaseMock(
         {
           provider_verifications: [{ data: pendingIdentity, error: null }],
           notifications: [{ data: null, error: null }],
@@ -522,7 +517,7 @@ describe('VerificationsService', () => {
 
   describe('reject', () => {
     it('stores the reason via the SQL decision and always sends "needs changes"', async () => {
-      const { service, calls, record } = makeService(
+      const { service, calls } = makeService(
         {
           provider_verifications: [
             { data: { id: 'v1', status: 'rejected' }, error: null },
@@ -550,6 +545,52 @@ describe('VerificationsService', () => {
   });
 
   describe('verificationState services', () => {
+    it('returns the approved identity and primary certificate through mine', async () => {
+      const { supabase } = createSupabaseMock({
+        provider_verifications: [
+          { data: { id: 'v1', status: 'approved' }, error: null },
+        ],
+        provider_profiles: [
+          {
+            data: {
+              category_id: 1,
+              is_verified: true,
+              identity_verified: true,
+              service_categories: { name: 'Plumbing' },
+            },
+            error: null,
+          },
+        ],
+        provider_credentials: [
+          {
+            data: [{ category_id: 1, status: 'approved', expires_on: null }],
+            error: null,
+          },
+        ],
+        provider_secondary_categories: [{ data: [], error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await expect(service.mine(provider)).resolves.toMatchObject({
+        identity: 'approved',
+        certificate: 'approved',
+        verified: true,
+        services: [
+          {
+            category_id: 1,
+            name: 'Plumbing',
+            primary: true,
+            certificate: 'approved',
+          },
+        ],
+      });
+    });
+
     it('lists the primary and secondary services with their own certificate state', async () => {
       const future = '2999-01-01';
       const { supabase } = createSupabaseMock({
@@ -625,6 +666,138 @@ describe('VerificationsService', () => {
           certificate: 'pending',
         },
       ]);
+    });
+
+    it('uses the primary category relationship and always lists it for a profile', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        provider_profiles: [
+          {
+            data: {
+              category_id: 1,
+              is_verified: false,
+              identity_verified: false,
+              service_categories: { name: 'Plumbing' },
+            },
+            error: null,
+          },
+        ],
+        provider_credentials: [{ data: [], error: null }],
+        provider_secondary_categories: [{ data: [], error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      const state = await service.verificationState('p1');
+
+      expect(
+        calls.find(
+          (call) =>
+            call.table === 'provider_profiles' && call.method === 'select',
+        )?.args[0],
+      ).toContain('service_categories!category_id(name)');
+      expect(state.services).toEqual([
+        {
+          category_id: 1,
+          name: 'Plumbing',
+          primary: true,
+          certificate: 'none',
+        },
+      ]);
+    });
+
+    it('rejects a profile lookup failure instead of reporting unverified', async () => {
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [
+          { data: null, error: { message: 'PGRST201', code: 'PGRST201' } },
+        ],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+      const logError = jest
+        .spyOn(service['logger'], 'error')
+        .mockImplementation(() => {});
+
+      await expect(service.verificationState('p1')).rejects.toThrow(
+        InternalServerErrorException,
+      );
+      expect(logError).toHaveBeenCalledWith(
+        'Provider profile lookup failed for p1: PGRST201',
+      );
+    });
+
+    it.each(['provider_credentials', 'provider_secondary_categories'])(
+      'rejects a %s lookup failure instead of returning incomplete status',
+      async (failedTable) => {
+        const { supabase } = createSupabaseMock({
+          provider_profiles: [
+            {
+              data: {
+                category_id: 1,
+                is_verified: true,
+                identity_verified: true,
+                service_categories: { name: 'Plumbing' },
+              },
+              error: null,
+            },
+          ],
+          provider_credentials: [
+            {
+              data: null,
+              error:
+                failedTable === 'provider_credentials'
+                  ? { message: 'Credentials unavailable' }
+                  : null,
+            },
+          ],
+          provider_secondary_categories: [
+            {
+              data: null,
+              error:
+                failedTable === 'provider_secondary_categories'
+                  ? { message: 'Services unavailable' }
+                  : null,
+            },
+          ],
+        });
+        const service = new VerificationsService(
+          supabase,
+          createUploadsMock(),
+          createStripeMock(),
+          createAdminActionsMock().mock,
+        );
+        jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
+
+        await expect(service.verificationState('p1')).rejects.toThrow(
+          InternalServerErrorException,
+        );
+      },
+    );
+
+    it('keeps an empty state for a provider without a profile row', async () => {
+      const { supabase } = createSupabaseMock({
+        provider_profiles: [{ data: null, error: null }],
+      });
+      const service = new VerificationsService(
+        supabase,
+        createUploadsMock(),
+        createStripeMock(),
+        createAdminActionsMock().mock,
+      );
+
+      await expect(service.verificationState('p1')).resolves.toEqual({
+        identity: 'none',
+        certificate: 'none',
+        verified: false,
+        services: [],
+      });
     });
   });
 
