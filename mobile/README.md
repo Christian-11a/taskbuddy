@@ -728,6 +728,11 @@ Done button, so it can no longer start a second charge. The wallet also supports
 > verify a typed start address in Accept booking (JL-5), in
 > [`docs/backend-handoff-job-location-2026-10-20.md`](../docs/backend-handoff-job-location-2026-10-20.md).
 
+> **2026-10-20 proposal quotes:** sending any proposal fails with "Could not find the 'posted_budget' column of
+> 'job_applications' in the schema cache". PR #118's API is live but its migration 0075 is not. Apply it, then reload the
+> PostgREST schema (`PQ-B1`) — see
+> [`docs/backend-handoff-proposal-quote-migration-2026-10-20.md`](../docs/backend-handoff-proposal-quote-migration-2026-10-20.md).
+
 > **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
 > recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
 > longer apply; see *Current state* at the top.
