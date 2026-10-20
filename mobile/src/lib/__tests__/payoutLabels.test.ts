@@ -1,4 +1,4 @@
-import { digitsOnly, formatMobileNumber, formatPayoutNumber, maskedNumber, payoutErrors, payoutStatus, payoutTitle } from '../payoutLabels';
+import { digitsOnly, formatMobileNumber, formatPayoutNumber, maskedNumber, normalizePhMobile, payoutErrors, payoutStatus, payoutTitle } from '../payoutLabels';
 
 describe('formatting', () => {
   it('spaces a mobile number as it is typed', () => {
@@ -16,6 +16,24 @@ describe('formatting', () => {
   });
 });
 
+describe('+63 numbers', () => {
+  it('formats +63 numbers as they are typed, and lets the prefix be deleted', () => {
+    expect(formatMobileNumber('+')).toBe('+');
+    expect(formatMobileNumber('+6')).toBe('+6');
+    expect(formatMobileNumber('+63')).toBe('+63');
+    expect(formatMobileNumber('+639')).toBe('+63 9');
+    expect(formatMobileNumber('+639171234567')).toBe('+63 917 123 4567');
+    expect(formatMobileNumber('639171234567')).toBe('+63 917 123 4567');
+    expect(formatMobileNumber('+63 917 123 4567 89')).toBe('+63 917 123 4567');
+  });
+  it('turns any accepted form into the 09 form the server stores', () => {
+    expect(normalizePhMobile('+63 917 123 4567')).toBe('09171234567');
+    expect(normalizePhMobile('639171234567')).toBe('09171234567');
+    expect(normalizePhMobile('0917 123 4567')).toBe('09171234567');
+    expect(normalizePhMobile('+63 917 123')).toBe('63917123');
+  });
+});
+
 describe('payoutErrors', () => {
   const ok = { method: 'gcash' as const, bankCode: '', accountName: "Ana M. Reyes-O'Neil", accountNumber: '0917 123 4567' };
   it('accepts a good GCash or Maya form', () => {
@@ -25,6 +43,15 @@ describe('payoutErrors', () => {
   it('wants 11 digits starting 09 for GCash and Maya', () => {
     expect(payoutErrors({ ...ok, accountNumber: '0817 123 4567' }).number).toBeTruthy();
     expect(payoutErrors({ ...ok, method: 'maya', accountNumber: '0917 123 456' }).number).toBeTruthy();
+  });
+  it('accepts +63 numbers for GCash and Maya', () => {
+    expect(payoutErrors({ ...ok, accountNumber: '+63 917 123 4567' })).toEqual({});
+    expect(payoutErrors({ ...ok, method: 'maya', accountNumber: '639171234567' })).toEqual({});
+  });
+  it('refuses short, foreign or landline-shaped numbers', () => {
+    expect(payoutErrors({ ...ok, accountNumber: '+63 917 123 456' }).number).toBeTruthy();
+    expect(payoutErrors({ ...ok, accountNumber: '+1 917 123 4567' }).number).toBeTruthy();
+    expect(payoutErrors({ ...ok, accountNumber: '+63 817 123 4567' }).number).toBeTruthy();
   });
   it('wants 10 to 16 digits and a bank for a bank account', () => {
     const bank = { ...ok, method: 'bank' as const, accountNumber: '123456789' };

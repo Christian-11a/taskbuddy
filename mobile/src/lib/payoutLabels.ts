@@ -23,15 +23,31 @@ export function payoutTitle(title: string | null | undefined): string {
 
 export type PayoutFormMethod = 'gcash' | 'maya' | 'bank';
 
-/** Shows a mobile number as the user types: "09171234567" becomes "0917 123 4567". Digits only, at most 11. */
+/**
+ * Shows a mobile number as the user types. "09171234567" becomes "0917 123 4567";
+ * "+639171234567" (or "639171234567") becomes "+63 917 123 4567". Below three
+ * digits a leading "+" is kept as typed, so the prefix can be deleted.
+ */
 export function formatMobileNumber(text: string): string {
-  const d = text.replace(/\D/g, '').slice(0, 11);
-  return [d.slice(0, 4), d.slice(4, 7), d.slice(7, 11)].filter(Boolean).join(' ');
+  const d = text.replace(/\D/g, '');
+  if (text.trim().startsWith('+') || d.startsWith('63')) {
+    if (d.length <= 2) return `+${d}`;
+    const rest = d.slice(2, 12);
+    return `+${d.slice(0, 2)} ${[rest.slice(0, 3), rest.slice(3, 6), rest.slice(6, 10)].filter(Boolean).join(' ')}`;
+  }
+  const local = d.slice(0, 11);
+  return [local.slice(0, 4), local.slice(4, 7), local.slice(7, 11)].filter(Boolean).join(' ');
 }
 
 /** Digits only, for sending to the server. */
 export function digitsOnly(text: string): string {
   return text.replace(/\D/g, '');
+}
+
+/** A PH mobile number in the 09 form the server stores: "+63 917 123 4567" becomes "09171234567". Other input comes back as plain digits. */
+export function normalizePhMobile(text: string): string {
+  const d = digitsOnly(text);
+  return d.length === 12 && d.startsWith('63') ? `0${d.slice(2)}` : d;
 }
 
 /** The number as the field shows it while typing: spaced for GCash/Maya, plain digits for a bank. */
@@ -43,7 +59,7 @@ export function formatPayoutNumber(method: PayoutFormMethod, text: string): stri
 export function payoutNumberHelper(method: PayoutFormMethod): string {
   return method === 'bank'
     ? 'Digits only, 10 to 16 digits.'
-    : 'An 11-digit mobile number starting with 09, like 0917 123 4567.';
+    : 'Starts with 09 or +63, like 0917 123 4567 or +63 917 123 4567.';
 }
 
 export function payoutNumberLabel(method: PayoutFormMethod): string {
@@ -68,8 +84,8 @@ export function payoutErrors(input: { method: PayoutFormMethod; bankCode: string
   const digits = digitsOnly(input.accountNumber);
   if (input.method === 'bank') {
     if (digits.length < 10 || digits.length > 16) errors.number = 'Enter an account number of 10 to 16 digits.';
-  } else if (!/^09\d{9}$/.test(digits)) {
-    errors.number = 'Enter an 11-digit mobile number starting with 09.';
+  } else if (!/^09\d{9}$/.test(normalizePhMobile(input.accountNumber))) {
+    errors.number = 'Enter a mobile number like 0917 123 4567 or +63 917 123 4567.';
   }
   return errors;
 }
