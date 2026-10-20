@@ -3,6 +3,7 @@ import React from 'react';
 import { BackHandler, ScrollView, TextInput } from 'react-native';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { BrushCleaning, Footprints, Hammer, Wrench } from 'lucide-react-native';
 import HOCreateJobScreen from '../HOCreateJobScreen';
 import ServiceTile from '../../../../src/components/post/ServiceTile';
@@ -20,6 +21,7 @@ jest.mock('../../../../src/lib/api', () => ({
   api: {
     categories: jest.fn(), createJob: jest.fn(), uploadImage: jest.fn(),
     estimatePrice: jest.fn(), geocodeAddress: jest.fn(),
+    reverseGeocode: jest.fn(), addressSuggestions: jest.fn(),
   },
 }));
 const PRICE_OPTIONS = [
@@ -29,6 +31,7 @@ const PRICE_OPTIONS = [
 ];
 beforeEach(() => {
   (api.estimatePrice as jest.Mock).mockResolvedValue({ options: PRICE_OPTIONS });
+  (api.addressSuggestions as jest.Mock).mockResolvedValue([]);
 });
 jest.mock('../../../../src/components/Toast', () => ({ showToast: jest.fn() }));
 const DEFAULT_PROFILE = { address: 'Quezon City', latitude: 14.6, longitude: 121 };
@@ -45,6 +48,7 @@ jest.mock('@react-native-community/datetimepicker', () => ({ __esModule: true, d
   return <Text onPress={() => onChange({type: 'set'}, new Date('2030-12-10T09:00:00'))}>Choose test time</Text>;
 } }));
 jest.mock('expo-image-picker', () => ({ launchImageLibraryAsync: jest.fn() }));
+jest.mock('expo-location', () => ({ Accuracy: { Balanced: 3 }, getCurrentPositionAsync: jest.fn() }));
 
 it('keeps the urgency step visible and reports missing required fields when Next is pressed', async () => {
   (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
@@ -409,6 +413,141 @@ describe('HOCreateJobScreen — posting cannot place the address', () => {
     expect(await screen.findByText(err.message)).toBeTruthy();
     expect(screen.getByTestId('create-job-review')).toBeTruthy();
     expect(screen.queryByText('Where is the job?')).toBeNull();
+  });
+});
+
+describe('HOCreateJobScreen — posts at the confirmed pin', () => {
+  const GPS_ADDRESS = 'HSSi BTG 1 Hub, Lipa, 4217 BT, Philippines';
+  const GPS_POINT = {
+    latitude: 13.9417, longitude: 121.1631, formatted_address: GPS_ADDRESS, city: 'Lipa', location_reference: 'signed-gps',
+  };
+  const sent = (call = 0) => (api.createJob as jest.Mock).mock.calls[call][0];
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    (api.categories as jest.Mock).mockResolvedValue([{ id: 1, name: 'Plumbing' }]);
+    (api.createJob as jest.Mock).mockResolvedValue({ id: 'new-job' });
+    (api.addressSuggestions as jest.Mock).mockResolvedValue([]);
+    (api.reverseGeocode as jest.Mock).mockRejectedValue(new Error('no reverse answer set for this test'));
+    (Location.getCurrentPositionAsync as jest.Mock).mockResolvedValue({ coords: { latitude: 13.9417, longitude: 121.1631 } });
+  });
+
+  const openForm = async () => {
+    render(<HOCreateJobScreen initialCategoryId={1} onBack={jest.fn()} onSuccess={jest.fn()} />);
+    await screen.findByText('Location confirmed'); // the saved home address
+  };
+  const tapCurrentLocation = async () => {
+    await openForm();
+    (api.reverseGeocode as jest.Mock).mockResolvedValueOnce(GPS_POINT);
+    await act(async () => fireEvent.press(screen.getByTestId('address-use-current-location')));
+    await screen.findByDisplayValue(GPS_ADDRESS);
+  };
+  const post = async (times = 1) => {
+    await reachReview();
+    await act(async () => fireEvent.press(screen.getByText('Post job')));
+    await waitFor(() => expect(api.createJob).toHaveBeenCalledTimes(times));
+  };
+
+  it('a GPS address posts with its signed reference and the exact text the server named', async () => {
+    await tapCurrentLocation();
+    await post();
+    expect(sent()).toEqual(expect.objectContaining({ address: GPS_ADDRESS, location_reference: 'signed-gps' }));
+    // A fresh reference is used as is: no second reverse lookup.
+    expect(api.reverseGeocode).toHaveBeenCalledTimes(1);
+  });
+
+  it('editing the GPS address drops the reference, so the server checks the new text', async () => {
+    await tapCurrentLocation();
+    fireEvent.changeText(screen.getByTestId('create-job-address'), `${GPS_ADDRESS} Unit 2`);
+    (api.geocodeAddress as jest.Mock).mockResolvedValueOnce({ latitude: 13.94, longitude: 121.16 });
+    await post();
+    expect(sent().address).toBe(`${GPS_ADDRESS} Unit 2`);
+    expect(sent()).not.toHaveProperty('location_reference');
+  });
+
+  it('a typed address checked on Where posts without a reference and without a reverse lookup', async () => {
+    await openForm();
+    fireEvent.changeText(screen.getByTestId('create-job-address'), 'Quezon City Hall, Elliptical Road');
+    (api.geocodeAddress as jest.Mock).mockResolvedValueOnce({ latitude: 14.65, longitude: 121.05 });
+    await post();
+    expect(sent()).not.toHaveProperty('location_reference');
+    expect(api.reverseGeocode).not.toHaveBeenCalled();
+  });
+
+  it('the saved home address gets a fresh reference when the server names its point the same way', async () => {
+    (api.reverseGeocode as jest.Mock).mockResolvedValueOnce({
+      latitude: 14.6, longitude: 121, formatted_address: 'Quezon City', location_reference: 'signed-home',
+    });
+    await openForm();
+    await post();
+    expect(api.reverseGeocode).toHaveBeenCalledWith(14.6, 121);
+    expect(sent()).toEqual(expect.objectContaining({ address: 'Quezon City', location_reference: 'signed-home' }));
+  });
+
+  it.each([
+    ['names the point differently', () => (api.reverseGeocode as jest.Mock).mockResolvedValueOnce({
+      latitude: 14.6, longitude: 121, formatted_address: 'Diliman, Quezon City', location_reference: 'signed-other',
+    })],
+    ['cannot answer', () => (api.reverseGeocode as jest.Mock).mockRejectedValueOnce(new Error('offline'))],
+    ['answers without a reference', () => (api.reverseGeocode as jest.Mock).mockResolvedValueOnce({
+      latitude: 14.6, longitude: 121, formatted_address: 'Quezon City',
+    })],
+  ])('the saved home address still posts, without a reference, when the server %s', async (_label, arrange) => {
+    arrange();
+    await openForm();
+    await post();
+    expect(sent().address).toBe('Quezon City');
+    expect(sent()).not.toHaveProperty('location_reference');
+  });
+
+  it('a reference older than 12 minutes is renewed from the same point before posting', async () => {
+    const realNow = Date.now.bind(Date);
+    let offset = 0;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => realNow() + offset);
+    try {
+      await tapCurrentLocation();
+      offset = 13 * 60 * 1000;
+      (api.reverseGeocode as jest.Mock).mockResolvedValueOnce({ ...GPS_POINT, location_reference: 'signed-gps-renewed' });
+      await post();
+      expect(api.reverseGeocode).toHaveBeenLastCalledWith(13.9417, 121.1631);
+      expect(sent().location_reference).toBe('signed-gps-renewed');
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('an expired reference sends the client back once, and the retry does not resend it', async () => {
+    const EXPIRED = 'Location confirmation expired. Select the address or use your current location again.';
+    await tapCurrentLocation();
+    (api.createJob as jest.Mock).mockRejectedValueOnce(new ApiError(EXPIRED, 400));
+    await post();
+    expect(await screen.findByText('Where is the job?')).toBeTruthy();
+    // The server's message already says what to do; no second instruction is added.
+    expect(screen.getByText(EXPIRED)).toBeTruthy();
+    expect(screen.queryByText(/Pick a suggestion from the list, or edit the address\./)).toBeNull();
+
+    // Everything else is still filled in: Next re-checks the address, then walks on to Review.
+    (api.geocodeAddress as jest.Mock).mockResolvedValueOnce({ latitude: 13.94, longitude: 121.16 });
+    await act(async () => fireEvent.press(screen.getByText('Next')));
+    await screen.findByText('Fix leaking faucet');
+    fireEvent.press(screen.getByText('Next'));
+    await waitFor(() => expect(screen.getByTestId('create-job-budget').props.value).toBe('1500'));
+    fireEvent.press(screen.getByText('Next'));
+    await screen.findByTestId('create-job-review');
+    await act(async () => fireEvent.press(screen.getByText('Post job')));
+    await waitFor(() => expect(api.createJob).toHaveBeenCalledTimes(2));
+    expect(sent(1)).not.toHaveProperty('location_reference');
+  });
+
+  it('a reference the server will not take asks for the location again', async () => {
+    await tapCurrentLocation();
+    (api.createJob as jest.Mock).mockRejectedValueOnce(
+      new ApiError('Location confirmation does not match this account or address', 400),
+    );
+    await post();
+    expect(await screen.findByText(
+      'Location confirmation does not match this account or address. Tap "Use my current location" or pick a suggestion again.',
+    )).toBeTruthy();
   });
 });
 

@@ -1304,6 +1304,12 @@ export const api = {
     description: string;
     urgency?: 'urgent' | 'normal' | 'flexible';
     address: string;
+    /**
+     * The signed point from `GET /geocoding/reverse` or a precise autocomplete row. With it the server places
+     * the job at that point and does not geocode `address` again; `address` must be that answer's
+     * `formatted_address`, unchanged, and the reference lasts 15 minutes. Without it the server geocodes `address`.
+     */
+    location_reference?: string;
     latitude: number;
     longitude: number;
     /** The client's editable starting budget. Providers may quote another total. */

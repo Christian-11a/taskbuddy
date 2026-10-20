@@ -72,6 +72,9 @@ a one-line follow-up starts sending it.
 
 **Done when** a job posts from a GPS-fetched address that `geocode()` alone would refuse.
 
+> **Status 2026-10-20:** done in `db24614b` (live in `1b25d454`). The app sends the reference from `fix/job-location-reference`.
+> Follow-ups: `docs/backend-handoff-job-location-2026-10-20.md`.
+
 ## UAT-B3. HIGH: Find providers fails while the ML service is cold or rate-limited
 
 *(tester item: "Find providers doesn't work", an error message)*

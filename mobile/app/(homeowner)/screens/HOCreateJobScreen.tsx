@@ -239,6 +239,9 @@ export default function HOCreateJobScreen({
   const [descriptionHeight, setDescriptionHeight] = useState<number | null>(null);
   const [location, setLocation] = useState('');
   const [resolvedCoordinates, setResolvedCoordinates] = useState<{ latitude: number; longitude: number } | null>(null);
+  // Where the pin came from, for POST /jobs: a signed reference (GPS or a picked suggestion) and when it was
+  // issued, or reference null for the saved home point. Null when the address was typed and geocoded here.
+  const [locationPin, setLocationPin] = useState<{ reference: string | null; issuedAt: number } | null>(null);
   // While typing, the Back/Next bar would ride up with the keyboard and cover
   // the address suggestions (I3); it comes back as soon as the keyboard closes.
   const [keyboardUp, setKeyboardUp] = useState(false);
@@ -408,6 +411,7 @@ export default function HOCreateJobScreen({
       if (profile.latitude != null && profile.longitude != null) {
         setResolvedCoordinates({ latitude: profile.latitude, longitude: profile.longitude });
         setGeocodedAddress(profile.address);
+        setLocationPin({ reference: null, issuedAt: 0 });
       }
     }
   }, [profile?.address]);
@@ -423,6 +427,7 @@ export default function HOCreateJobScreen({
     if (!resolved) {
       setResolvedCoordinates(null);
       setGeocodedAddress('');
+      setLocationPin(null);
       return;
     }
     setResolvedCoordinates({
@@ -430,6 +435,7 @@ export default function HOCreateJobScreen({
       longitude: resolved.longitude,
     });
     setGeocodedAddress(resolved.formatted_address.trim());
+    setLocationPin({ reference: resolved.location_reference ?? null, issuedAt: Date.now() });
     clearError('location');
   };
 
@@ -443,10 +449,12 @@ export default function HOCreateJobScreen({
       const coordinates = await api.geocodeAddress(address);
       setResolvedCoordinates(coordinates);
       setGeocodedAddress(address);
+      setLocationPin(null);
       return true;
     } catch (e) {
       setResolvedCoordinates(null);
       setGeocodedAddress('');
+      setLocationPin(null);
       setFieldErrors((prev) => ({
         ...prev,
         location: e instanceof Error ? e.message : 'We could not verify this address precisely.',
@@ -454,6 +462,23 @@ export default function HOCreateJobScreen({
       return false;
     } finally {
       setGeocoding(false);
+    }
+  };
+
+  /**
+   * The reference to post with. A fresh one is sent as is. An older one, or the saved home point (which never had
+   * one), is asked for again from the same point: the server signs it for 15 minutes, and a form with photos can
+   * outlast that. Only a reference for this exact text is sent, because the server refuses any other; without one
+   * it geocodes the text as before.
+   */
+  const referenceForPost = async (address: string): Promise<string | undefined> => {
+    if (!locationPin || !resolvedCoordinates || address !== geocodedAddress.trim()) return undefined;
+    if (locationPin.reference && Date.now() - locationPin.issuedAt < 12 * 60 * 1000) return locationPin.reference;
+    try {
+      const again = await api.reverseGeocode(resolvedCoordinates.latitude, resolvedCoordinates.longitude);
+      return again.location_reference && again.formatted_address.trim() === address ? again.location_reference : undefined;
+    } catch {
+      return undefined;
     }
   };
 
@@ -590,12 +615,14 @@ export default function HOCreateJobScreen({
       );
 
       setSubmitPhase('posting');
+      const location_reference = await referenceForPost(location.trim());
       await api.createJob({
         category_id: categoryId!,
         title: cleanText(title),
         description: cleanText(description),
         urgency,
         address: location.trim(),
+        ...(location_reference ? { location_reference } : {}),
         latitude: resolvedCoordinates!.latitude,
         longitude: resolvedCoordinates!.longitude,
         budget: Number(budget),
@@ -609,14 +636,20 @@ export default function HOCreateJobScreen({
       const capacity = capacityConflictMessage(e);
       if (capacity) setCapacityNotice(capacity);
       else if (e instanceof ApiError && e.status === 400 && /address|location/i.test(e.message)) {
-        // POST /jobs geocodes the address text again and can refuse one the app already confirmed
-        // (UAT-B2, docs/backend-handoff-uat-blockers-2026-10-20.md). Send the client back to the
-        // address instead of a dead end on Review. setStep, not goToStep: goToStep clears this error,
-        // and refusedAddress keeps the revise effect from dropping it, because local rules accept the text.
+        // POST /jobs can still refuse the address: typed text it geocodes again, or a signed point that expired or no
+        // longer matches the text. Send the client back to the address instead of a dead end on Review. setStep, not
+        // goToStep: goToStep clears this error, and refusedAddress keeps the revise effect from dropping it.
         refusedAddress.current = location;
         setResolvedCoordinates(null);
         setGeocodedAddress('');
-        setFieldErrors((prev) => ({ ...prev, location: `${e.message} Pick a suggestion from the list, or edit the address.` }));
+        setLocationPin(null);
+        const said = /[.!?]$/.test(e.message) ? e.message : `${e.message}.`;
+        const message = /use your current location/i.test(e.message)
+          ? e.message
+          : /location confirmation/i.test(e.message)
+            ? `${said} Tap "Use my current location" or pick a suggestion again.`
+            : `${e.message} Pick a suggestion from the list, or edit the address.`;
+        setFieldErrors((prev) => ({ ...prev, location: message }));
         setStep(2);
       } else setError(e instanceof Error ? e.message : 'Could not post the job.');
     } finally {
@@ -688,6 +721,7 @@ export default function HOCreateJobScreen({
     setLocation('');
     setResolvedCoordinates(null);
     setGeocodedAddress('');
+    setLocationPin(null);
     setTasks([]);
     setCustomTask('');
     setDate(null);
@@ -945,6 +979,7 @@ export default function HOCreateJobScreen({
                       : null,
                   );
                   setGeocodedAddress(profile.latitude != null && profile.longitude != null ? profile.address! : '');
+                  setLocationPin(profile.latitude != null && profile.longitude != null ? { reference: null, issuedAt: 0 } : null);
                   clearError('location');
                 }}
                 activeOpacity={0.8}

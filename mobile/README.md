@@ -722,6 +722,12 @@ Done button, so it can no longer start a second charge. The wallet also supports
 > cold or rate-limited ML service into a clear 503 with one retry. They are listed, with ids `UAT-B1` to `UAT-B6` (B4 is info only), in
 > [`docs/backend-handoff-uat-blockers-2026-10-20.md`](../docs/backend-handoff-uat-blockers-2026-10-20.md).
 
+> **2026-10-20 job location:** `POST /jobs` now takes the signed `location_reference` (UAT-B2, live) and the app sends it, so a GPS or
+> suggestion address posts at its pin. Five follow-ups remain: place a job at the saved profile point (JL-1), a longer reference
+> lifetime (JL-2), an optional house no./unit/landmark field (JL-3), a reference from `/jobs/geocode` (JL-4) and letting a provider
+> verify a typed start address in Accept booking (JL-5), in
+> [`docs/backend-handoff-job-location-2026-10-20.md`](../docs/backend-handoff-job-location-2026-10-20.md).
+
 > **2026-10-20 proposal quotes:** sending any proposal fails with "Could not find the 'posted_budget' column of
 > 'job_applications' in the schema cache". PR #118's API is live but its migration 0075 is not. Apply it, then reload the
 > PostgREST schema (`PQ-B1`) — see
