@@ -22,7 +22,7 @@ import {
   validateServiceRadius,
 } from '../inputRules';
 
-const PHONE_FORMAT = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
+const PHONE_FORMAT = 'Enter a mobile number like 09171234567 or +63 917 123 4567';
 const NAME_CHARACTERS = 'Full name can only use letters, spaces, hyphens, apostrophes and periods';
 
 /** The limits the fields hold as maxLength, and the rules check against the same numbers. */
@@ -105,6 +105,11 @@ describe('nextPhoneText: what the phone field shows after a change', () => {
 
   it('reads a +63 number typed digit by digit as its 09 form', () => {
     expect(typePhone('+63 917 123 4567')).toBe('09171234567');
+  });
+
+  it('reads a pasted +63 number written with a 0 after the country code as the 09 form', () => {
+    expect(nextPhoneText('', '+63 0917 123 4567')).toBe('09171234567');
+    expect(nextPhoneText('', '+63 917 123 4567')).toBe('09171234567');
   });
 
   it('keeps every digit of a pasted 21-character +63 number, so it reads as the 09 form', () => {
@@ -193,6 +198,8 @@ describe('validatePhone', () => {
     ['19171234567', 'not starting with 09'],
     ['08171234567', 'starting with 08'],
     ['+639171234567', 'the +63 form is not stored'],
+    ['+63 917 123', 'a +63 number still too short'],
+    ['+1 917 123 4567', 'another country code'],
     ['0917 123 4567', 'spaces are not stored'],
     ['0917123456a', 'a letter'],
     ['09171234567\n5', 'a line break'],

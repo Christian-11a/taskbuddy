@@ -200,8 +200,8 @@ export default function HOEditProfileScreen({ onBack, onSave }: HOEditProfileScr
               value={phone}
               onChangeText={(value) => setPhone((previous) => nextPhoneText(previous, value))}
               placeholder="09XX XXX XXXX"
-              helper="11 digits, starts with 09"
-              keyboardType="number-pad"
+              helper="Starts with 09 or +63"
+              keyboardType="phone-pad"
               keyboardAppearance={appearance}
               error={phoneError}
               submitted={submitted}

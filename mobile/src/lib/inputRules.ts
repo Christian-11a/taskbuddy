@@ -5,8 +5,8 @@
  * to show under the field. Each sanitizer returns the value to store and send.
  * Pure functions with no network or React, so every rule is tested on its own.
  *
- * The backend checks phone only as a string, so the app enforces the Philippine
- * mobile format here. Name, email and password rules follow the backend limits
+ * The profile API takes a phone only in the 09 form, so the app accepts a Philippine mobile
+ * number written as 09… or +63… and stores it as 09…. Name, email and password rules follow the backend limits
  * (name 2-120, email format, password 8-72 with a letter and a number) and are stricter where asked.
  */
 
@@ -16,7 +16,7 @@ const PHONE_DIGITS = 11;
 /** The most digits a paste keeps. A longer paste is cut here, and the validator then refuses the number. */
 const PHONE_PASTE_DIGITS = 15;
 
-const PHONE_FORMAT_MESSAGE = 'Enter an 11-digit mobile number starting with 09, e.g. 09171234567';
+const PHONE_FORMAT_MESSAGE = 'Enter a mobile number like 09171234567 or +63 917 123 4567';
 const PHONE_REQUIRED_MESSAGE = 'Phone number is required';
 
 /** How a phone number is written, not what it is: spaces, dashes, dots, brackets and the plus sign. */
