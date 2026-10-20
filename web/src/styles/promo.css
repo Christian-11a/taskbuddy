@@ -975,10 +975,9 @@ section[id] { scroll-margin-top: 6rem; }
   margin-top: 2rem;
   background: var(--color-surface);
   color: var(--color-dark);
-  cursor: not-allowed;
-  opacity: .88;
   box-shadow: none;
 }
+.download a.button--on-dark:hover { opacity: .92; }
 .download__art {
   position: relative;
   display: grid;
@@ -2225,3 +2224,6 @@ body.has-modal-open { overflow: hidden; }
     margin-top: .25rem;
   }
 }
+
+/* Size and platform under the Android download button. */
+.download__content > p.download__note { margin-top: 0.7rem; font-size: 0.9rem; color: color-mix(in srgb, white 72%, transparent); }
