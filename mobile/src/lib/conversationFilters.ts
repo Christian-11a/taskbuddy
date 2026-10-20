@@ -54,6 +54,11 @@ export function countUnreadChats(list: Conversation[]): number {
   return list.filter((c) => unreadOf(c) > 0).length;
 }
 
+/** Unread chats the current filter hides (an unread chat on a finished job is not in Active). */
+export function unreadOutsideFilter(list: Conversation[], filter: ConversationFilter): number {
+  return list.filter((c) => unreadOf(c) > 0 && !matchesFilter(c, filter)).length;
+}
+
 export function matchesSearch(c: Conversation, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;

@@ -33,7 +33,11 @@ export default function OwnAvatar({
 }) {
   const { styles, V6Colors } = useThemedStyles(createThemedStyles);
   const { profile } = useAuth();
-  if (profile?.avatar_url) {
+  const [failed, setFailed] = React.useState(false);
+  React.useEffect(() => {
+    setFailed(false);
+  }, [profile?.avatar_url]);
+  if (profile?.avatar_url && !failed) {
     return (
       <Image
         source={{ uri: profile.avatar_url }}
@@ -41,6 +45,7 @@ export default function OwnAvatar({
         contentFit="cover"
         transition={150}
         accessibilityLabel={name ? `${name}'s photo` : 'Your photo'}
+        onError={() => setFailed(true)}
       />
     );
   }

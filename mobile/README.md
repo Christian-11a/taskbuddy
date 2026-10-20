@@ -713,6 +713,10 @@ Done button, so it can no longer start a second charge. The wallet also supports
 
 ## Remaining Backend Work
 
+> **2026-10-19 smoke run:** one backend bug stops an admin-approved provider from applying in the app
+> (`GET /verifications/me` ignores `provider_profiles`: an ambiguous PostgREST embed). The fix, a test spec and the
+> open product questions are in [`docs/backend-handoff-smoke-2026-10-19.md`](../docs/backend-handoff-smoke-2026-10-19.md).
+
 > **History.** Written for the wallet and Stripe era. Wallet, top-up, withdrawal,
 > recovery-voucher, Stripe Connect payout and 72-hour warranty items here no
 > longer apply; see *Current state* at the top.

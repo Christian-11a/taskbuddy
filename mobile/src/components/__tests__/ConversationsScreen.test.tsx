@@ -161,6 +161,23 @@ it('has an empty state per filter, worded for the client', async () => {
   expect(screen.getByText('No unread chats')).toBeTruthy();
 });
 
+it('points at unread chats hidden in Finished when Active is empty', async () => {
+  (api.conversations as jest.Mock).mockResolvedValue([conv('1', { job_status: 'completed', unread_count: 1 })]);
+  render(<ConversationsScreen onOpenChat={jest.fn()} />);
+  expect(await screen.findByTestId('messages-empty')).toBeTruthy();
+  expect(screen.getByText('No active chats')).toBeTruthy();
+  fireEvent.press(screen.getByTestId('messages-empty-view-unread'));
+  expect(await screen.findByText('Person 1')).toBeTruthy();
+  expect(screen.queryByTestId('messages-empty')).toBeNull();
+});
+
+it('shows no unread hint when nothing unread is hidden', async () => {
+  (api.conversations as jest.Mock).mockResolvedValue([conv('1', { job_status: 'completed', unread_count: 0 })]);
+  render(<ConversationsScreen onOpenChat={jest.fn()} />);
+  await screen.findByTestId('messages-empty');
+  expect(screen.queryByTestId('messages-empty-view-unread')).toBeNull();
+});
+
 it('shows the cached list at once on a second mount, without the skeleton', async () => {
   (api.conversations as jest.Mock).mockResolvedValue([conv('1')]);
   const first = render(<ConversationsScreen onOpenChat={jest.fn()} />);

@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, TextInput } from 'react-native';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import SPEditProfileScreen from '../SPEditProfileScreen';
 import { api } from '../../../../src/lib/api';
 import { useAuth } from '../../../../src/context/AuthContext';
@@ -208,5 +208,66 @@ describe('save bar', () => {
 
     expect(screen.getByText('Leave without saving?')).toBeTruthy();
     expect(onBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('bio message', () => {
+  const BIO_MESSAGE = 'Bio must be at least 20 characters.';
+  const bioInput = () => screen.getByLabelText('Bio (min 20 characters)');
+
+  // A saved address, so the only invalid field on Save is the bio.
+  function mockProviderWithAddress() {
+    (useAuth as jest.Mock).mockReturnValue({
+      profile: { id: 'sp-sam', full_name: 'Sam Reyes', email: 'sam@example.com', phone: null, city: 'Cebu', address: 'Arturo Tanco Drive, Lipa' },
+      providerProfile: {
+        category_id: 1,
+        service_categories: { id: 1, name: 'Plumbing' },
+        service_radius_km: 25,
+        bio: null,
+        years_experience: null,
+      },
+      refreshProfile: jest.fn(),
+    });
+  }
+
+  it('shows the empty-bio message under the field when Save is pressed', () => {
+    mockProviderWithAddress();
+    renderScreen();
+
+    // Changing the radius enables Save; the bio stays empty.
+    fireEvent.changeText(radiusInput(), '30');
+    expect(screen.queryByText(BIO_MESSAGE)).toBeNull();
+
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.getByText(BIO_MESSAGE)).toBeTruthy();
+    expect(screen.queryByText('Enter your address so nearby jobs can be matched to you.')).toBeNull();
+    expect(api.upsertProviderProfile).not.toHaveBeenCalled();
+  });
+
+  it('shows the message once a cleared bio is left', () => {
+    mockProviderWithAddress();
+    renderScreen();
+
+    fireEvent.changeText(bioInput(), 'Plumber');
+    fireEvent.changeText(bioInput(), '');
+    fireEvent(bioInput(), 'blur');
+
+    expect(screen.getByText(BIO_MESSAGE)).toBeTruthy();
+  });
+
+  it('shows no bio message and saves a bio of 20 characters or more', async () => {
+    mockProviderWithAddress();
+    (api.updateProfile as jest.Mock).mockResolvedValue({});
+    (api.upsertProviderProfile as jest.Mock).mockResolvedValue({});
+    renderScreen();
+
+    fireEvent.changeText(bioInput(), 'Plumber for eight years now');
+    fireEvent.press(screen.getByLabelText('Save changes'));
+
+    expect(screen.queryByText(BIO_MESSAGE)).toBeNull();
+    await waitFor(() => expect(api.upsertProviderProfile).toHaveBeenCalledWith(
+      expect.objectContaining({ bio: 'Plumber for eight years now' }),
+    ));
   });
 });

@@ -1,5 +1,6 @@
 import {
   applyConversationFilters, conversationSections, countUnreadChats, emptyCopy, serviceCounts, effectiveStatus,
+  unreadOutsideFilter,
   type ConversationItem,
 } from '../conversationFilters';
 
@@ -26,6 +27,19 @@ it('filters by active / finished / unread / all, newest first', () => {
 it('counts unread chats and treats disputed as active', () => {
   expect(countUnreadChats(list)).toBe(2);
   expect(effectiveStatus(list[4])).toBe('disputed');
+});
+
+it('counts unread chats hidden by the current filter', () => {
+  const l = [
+    mk('1', { job_status: 'completed', unread_count: 2 }),
+    mk('2', { job_status: 'confirmed', unread_count: 1 }),
+    mk('3', { job_status: 'completed', unread_count: 0 }),
+  ];
+  expect(unreadOutsideFilter(l, 'active')).toBe(1);
+  expect(unreadOutsideFilter(l, 'finished')).toBe(1);
+  expect(unreadOutsideFilter(l, 'unread')).toBe(0);
+  expect(unreadOutsideFilter(l, 'all')).toBe(0);
+  expect(unreadOutsideFilter([], 'active')).toBe(0);
 });
 
 it('searches title or name and filters by service', () => {

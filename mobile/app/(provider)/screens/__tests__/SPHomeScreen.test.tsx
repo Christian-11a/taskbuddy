@@ -313,6 +313,7 @@ describe('SPHomeScreen — hero header keeps the avatar reachable with a long na
       render(<SPHomeScreen onNavigate={jest.fn()} />);
 
       expect(await screen.findByText('Get verified to see jobs near you')).toBeTruthy();
+      expect(screen.getByText('Clients only see verified providers. It takes about 5 minutes.')).toBeTruthy();
       expect(screen.getByText('Finish setting up · 1 of 4')).toBeTruthy();
       expect(screen.getByText('Arturo Tanco Drive, Lipa')).toBeTruthy();
       expect(screen.getByText('ID photo, selfie and certificate · about 5 minutes')).toBeTruthy();

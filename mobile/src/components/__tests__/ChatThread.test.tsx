@@ -204,6 +204,11 @@ describe('ChatThread composer', () => {
     fireEvent.press(screen.getByRole('button', { name: 'Attach a photo' }));
     expect(props.onAttach).toHaveBeenCalledTimes(1);
   });
+
+  it('labels the message input for assistive tech and scripted tests', () => {
+    render(<ChatThread {...baseProps()} />);
+    expect(screen.getByLabelText('Message')).toBeTruthy();
+  });
 });
 
 describe('ChatThread bubbles and photos', () => {
