@@ -151,7 +151,7 @@ export class GeocodingService {
     this.apiKey = config.get<string>('GEOAPIFY_API_KEY') || undefined;
   }
 
-  /** Fifteen-minute, account-bound proof of the server-resolved point. */
+  /** One-hour, account-bound proof of the server-resolved point. */
   issueLocationReference(
     userId: string,
     location: GeocodedAddress,
@@ -160,7 +160,7 @@ export class GeocodingService {
       JSON.stringify({
         userId,
         location,
-        expires: Date.now() + 15 * 60 * 1000,
+        expires: Date.now() + 60 * 60 * 1000,
       }),
     ).toString('base64url');
     return {

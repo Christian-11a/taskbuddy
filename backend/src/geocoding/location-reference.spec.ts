@@ -64,12 +64,12 @@ it('rejects edited coordinates, malformed references and signatures from another
     ),
   ).toThrow('Invalid location');
 });
-it('expires exactly at fifteen minutes and never silently forward-geocodes an expired label', () => {
+it('expires exactly at sixty minutes and never silently forward-geocodes an expired label', () => {
   let now = 1000000;
   jest.spyOn(Date, 'now').mockImplementation(() => now);
   const geo = service();
   const signed = geo.issueLocationReference('u1', location).location_reference!;
-  now += 900000 - 1;
+  now += 3600000 - 1;
   expect(
     geo.resolveLocationReference('u1', signed, location.formatted_address),
   ).toEqual(location);

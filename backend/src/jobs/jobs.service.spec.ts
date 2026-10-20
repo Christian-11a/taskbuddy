@@ -207,6 +207,39 @@ describe('JobsService.accept', () => {
     });
   });
 
+  it('uses a signed location reference when the provider accepts', async () => {
+    const geocoding = new GeocodingService(
+      new ConfigService({ SUPABASE_SERVICE_ROLE_KEY: 'unit-location-key' }),
+    );
+    const location = geocoding.issueLocationReference('p1', {
+      latitude: 13.94,
+      longitude: 121.16,
+      formatted_address: 'Lipa City Proper',
+    });
+    const { service, calls } = createService(
+      {
+        jobs: [ok(job()), ok(job({ status: 'confirmed' }))],
+        bookings: [ok(null)],
+        notifications: [ok(null)],
+      },
+      geocoding,
+    );
+
+    await service.accept(provider, 'j1', {
+      address: location.formatted_address,
+      location_reference: location.location_reference,
+    });
+
+    const update = calls.find(
+      (call) => call.table === 'jobs' && call.method === 'update',
+    );
+    expect(update?.args[0]).toMatchObject({
+      provider_accept_address: 'Lipa City Proper',
+      provider_accept_latitude: 13.94,
+      provider_accept_longitude: 121.16,
+    });
+  });
+
   it('puts an ASAP job on the calendar on the day it was confirmed', async () => {
     const { service, calls } = createService({
       jobs: [ok(job({ scheduled_at: null })), ok(job({ status: 'confirmed' }))],
@@ -267,6 +300,40 @@ describe('JobsService.accept', () => {
     });
     await expect(service.accept(provider, 'j1')).rejects.toBeInstanceOf(
       BadRequestException,
+    );
+  });
+});
+
+describe('JobsService job payloads', () => {
+  const client = { id: 'c1', role: 'client' } as Profile;
+
+  it('selects the assigned provider avatar with the job', async () => {
+    const { service, calls } = createService({
+      jobs: [
+        ok(
+          job({
+            client_id: 'c1',
+            assigned_provider: {
+              id: 'p1',
+              full_name: 'Provider One',
+              avatar_url: 'https://cdn.test/provider.jpg',
+            },
+          }),
+        ),
+      ],
+      escrow_transactions: [ok(null)],
+    });
+
+    const result = await service.getById(client, 'j1');
+
+    expect(result.assigned_provider).toMatchObject({
+      avatar_url: 'https://cdn.test/provider.jpg',
+    });
+    const select = calls.find(
+      (call) => call.table === 'jobs' && call.method === 'select',
+    );
+    expect(select?.args[0]).toMatch(
+      /assigned_provider:profiles!jobs_assigned_provider_id_fkey\([^)]*avatar_url[^)]*\)/,
     );
   });
 });
@@ -394,7 +461,13 @@ describe('JobsService.updateTask', () => {
 });
 
 describe('JobsService.create', () => {
-  const client = { id: 'c1', full_name: 'Client One' } as Profile;
+  const client = {
+    id: 'c1',
+    full_name: 'Client One',
+    address: null,
+    latitude: null,
+    longitude: null,
+  } as Profile;
   const dto = {
     category_id: 1,
     title: 'Deep clean',
@@ -448,6 +521,33 @@ describe('JobsService.create', () => {
     expect(insert).not.toHaveProperty('location_reference');
   });
 
+  it('uses saved profile coordinates when posting to the saved address', async () => {
+    const geocoding = {
+      geocode: jest.fn().mockRejectedValue(new Error('Must not geocode')),
+    } as unknown as GeocodingService;
+    const profile = {
+      ...client,
+      address: '  Saved Home Address  ',
+      latitude: 13.9,
+      longitude: 121.1,
+    } as Profile;
+    const { service, calls } = createService(
+      { ...rates(), jobs: [ok({ id: 'j1' })] },
+      geocoding,
+    );
+
+    await service.create(profile, {
+      ...dto,
+      address: 'Saved Home Address',
+    });
+
+    expect(geocoding.geocode.mock.calls).toHaveLength(0);
+    const insert = calls.find(
+      (call) => call.table === 'jobs' && call.method === 'insert',
+    )?.args[0] as Record<string, unknown>;
+    expect(insert).toMatchObject({ latitude: 13.9, longitude: 121.1 });
+  });
+
   it('keeps geocoding the address for clients without a reference', async () => {
     const { service, geocoding } = createService({
       ...rates(),
@@ -458,6 +558,31 @@ describe('JobsService.create', () => {
     await service.create(client, dto);
 
     expect(geocode).toHaveBeenCalledWith(dto.address);
+  });
+
+  it('saves optional address details without changing the signed address', async () => {
+    const { geocoding, resolved } = signedLocation();
+    const { service, calls } = createService(
+      { ...rates(), jobs: [ok({ id: 'j1' })] },
+      geocoding,
+    );
+
+    await service.create(client, {
+      ...dto,
+      address: resolved.formatted_address,
+      location_reference: resolved.location_reference,
+      address_details: 'Unit 2, blue gate',
+    });
+
+    const insert = calls.find(
+      (call) => call.table === 'jobs' && call.method === 'insert',
+    )?.args[0] as Record<string, unknown>;
+    expect(insert).toMatchObject({
+      address: resolved.formatted_address,
+      address_details: 'Unit 2, blue gate',
+      latitude: 13.9417,
+      longitude: 121.1631,
+    });
   });
 
   it('rejects a tampered signature before inserting a job', async () => {
@@ -499,7 +624,7 @@ describe('JobsService.create', () => {
     try {
       const { geocoding, resolved } = signedLocation();
       const { service, calls } = createService(rates(), geocoding);
-      clock.mockReturnValue(issuedAt + 15 * 60 * 1000);
+      clock.mockReturnValue(issuedAt + 60 * 60 * 1000);
 
       await expect(
         service.create(client, {
@@ -550,6 +675,25 @@ describe('JobsService.create', () => {
         metadata,
       ),
     ).resolves.toMatchObject({ location_reference: 'signed-reference' });
+  });
+
+  it('validates optional address details from 1 through 120 characters', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const metadata = { type: 'body' as const, metatype: CreateJobDto };
+
+    await expect(
+      pipe.transform({ ...dto, address_details: 'Unit 2' }, metadata),
+    ).resolves.toMatchObject({ address_details: 'Unit 2' });
+    await expect(
+      pipe.transform({ ...dto, address_details: 'x'.repeat(121) }, metadata),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      pipe.transform({ ...dto, address_details: '' }, metadata),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('prices the job from the chosen tier, never from the client', async () => {

@@ -77,10 +77,14 @@ export class JobsController {
    * parsing on "geocode".
    */
   @Get('geocode')
-  @Roles('client')
+  @Roles('client', 'provider')
   @ThrottleGeocode()
-  geocode(@Query() query: GeocodeQueryDto) {
-    return this.geocoding.geocode(query.address);
+  geocode(@CurrentUser() user: Profile, @Query() query: GeocodeQueryDto) {
+    return this.geocoding
+      .geocode(query.address)
+      .then((location) =>
+        this.geocoding.issueLocationReference(user.id, location),
+      );
   }
 
   /**

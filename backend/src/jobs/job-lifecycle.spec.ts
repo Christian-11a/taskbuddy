@@ -738,7 +738,14 @@ class FakeDb {
 
 const BUDGET = 1500;
 
-const client = { id: 'c1', role: 'client', full_name: 'Ana Cruz' } as Profile;
+const client = {
+  id: 'c1',
+  role: 'client',
+  full_name: 'Ana Cruz',
+  address: null,
+  latitude: null,
+  longitude: null,
+} as Profile;
 const provider = {
   id: 'p1',
   role: 'provider',
