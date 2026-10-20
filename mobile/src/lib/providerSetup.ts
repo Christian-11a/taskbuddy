@@ -139,3 +139,8 @@ export function setupProgress(steps: readonly SetupStep[]): { done: number; tota
 export function nextSetupStep(steps: readonly SetupStep[]): SetupStep | undefined {
   return steps.find((step) => step.state === 'next');
 }
+
+/** Where "You're verified!" leads: link a payout account when none is linked; otherwise (or unknown) the feed. */
+export function verifiedNextScreen(linked: boolean | undefined): 'Payout Account' | 'Dashboard' {
+  return linked === false ? 'Payout Account' : 'Dashboard';
+}

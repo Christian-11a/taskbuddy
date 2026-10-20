@@ -113,6 +113,7 @@ import { consumeLastNotificationTap, subscribeToNotificationTaps } from './src/l
 import { resolveNotificationTarget } from './src/lib/notificationRouting';
 import { warmUpServer } from './src/lib/warmUp';
 import { missingProfileSteps, profileReadyToVerify } from './src/lib/verifyReady';
+import { reconcileVerification } from './src/lib/verificationStatus';
 
 /** The tab list with the unread-chat count on the Messages tab. */
 export function withMessagesBadge<T extends string>(
@@ -651,7 +652,7 @@ function AppFlow() {
     try { return !!(await api.payoutAccount()); } catch { return null; }
   };
   const loadVerificationMe = async () => {
-    try { return await api.myVerification(); } catch { return null; }
+    try { return reconcileVerification(await api.myVerification(), { verified: isVerified, identityVerified: providerProfile?.identity_verified === true }); } catch { return null; }
   };
   // The certificate state: `GET /verifications/me` when it carries one, otherwise the credentials list.
   const loadCertificateState = async (): Promise<CertificateState> => {
@@ -1109,9 +1110,9 @@ function AppFlow() {
           }}
           // The same destination as the finish card's "Finish my profile" (setupProfile).
           onEditProfile={() => spNavigate('Edit Profile')}
-          onVerified={async () => {
+          onVerified={async (next) => {
             await refreshProfile();
-            spBack();
+            spNavigate(next);
           }}
           startAt={spVerifyParams?.startAt}
           categoryId={spVerifyParams?.categoryId}

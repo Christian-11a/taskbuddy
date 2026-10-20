@@ -1,4 +1,4 @@
-import { canWorkService, certificateExpiry, certificateGuidance, verificationSummary } from '../verificationStatus';
+import { canWorkService, certificateExpiry, certificateGuidance, reconcileVerification, verificationSummary } from '../verificationStatus';
 
 describe('verificationSummary', () => {
   it('says verified only when verified is true', () => {
@@ -83,5 +83,36 @@ describe('certificateGuidance', () => {
     expect(certificateGuidance('Manicure / Pedicure')).toContain('Beauty Care NC II');
     expect(certificateGuidance('Gardening')).toContain('a TESDA, PRC or trade certificate that matches the service');
     expect(certificateGuidance(null)).toContain('An admin checks it matches your service.');
+  });
+});
+
+describe('reconcileVerification', () => {
+  const BUGGY = { identity: 'none' as const, certificate: 'none' as const, verified: false, services: [] };
+  it('trusts a verified profile when the API answers the empty shape', () => {
+    const r = reconcileVerification(BUGGY, { verified: true, identityVerified: true });
+    expect(verificationSummary(r).verified).toBe(true);
+    expect(canWorkService(r, 1)).toBe(true);
+  });
+  it('an ID-only approval shows the ID approved but still needs the certificate', () => {
+    const r = reconcileVerification(BUGGY, { verified: false, identityVerified: true });
+    expect(r?.identity).toBe('approved');
+    expect(r?.verified).toBe(false);
+    expect(canWorkService(r, 1)).toBe(false);
+  });
+  it('leaves the answer alone when the profile is not verified either', () => {
+    expect(reconcileVerification(BUGGY, { verified: false, identityVerified: false })).toBe(BUGGY);
+  });
+  it('does not override a real answer that lists services', () => {
+    const real = { identity: 'approved' as const, certificate: 'expired' as const, verified: false,
+      services: [{ category_id: 1, name: 'Plumbing', primary: true, certificate: 'expired' as const }] };
+    expect(reconcileVerification(real, { verified: true, identityVerified: true })).toBe(real);
+  });
+  it('returns null and undefined as they are', () => {
+    expect(reconcileVerification(null, { verified: true, identityVerified: true })).toBeNull();
+    expect(reconcileVerification(undefined, { verified: true, identityVerified: true })).toBeUndefined();
+  });
+  it('returns an already verified answer unchanged', () => {
+    const ok = { identity: 'approved' as const, certificate: 'approved' as const, verified: true, services: [] };
+    expect(reconcileVerification(ok, { verified: false, identityVerified: false })).toBe(ok);
   });
 });

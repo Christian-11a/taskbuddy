@@ -20,9 +20,11 @@ jest.mock('../../../../src/lib/api', () => {
     ApiError: MockApiError,
     api: {
       myVerification: jest.fn(),
+      myCredentials: jest.fn().mockResolvedValue([]),
       uploadImage: jest.fn(),
       startIdentitySession: jest.fn(),
       submitVerification: jest.fn(),
+      payoutAccount: jest.fn(),
     },
   };
 });
@@ -59,7 +61,7 @@ const PENDING = {
 };
 
 function renderScreen(
-  props: { onBack?: () => void; onEditProfile?: () => void; onVerified?: () => Promise<void> } = {},
+  props: { onBack?: () => void; onEditProfile?: () => void; onVerified?: (next: 'Payout Account' | 'Dashboard') => Promise<void> } = {},
 ) {
   return render(
     <SPVerificationScreen
@@ -76,6 +78,7 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: PROVIDER_PROFILE });
   (api.myVerification as jest.Mock).mockResolvedValue(null);
   (requestAppPermission as jest.Mock).mockResolvedValue(true);
+  (api.payoutAccount as jest.Mock).mockResolvedValue({ id: 'acct-1' });
 });
 
 describe('SPVerificationScreen — before you start', () => {
@@ -671,7 +674,38 @@ describe('SPVerificationScreen — the status after a review', () => {
 
     fireEvent.press(screen.getByRole('button', { name: 'See jobs near you' }));
 
-    await waitFor(() => expect(onVerified).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('Dashboard'));
+  });
+
+  it('approved with no payout account: the button links one', async () => {
+    const onVerified = jest.fn().mockResolvedValue(undefined);
+    (api.myVerification as jest.Mock).mockResolvedValue({ ...PENDING, status: 'approved', reviewed_at: '2026-10-09T10:00:00Z' });
+    (api.payoutAccount as jest.Mock).mockResolvedValue(null);
+    renderScreen({ onVerified });
+
+    fireEvent.press(await screen.findByRole('button', { name: 'Link payout account' }));
+
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('Payout Account'));
+  });
+
+  it('approved when the payout lookup fails: still goes to the feed', async () => {
+    const onVerified = jest.fn().mockResolvedValue(undefined);
+    (api.myVerification as jest.Mock).mockResolvedValue({ ...PENDING, status: 'approved', reviewed_at: '2026-10-09T10:00:00Z' });
+    (api.payoutAccount as jest.Mock).mockRejectedValue(new Error('Network request failed'));
+    renderScreen({ onVerified });
+
+    expect(await screen.findByText("You're verified!")).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'See jobs near you' }));
+
+    await waitFor(() => expect(onVerified).toHaveBeenCalledWith('Dashboard'));
+  });
+
+  it('refreshes the profile once when opened', async () => {
+    const refreshProfile = jest.fn().mockResolvedValue(undefined);
+    (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: PROVIDER_PROFILE, refreshProfile });
+    renderScreen();
+
+    await waitFor(() => expect(refreshProfile).toHaveBeenCalledTimes(1));
   });
 });
 
@@ -690,5 +724,23 @@ describe('SPVerificationScreen — a status that cannot be checked', () => {
     expect(await screen.findByText("We're checking your documents")).toBeTruthy();
     expect(screen.queryByTestId('error-card')).toBeNull();
     expect(api.myVerification).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('SPVerificationScreen — the empty /verifications/me answer', () => {
+  const EMPTY = { identity: 'none', certificate: 'none', verified: false, services: [] };
+  it('a verified profile sees "You\'re verified!", not the intro', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: { ...PROVIDER_PROFILE, is_verified: true, identity_verified: true } });
+    (api.myVerification as jest.Mock).mockResolvedValue(EMPTY);
+    renderScreen({ onVerified: jest.fn().mockResolvedValue(undefined) });
+    expect(await screen.findByText("You're verified!")).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
+  });
+  it('an ID-only approval sees the certificate status, not Start', async () => {
+    (useAuth as jest.Mock).mockReturnValue({ profile: ACCOUNT_PROFILE, providerProfile: { ...PROVIDER_PROFILE, identity_verified: true } });
+    (api.myVerification as jest.Mock).mockResolvedValue(EMPTY);
+    renderScreen();
+    expect(await screen.findByText('ID approved · certificate needed')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Start' })).toBeNull();
   });
 });

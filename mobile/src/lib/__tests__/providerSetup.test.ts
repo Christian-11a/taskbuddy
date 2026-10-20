@@ -1,4 +1,4 @@
-import { nextSetupStep, providerSetupSteps, setupProgress } from '../providerSetup';
+import { nextSetupStep, providerSetupSteps, setupProgress, verifiedNextScreen } from '../providerSetup';
 
 describe('providerSetupSteps', () => {
   it('marks the address done from the street address, or from the city alone', () => {
@@ -134,4 +134,10 @@ describe('setupProgress and nextSetupStep', () => {
     expect(nextSetupStep(steps)).toBeUndefined();
     expect(setupProgress(steps)).toEqual({ done: 4, total: 4 });
   });
+});
+
+describe('verifiedNextScreen', () => {
+  it('sends a provider with no payout account to link one', () => expect(verifiedNextScreen(false)).toBe('Payout Account'));
+  it('sends a provider with an account to the feed', () => expect(verifiedNextScreen(true)).toBe('Dashboard'));
+  it('an unknown payout state never blocks: feed', () => expect(verifiedNextScreen(undefined)).toBe('Dashboard'));
 });

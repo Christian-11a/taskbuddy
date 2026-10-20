@@ -42,7 +42,7 @@
  */
 
 import { useThemedStyles, type Palette as ThemePalette } from '../../../src/context/ThemeContext';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   StyleSheet,
@@ -88,7 +88,7 @@ import { Spacing } from '../../../src/constants/theme';
 import { useAuth } from '../../../src/context/AuthContext';
 import { useHeaderTop } from '../../../src/hooks/useHeaderTop';
 import { useScrollToFirstError } from '../../../src/hooks/useScrollToFirstError';
-import { certificateGuidance, hasNewShape, verificationSummary } from '../../../src/lib/verificationStatus';
+import { certificateGuidance, hasNewShape, reconcileVerification, verificationSummary } from '../../../src/lib/verificationStatus';
 import { requestAppPermission } from '../../../src/lib/permissions';
 import { missingProfileSteps, profileReadyToVerify, type MissingProfileStep } from '../../../src/lib/verifyReady';
 import {
@@ -106,6 +106,7 @@ import {
   type VerifyDocumentType,
   type VerifyView,
 } from '../../../src/lib/verifyFlow';
+import { verifiedNextScreen } from '../../../src/lib/providerSetup';
 
 /** Stripe's decision comes by webhook; poll for it, but not forever. */
 const POLL_INTERVAL_MS = 4000;
@@ -168,11 +169,10 @@ interface SPVerificationScreenProps {
   /** Opens Edit Profile, where the provider adds the address and bio that verification waits for. */
   onEditProfile: () => void;
   /**
-   * Called when the provider taps through after being approved — refreshes the
-   * auth profile (so the dashboard's "Get Verified" banner disappears) and
-   * returns to the dashboard.
+   * Called when the provider taps through after approval. The caller refreshes the
+   * profile and goes to the payout screen when no payout account is linked, otherwise to the feed.
    */
-  onVerified?: () => Promise<void>;
+  onVerified?: (next: 'Payout Account' | 'Dashboard') => Promise<void>;
   /** Open straight on the certificate upload (the proposal gate's `certificate_required`). */
   startAt?: 'certificate';
   /** With `startAt`: the service the certificate is for. Defaults to the provider's primary service. */
@@ -184,7 +184,12 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile, an address or
   // a bio; say so up front instead of after all three steps.
-  const { profile, providerProfile } = useAuth();
+  const { profile, providerProfile, refreshProfile } = useAuth();
+  // Once on arrival: a stale cached is_verified is corrected. refreshProfile is rebuilt on every render.
+  useEffect(() => {
+    void refreshProfile?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const profileIncomplete = !profileReadyToVerify(profile, providerProfile);
   const missingSteps = providerProfile ? missingProfileSteps(profile, providerProfile) : [];
   const profileNotice = providerProfile
@@ -252,12 +257,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
   const scrollRef = scroll.scrollRef;
 
   const {
-    data: verification,
+    data: rawVerification,
     loading,
     refreshing,
     error: verificationError,
     reload,
   } = useAsyncData(useCallback(() => api.myVerification(), []), [], 'verification-me');
+  const verification = useMemo(() => reconcileVerification(rawVerification, { verified: providerProfile?.is_verified === true, identityVerified: providerProfile?.identity_verified === true }) as typeof rawVerification, [rawVerification, providerProfile]);
+
+  // Whether a payout account is linked, read once to choose where "You're verified!" leads. Same key as the Home screen.
+  const { data: payoutLink } = useAsyncData<{ linked: boolean }>(async () => ({ linked: !!(await api.payoutAccount()) }), [], 'sp-payout-linked');
+  const verifiedNext = verifiedNextScreen(payoutLink?.linked);
 
   // The two-part state is only there on the new API; the old one keeps today's screens.
   const newShape = hasNewShape(verification);
@@ -514,13 +524,13 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
     setIdPhase('choose');
   };
 
-  /** Approved: refresh the profile and go to the feed, as the Go to Dashboard button always did. */
+  /** Approved: refresh the profile and go to Payout Account or the feed. */
   const continueToFeed = async () => {
     if (!onVerified) return;
     setContinuing(true);
     setError(null);
     try {
-      await onVerified();
+      await onVerified(verifiedNext);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not refresh your profile. Try again.');
     } finally {
@@ -925,7 +935,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
       {view === 'approved' && onVerified && (
         <BottomActionBar
-          primaryLabel="See jobs near you"
+          primaryLabel={verifiedNext === 'Payout Account' ? 'Link payout account' : 'See jobs near you'}
           onPrimary={() => void continueToFeed()}
           busy={continuing}
         />
