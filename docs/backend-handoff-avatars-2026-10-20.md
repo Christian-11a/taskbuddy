@@ -1,5 +1,10 @@
 # Backend handoff: `assigned_provider.avatar_url` on the job payload (2026-10-20)
 
+> **Implementation update (2026-10-20):** added to the assigned-provider
+> embed with a backend response test. No migration is needed. Release status
+> remains tied to the API deployment; see the
+> [current implementation plan](./backend-handoff-plan-2026-10-20.md).
+
 ## Ask
 
 In `backend/src/jobs/jobs.service.ts` (line ~68, `JOB_SELECT`), add `avatar_url` to the `assigned_provider` embed:

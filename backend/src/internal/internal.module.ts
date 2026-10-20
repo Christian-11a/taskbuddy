@@ -3,6 +3,7 @@ import { InternalController } from './internal.controller';
 import { PushModule } from '../push/push.module';
 import { RecommendationsModule } from '../recommendations/recommendations.module';
 import { EscrowModule } from '../escrow/escrow.module';
+import { PaymentsModule } from '../payments/payments.module';
 
 /**
  * Imports the modules rather than re-providing their schedulers, so the
@@ -11,7 +12,7 @@ import { EscrowModule } from '../escrow/escrow.module';
  * what stops an HTTP tick and a scheduled tick from overlapping.
  */
 @Module({
-  imports: [PushModule, RecommendationsModule, EscrowModule],
+  imports: [PushModule, RecommendationsModule, EscrowModule, PaymentsModule],
   controllers: [InternalController],
 })
 export class InternalModule {}

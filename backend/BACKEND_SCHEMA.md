@@ -2053,7 +2053,8 @@ rather than running it.
 ### 29.4 Card-at-hire — the webhook places the hold
 
 `POST /payments/hire-checkout-session { application_id, app_redirect }` (client-only,
-payments rate limit) opens Stripe Checkout for the **job's full budget**. The amount comes from the
+payments rate limit) opens a Xendit invoice when Xendit is configured, or Stripe Checkout otherwise,
+for the proposal's **server-stored quote** (`job_applications.quote_amount`). The amount comes from the
 server, never from the request. Before a card is ever asked for, it runs the same checks a wallet
 accept makes (`ApplicationsService.assertHireable`: application pending, job open, provider
 verified). The PaymentIntent carries:
@@ -2095,6 +2096,24 @@ become 500s, not 4xxs.
 wallet, however it got there), and it makes every failure recoverable. If the hire cannot happen
 by the time the money arrives, the money is simply in the client's wallet, spendable or
 withdrawable.
+
+#### Xendit invoice recovery (migration 0077)
+
+Each Xendit hire invoice is stored in the service-role-only `xendit_hire_payments` table with its
+application, client, external id, invoice id, expected amount and status. The invoice callback is
+re-fetched from Xendit; only matching `PAID` or `SETTLED` invoices enter the shared hire path. A
+service-role claim function allows one worker at a time and makes a processing claim recoverable
+after five minutes. The same reconciliation runs from the callback, the client's
+`GET /payments/hire-status?application_id=&invoice_id=` check, and the five-minute background tick.
+The endpoint verifies application ownership before it returns or reconciles payment state.
+
+The API reports `confirming` for pending or processing invoices, `needs_review` for a paid invoice
+whose external id, amount or currency does not match the saved checkout, `not_paid` for a failed or
+expired invoice, `confirmed` when the application is accepted, and `not_applied` when a paid invoice
+could not complete the hire. A review-required invoice triggers an admin alert. Mobile keeps the
+proposal blocked while payment is unresolved and only offers a new checkout after a terminal state.
+This migration has local SQL coverage; it must still be applied and exercised against the Xendit
+sandbox before release.
 
 **Captured immediately, not authorised.** Card authorisations lapse after about a week, and jobs
 are booked further out than that. A captured charge in the platform balance is also what the
@@ -2610,11 +2629,13 @@ Local tests cover notice atomicity/replay, text/photo single delivery, consisten
 
 Apply `0043_approved_services_consistency.sql` after 0042. It reuses 0037's `guard_job_skill` and profile-row lock, extending the assignment trigger to category changes. Primary-service changes during accepted work remain forbidden by the existing guard. Main-service review and hiring retain their shared lock, and 0042 retains atomic service/status/audit/notice decisions. Approved secondary services remain eligible for browsing, matching, applications and hiring.
 
-`GET /geocoding/autocomplete` returns a `location_reference` only for precise suggestions. `GET /geocoding/reverse` returns one for the resolved GPS fix. Both may include canonical `city`. The reference expires exactly 15 minutes after issuance, is bound to the authenticated account, label and coordinates, and is signed using HMAC-SHA256 with a domain-separated key derived from the configured `SUPABASE_SERVICE_ROLE_KEY`. It contains no API credential. Instances sharing the configured key can verify it; changing that key invalidates outstanding references. No new config or secret is introduced.
+`GET /geocoding/autocomplete` returns a `location_reference` only for precise suggestions. `GET /geocoding/reverse` returns one for the resolved GPS fix. `GET /jobs/geocode` also returns one for a precise typed address and is available to clients and providers. All may include canonical `city`. The reference expires exactly 60 minutes after issuance, is bound to the authenticated account, label and coordinates, and is signed using HMAC-SHA256 with a domain-separated key derived from the configured `SUPABASE_SERVICE_ROLE_KEY`. It contains no API credential. Instances sharing the configured key can verify it; changing that key invalidates outstanding references. No new config or secret is introduced.
 
 `PATCH /profiles/me` accepts optional string `location_reference` (1–4096 characters) with a nonempty matching `address`. If canonical city is present, a supplied city must match it. The signature/account/label/expiry must validate before any update. Valid references save their exact coordinates and canonical city without another geocode. Expired references return an actionable 400 asking for another selection. Raw client latitude/longitude, null/invalid references and mismatched labels/accounts/cities are refused. References are transient request fields and are not persisted. Manual edits invalidate the mobile reference, and manual address geocoding retains the existing street/confidence requirements.
 
-`POST /jobs` also accepts optional `location_reference` with the same 1–4096-character validation. A valid reference must belong to the client, match `address`, and remain within its 15-minute lifetime; it supplies the stored job coordinates without a second forward geocode. Without one, the server geocodes `address` for older clients. The job has no separate city field. Legacy `latitude`/`longitude` request fields are optional, validated when present, and ignored for placement; the signed reference or server geocode is authoritative. The reference is not persisted.
+`POST /jobs` also accepts optional `location_reference` with the same 1–4096-character validation. A valid reference must belong to the client, match `address`, and remain within its 60-minute lifetime; it supplies the stored job coordinates without a second forward geocode. Without one, the server uses the caller's saved profile point if the address matches the saved address, otherwise it geocodes `address`. Optional `address_details` (1–120 characters) stores a house number, unit, floor or landmark independently of the address and signed point (migration 0076). The job has no separate city field. Legacy `latitude`/`longitude` request fields are optional, validated when present, and ignored for placement; the signed reference or server-resolved location is authoritative. The reference is not persisted.
+
+`POST /jobs/:id/accept` accepts optional `location_reference` together with the matching `address`; the server verifies the reference against the provider's account and saves its coordinates instead of trusting client-supplied coordinates. `GET /jobs/geocode` is available to both clients and providers so a provider can verify a typed start address.
 
 `GET /verifications/me` explicitly follows `provider_profiles.category_id` to the primary `service_categories` row. Whenever a provider profile exists, `services` contains its primary service, even if its certificate state is `none`. Profile, credential, or secondary-service lookup errors return a server error rather than an empty unverified state.
 

@@ -38,7 +38,16 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
         calls.push({ table, method, args });
         return builder;
       });
-    for (const method of ['select', 'insert', 'update', 'eq']) {
+    for (const method of [
+      'select',
+      'insert',
+      'update',
+      'eq',
+      'in',
+      'order',
+      'limit',
+      'lt',
+    ]) {
       builder[method] = chain(method);
     }
     builder.maybeSingle = jest.fn(() => Promise.resolve(result));
@@ -108,7 +117,11 @@ function build(
     findByJob?: jest.Mock;
     assertHireable?: jest.Mock;
     serviceGate?: jest.Mock;
-    xendit?: { configured: boolean; createCheckout?: jest.Mock };
+    xendit?: {
+      configured: boolean;
+      createCheckout?: jest.Mock;
+      invoiceStatus?: jest.Mock;
+    };
   } = {},
 ) {
   const { supabase, calls } = createSupabaseMock(tables);
@@ -592,7 +605,7 @@ describe('HireFundingService with Xendit (test mode)', () => {
         url: 'https://checkout-staging.xendit.co/inv_1',
       }),
     );
-    const { service, create } = build(
+    const { service, create, calls } = build(
       { job_applications: [ok(application())] },
       { xendit: { configured: true, createCheckout } },
     );
@@ -615,6 +628,116 @@ describe('HireFundingService with Xendit (test mode)', () => {
         externalId: expect.stringMatching(/^hire_app1_[0-9a-f]{8}$/),
       }),
     );
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        table: 'xendit_hire_payments',
+        method: 'insert',
+        args: [
+          expect.objectContaining({
+            application_id: 'app1',
+            client_id: 'c1',
+            invoice_id: 'inv_1',
+            expected_amount: 1500,
+            status: 'pending',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('reuses an existing pending invoice instead of opening another checkout', async () => {
+    const attempt = {
+      id: 'payment-1',
+      application_id: 'app1',
+      client_id: 'c1',
+      invoice_id: 'inv_1',
+      external_id: 'hire_app1_abcd1234',
+      checkout_url: 'https://checkout-staging.xendit.co/inv_1',
+      expected_amount: 1500,
+      currency: 'PHP',
+      status: 'pending',
+    };
+    const createCheckout = jest.fn();
+    const { service, calls } = build(
+      {
+        job_applications: [ok(application())],
+        xendit_hire_payments: [ok(attempt), ok(attempt)],
+      },
+      { xendit: { configured: true, createCheckout } },
+    );
+
+    const result = await service.createCheckout(
+      client,
+      { application_id: 'app1', app_redirect: APP },
+      BASE,
+    );
+
+    expect(result).toEqual({
+      url: attempt.checkout_url,
+      session_id: attempt.invoice_id,
+      amount: 1500,
+    });
+    expect(createCheckout).not.toHaveBeenCalled();
+    expect(calls).toContainEqual(
+      expect.objectContaining({
+        table: 'rpc:claim_xendit_hire_payment',
+        method: 'rpc',
+      }),
+    );
+  });
+
+  it('the status check applies a paid invoice and reports the resulting hire', async () => {
+    const attempt = {
+      id: 'payment-1',
+      application_id: 'app1',
+      client_id: 'c1',
+      invoice_id: 'inv_1',
+      external_id: 'hire_app1_abcd1234',
+      checkout_url: 'https://checkout-staging.xendit.co/inv_1',
+      expected_amount: 1500,
+      currency: 'PHP',
+      status: 'pending',
+    };
+    const invoiceStatus = jest.fn(() =>
+      Promise.resolve({
+        invoiceId: 'inv_1',
+        externalId: 'hire_app1_abcd1234',
+        purpose: 'hire',
+        subjectId: 'app1',
+        amountCentavos: 150000,
+        currency: 'php',
+        channel: 'GCASH',
+        status: 'PAID',
+      }),
+    );
+    const { service } = build(
+      {
+        xendit_hire_payments: [ok(attempt), ok(null), ok(null)],
+        'rpc:claim_xendit_hire_payment': [
+          ok([{ ...attempt, status: 'processing' }]),
+        ],
+      },
+      { xendit: { configured: true, invoiceStatus } },
+    );
+    jest
+      .spyOn(service as any, 'load')
+      .mockResolvedValueOnce(application())
+      .mockResolvedValueOnce(application({ status: 'accepted' }));
+    const completeFromXendit = jest
+      .spyOn(service as any, 'completeFromXendit')
+      .mockResolvedValue(undefined);
+
+    const result = await service.hirePaymentStatus(client, 'app1', 'inv_1');
+
+    expect(invoiceStatus).toHaveBeenCalledWith('inv_1');
+    expect(completeFromXendit).toHaveBeenCalledWith(
+      expect.objectContaining({ invoiceId: 'inv_1', status: 'PAID' }),
+    );
+    expect(result).toEqual({
+      application_status: 'accepted',
+      payment_status: 'confirmed',
+      invoice_id: 'inv_1',
+    });
   });
 
   it('turns a paid GCash invoice into a hold, reading payer and provider from the proposal', async () => {

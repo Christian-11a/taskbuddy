@@ -24,6 +24,8 @@ export interface PendingHirePayment {
   returnedPaid: boolean;
   /** When the checkout started, in ms since the epoch. Marking again keeps this. */
   startedAt: number;
+  /** Xendit invoice id used by the server to recover a delayed callback. */
+  invoiceId?: string;
 }
 
 /** This session's waits, by proposal id. Every change is also written to storage. */
@@ -46,8 +48,9 @@ export function isPendingHirePaymentExpired(wait: PendingHirePayment, now: numbe
 
 function isPendingHirePayment(value: unknown): value is PendingHirePayment {
   if (typeof value !== 'object' || value === null) return false;
-  const { returnedPaid, startedAt } = value as Record<string, unknown>;
-  return typeof returnedPaid === 'boolean' && typeof startedAt === 'number' && Number.isFinite(startedAt);
+  const { returnedPaid, startedAt, invoiceId } = value as Record<string, unknown>;
+  return typeof returnedPaid === 'boolean' && typeof startedAt === 'number' && Number.isFinite(startedAt) &&
+    (invoiceId === undefined || typeof invoiceId === 'string');
 }
 
 /**
@@ -66,7 +69,11 @@ export function parsePendingHirePayments(raw: string | null, now: number): Map<s
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return result;
   for (const [id, value] of Object.entries(data)) {
     if (isPendingHirePayment(value) && !isPendingHirePaymentExpired(value, now)) {
-      result.set(id, { returnedPaid: value.returnedPaid, startedAt: value.startedAt });
+      result.set(id, {
+        returnedPaid: value.returnedPaid,
+        startedAt: value.startedAt,
+        ...(value.invoiceId ? { invoiceId: value.invoiceId } : {}),
+      });
     }
   }
   return result;
@@ -102,11 +109,20 @@ function writeWaits(): Promise<void> {
  * whether the browser reported a payment; when the checkout started is kept. Resolves once
  * the device has been written, or the write has failed.
  */
-export function markPendingHirePayment(applicationId: string, returnedPaid: boolean): Promise<void> {
+export function markPendingHirePayment(
+  applicationId: string,
+  returnedPaid: boolean,
+  invoiceId?: string,
+): Promise<void> {
   const now = Date.now();
   const earlier = waits.get(applicationId);
   const startedAt = earlier && !isPendingHirePaymentExpired(earlier, now) ? earlier.startedAt : now;
-  waits.set(applicationId, { returnedPaid, startedAt });
+  const savedInvoiceId = invoiceId ?? earlier?.invoiceId;
+  waits.set(applicationId, {
+    returnedPaid,
+    startedAt,
+    ...(savedInvoiceId ? { invoiceId: savedInvoiceId } : {}),
+  });
   changedThisSession.add(applicationId);
   return writeWaits();
 }

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -7,6 +8,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import type Stripe from 'stripe';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { isExternallyScheduled } from '../common/cron-driver';
 import { SupabaseService } from '../supabase/supabase.service';
 import { StripeService } from './stripe.service';
 import { StripeCustomersService } from './stripe-customers.service';
@@ -72,6 +75,18 @@ interface HireApplication {
   } | null;
 }
 
+interface XenditHirePaymentAttempt {
+  id: string;
+  application_id: string;
+  client_id: string;
+  invoice_id: string | null;
+  external_id: string;
+  checkout_url: string | null;
+  expected_amount: number | string;
+  currency: string;
+  status: string;
+}
+
 /**
  * Card-at-hire: a homeowner pays a hire by card instead of from their wallet
  * (BACKEND_SCHEMA.md §29.4, handoff item 6, Story 1 of the Stripe Connect
@@ -100,6 +115,7 @@ interface HireApplication {
 @Injectable()
 export class HireFundingService {
   private readonly logger = new Logger(HireFundingService.name);
+  private reconcilingInvoices = false;
 
   constructor(
     private readonly supabase: SupabaseService,
@@ -155,13 +171,73 @@ export class HireFundingService {
     // Xendit (test mode) when configured: GCash, Maya, GrabPay, card and
     // online banking, with no wallet in between (migration 0056).
     if (this.xendit.configured) {
+      const { data: existing, error: attemptReadError } =
+        await this.supabase.admin
+          .from('xendit_hire_payments')
+          .select('*')
+          .eq('application_id', application.id)
+          .eq('client_id', user.id)
+          .in('status', ['pending', 'processing', 'needs_review'])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+      if (attemptReadError)
+        throw new ServiceUnavailableException(
+          'Could not check the existing payment',
+        );
+      const attempt = existing as XenditHirePaymentAttempt | null;
+      if (attempt) {
+        if (attempt.status === 'pending') {
+          await this.reconcileHireInvoice(attempt);
+          const latestAttempt = await this.findHireAttempt(
+            user.id,
+            application.id,
+            attempt.invoice_id ?? undefined,
+          );
+          if (latestAttempt?.status === 'processed')
+            throw new ConflictException(
+              'This payment has already been processed. Refresh the proposals before trying again.',
+            );
+          if (latestAttempt?.status === 'pending' && latestAttempt.checkout_url)
+            return {
+              url: latestAttempt.checkout_url,
+              session_id: latestAttempt.invoice_id,
+              amount: Number(latestAttempt.expected_amount),
+            };
+        }
+        throw new ConflictException(
+          'A payment for this proposal is already being confirmed. Check its status before trying again.',
+        );
+      }
+
+      const invoiceExternalId = externalId(HIRE_PREFIX, application.id);
       const checkout = await this.xendit.createCheckout({
-        externalId: externalId(HIRE_PREFIX, application.id),
+        externalId: invoiceExternalId,
         amount: budget,
         description: `TaskBuddy hire — ${job.title}`,
         successUrl: returnUrl('success'),
         failureUrl: returnUrl('cancelled'),
       });
+      const { error: saveError } = await this.supabase.admin
+        .from('xendit_hire_payments')
+        .insert({
+          application_id: application.id,
+          client_id: user.id,
+          invoice_id: checkout.id,
+          external_id: invoiceExternalId,
+          checkout_url: checkout.url,
+          expected_amount: budget,
+          currency: 'PHP',
+          status: 'pending',
+        });
+      if (saveError) {
+        this.logger.error(
+          `Could not save Xendit hire invoice ${checkout.id}: ${saveError.message}`,
+        );
+        throw new ServiceUnavailableException(
+          'The payment could not be tracked. Check payment status before starting another payment.',
+        );
+      }
       return { url: checkout.url, session_id: checkout.id, amount: budget };
     }
 
@@ -339,6 +415,271 @@ export class HireFundingService {
       funding: undefined,
       methodLabel: methodLabel(paid.channel),
     });
+  }
+
+  /** Xendit's verified callback path. Known invoices remain recoverable if processing fails. */
+  async handleXenditPaidInvoice(paid: XenditPaidInvoice): Promise<void> {
+    const { data, error } = await this.supabase.admin
+      .from('xendit_hire_payments')
+      .select('*')
+      .eq('invoice_id', paid.invoiceId)
+      .maybeSingle();
+    if (error)
+      throw new ServiceUnavailableException(
+        'Could not read the payment record',
+      );
+    const attempt = data as XenditHirePaymentAttempt | null;
+    if (attempt) {
+      await this.reconcileHireInvoice(attempt);
+      return;
+    }
+
+    // Older checkouts and price-change invoices have no hire-attempt row. Keep
+    // their existing path, but do not acknowledge an invoice Xendit cannot verify.
+    if (!(await this.xendit.confirmPaidInvoice(paid))) {
+      throw new ServiceUnavailableException(
+        `Xendit invoice ${paid.invoiceId} could not be verified yet`,
+      );
+    }
+    await this.completeFromXendit(paid);
+  }
+
+  /** Called after checkout return and by the client's Check payment status action. */
+  async hirePaymentStatus(
+    user: Profile,
+    applicationId: string,
+    invoiceId?: string,
+  ) {
+    let application = await this.load(applicationId);
+    if (!application?.jobs)
+      throw new NotFoundException('Application not found');
+    if (application.jobs.client_id !== user.id)
+      throw new ForbiddenException('Not your job');
+
+    let attempt = await this.findHireAttempt(user.id, applicationId, invoiceId);
+    if (!attempt && invoiceId && this.xendit.configured) {
+      const invoice = await this.xendit.invoiceStatus(invoiceId);
+      if (
+        invoice &&
+        invoice.purpose === HIRE_PREFIX &&
+        invoice.subjectId === applicationId &&
+        invoice.currency === CURRENCY &&
+        application.quote_amount != null &&
+        invoice.amountCentavos ===
+          Math.round(Number(application.quote_amount) * 100)
+      ) {
+        const { data, error } = await this.supabase.admin
+          .from('xendit_hire_payments')
+          .insert({
+            application_id: applicationId,
+            client_id: user.id,
+            invoice_id: invoice.invoiceId,
+            external_id: invoice.externalId,
+            expected_amount: Number(application.quote_amount),
+            currency: 'PHP',
+            status: 'pending',
+          })
+          .select('*')
+          .single();
+        if (error)
+          throw new ServiceUnavailableException(
+            'Could not save the payment record',
+          );
+        attempt = data as XenditHirePaymentAttempt;
+      }
+    }
+
+    if (attempt) await this.reconcileHireInvoice(attempt);
+    application = await this.load(applicationId);
+    if (!application?.jobs)
+      throw new NotFoundException('Application not found');
+    const paymentStatus =
+      application.status === 'accepted'
+        ? 'confirmed'
+        : this.paymentStatus(attempt?.status ?? null);
+    return {
+      application_status: application.status,
+      payment_status: paymentStatus,
+      invoice_id: attempt?.invoice_id ?? invoiceId ?? null,
+    };
+  }
+
+  /** Five-minute backstop for a callback Xendit did not deliver successfully. */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async scheduledInvoiceReconciliation() {
+    if (isExternallyScheduled()) return;
+    await this.reconcilePendingHireInvoices();
+  }
+
+  async reconcilePendingHireInvoices(): Promise<number> {
+    if (!this.xendit.configured || this.reconcilingInvoices) return 0;
+    this.reconcilingInvoices = true;
+    try {
+      const staleBefore = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const [pending, stale] = await Promise.all([
+        this.supabase.admin
+          .from('xendit_hire_payments')
+          .select('*')
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+          .limit(25),
+        this.supabase.admin
+          .from('xendit_hire_payments')
+          .select('*')
+          .eq('status', 'processing')
+          .lt('last_attempt_at', staleBefore)
+          .order('last_attempt_at', { ascending: true })
+          .limit(25),
+      ]);
+      if (pending.error || stale.error)
+        throw new Error(
+          `Xendit invoice reconciliation read failed: ${pending.error?.message ?? stale.error?.message}`,
+        );
+      const attempts = [
+        ...((pending.data ?? []) as XenditHirePaymentAttempt[]),
+        ...((stale.data ?? []) as XenditHirePaymentAttempt[]),
+      ];
+      let reconciled = 0;
+      for (const attempt of attempts) {
+        try {
+          if (await this.reconcileHireInvoice(attempt)) reconciled++;
+        } catch (err) {
+          this.logger.error(
+            `Xendit hire invoice ${attempt.invoice_id} reconciliation failed: ${(err as Error).message}`,
+          );
+        }
+      }
+      return reconciled;
+    } finally {
+      this.reconcilingInvoices = false;
+    }
+  }
+
+  private async findHireAttempt(
+    clientId: string,
+    applicationId: string,
+    invoiceId?: string,
+  ): Promise<XenditHirePaymentAttempt | null> {
+    let query = this.supabase.admin
+      .from('xendit_hire_payments')
+      .select('*')
+      .eq('application_id', applicationId)
+      .eq('client_id', clientId);
+    if (invoiceId) query = query.eq('invoice_id', invoiceId);
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error)
+      throw new ServiceUnavailableException(
+        'Could not read the payment record',
+      );
+    return data as XenditHirePaymentAttempt | null;
+  }
+
+  private paymentStatus(status: string | null) {
+    if (status === 'processed') return 'not_applied';
+    if (status === 'expired' || status === 'failed') return 'not_paid';
+    if (status === 'needs_review') return 'needs_review';
+    if (status === 'pending' || status === 'processing') return 'confirming';
+    return 'not_found';
+  }
+
+  private async reconcileHireInvoice(
+    attempt: XenditHirePaymentAttempt,
+  ): Promise<boolean> {
+    if (!attempt.invoice_id || attempt.status === 'processed') return false;
+    if (
+      attempt.status === 'expired' ||
+      attempt.status === 'failed' ||
+      attempt.status === 'needs_review'
+    )
+      return false;
+    const { data, error } = await this.supabase.admin.rpc(
+      'claim_xendit_hire_payment',
+      { p_invoice_id: attempt.invoice_id },
+    );
+    if (error)
+      throw new ServiceUnavailableException(
+        'Could not claim the payment for reconciliation',
+      );
+    const claimed = (
+      Array.isArray(data) ? data[0] : data
+    ) as XenditHirePaymentAttempt | null;
+    if (!claimed) return false;
+
+    try {
+      const invoice = await this.xendit.invoiceStatus(claimed.invoice_id!);
+      if (!invoice) {
+        await this.updateHireAttempt(claimed.id, {
+          status: 'pending',
+          last_checked_at: new Date().toISOString(),
+          last_error: 'Invoice was not found at Xendit',
+        });
+        return true;
+      }
+      if (
+        invoice.externalId !== claimed.external_id ||
+        invoice.currency !== CURRENCY ||
+        invoice.amountCentavos !==
+          Math.round(Number(claimed.expected_amount) * 100)
+      ) {
+        const needsReview =
+          invoice.status === 'PAID' || invoice.status === 'SETTLED';
+        await this.updateHireAttempt(claimed.id, {
+          status: needsReview ? 'needs_review' : 'pending',
+          last_checked_at: new Date().toISOString(),
+          last_error: 'Xendit invoice details do not match the saved checkout',
+        });
+        if (needsReview)
+          await this.alertUnappliedPayment(
+            invoice,
+            'does not match the saved checkout',
+          );
+        return true;
+      }
+      if (invoice.status === 'PAID' || invoice.status === 'SETTLED') {
+        await this.updateHireAttempt(claimed.id, {
+          last_checked_at: new Date().toISOString(),
+          paid_at: new Date().toISOString(),
+          last_error: null,
+        });
+        await this.completeFromXendit(invoice);
+        await this.updateHireAttempt(claimed.id, {
+          status: 'processed',
+          processed_at: new Date().toISOString(),
+          last_error: null,
+        });
+        return true;
+      }
+      const terminal =
+        invoice.status === 'EXPIRED'
+          ? 'expired'
+          : ['FAILED', 'CANCELLED', 'VOIDED'].includes(invoice.status)
+            ? 'failed'
+            : 'pending';
+      await this.updateHireAttempt(claimed.id, {
+        status: terminal,
+        last_checked_at: new Date().toISOString(),
+        last_error: null,
+      });
+      return true;
+    } catch (err) {
+      await this.updateHireAttempt(claimed.id, {
+        status: 'pending',
+        last_error: (err as Error).message,
+      });
+      throw err;
+    }
+  }
+
+  private async updateHireAttempt(id: string, fields: Record<string, unknown>) {
+    const { error } = await this.supabase.admin
+      .from('xendit_hire_payments')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error)
+      throw new Error(`Could not update hire payment: ${error.message}`);
   }
 
   /**

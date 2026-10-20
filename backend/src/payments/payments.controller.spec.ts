@@ -6,6 +6,7 @@ import type { PaymentsService } from './payments.service';
 import type { StripeService } from './stripe.service';
 import type { HireFundingService } from './hire-funding.service';
 import type { EscrowService } from '../escrow/escrow.service';
+import type { Profile } from '../common/types';
 
 describe('PaymentsController xenditPayoutWebhook', () => {
   const body = {
@@ -59,11 +60,10 @@ describe('PaymentsController xenditWebhook (invoice)', () => {
     payment_channel: 'GCASH',
   };
 
-  function build(confirmed: boolean) {
+  function build() {
     const xendit = new XenditService();
     jest.spyOn(xendit, 'verifyCallback').mockReturnValue(true);
-    jest.spyOn(xendit, 'confirmPaidInvoice').mockResolvedValue(confirmed);
-    const hireFunding = { completeFromXendit: jest.fn() };
+    const hireFunding = { handleXenditPaidInvoice: jest.fn() };
     const controller = new PaymentsController(
       {} as PaymentsService,
       {} as StripeService,
@@ -74,20 +74,47 @@ describe('PaymentsController xenditWebhook (invoice)', () => {
     return { controller, hireFunding };
   }
 
-  it('acts on a paid invoice Xendit confirms', async () => {
-    const { controller, hireFunding } = build(true);
+  it('passes a paid invoice to the durable reconciliation handler', async () => {
+    const { controller, hireFunding } = build();
     await controller.xenditWebhook({ body } as Request, 'token');
-    expect(hireFunding.completeFromXendit).toHaveBeenCalledWith(
+    expect(hireFunding.handleXenditPaidInvoice).toHaveBeenCalledWith(
       expect.objectContaining({ invoiceId: 'inv_1', amountCentavos: 150000 }),
     );
   });
 
-  it('ignores a callback Xendit does not confirm', async () => {
-    const { controller, hireFunding } = build(false);
+  it('does not acknowledge an invoice that the reconciliation handler cannot process', async () => {
+    const { controller, hireFunding } = build();
+    hireFunding.handleXenditPaidInvoice.mockRejectedValue(
+      new Error('Invoice could not be verified'),
+    );
     await expect(
       controller.xenditWebhook({ body } as Request, 'token'),
-    ).resolves.toEqual({ received: true });
-    expect(hireFunding.completeFromXendit).not.toHaveBeenCalled();
+    ).rejects.toThrow('Invoice could not be verified');
+  });
+});
+
+describe('PaymentsController hirePaymentStatus', () => {
+  it('delegates the authenticated client and invoice id to reconciliation', async () => {
+    const user = { id: 'client-1', role: 'client' };
+    const hireFunding = { hirePaymentStatus: jest.fn() };
+    const controller = new PaymentsController(
+      {} as PaymentsService,
+      {} as StripeService,
+      hireFunding as unknown as HireFundingService,
+      new XenditService(),
+      {} as EscrowService,
+    );
+
+    await controller.hirePaymentStatus(user as Profile, {
+      application_id: 'application-1',
+      invoice_id: 'invoice-1',
+    });
+
+    expect(hireFunding.hirePaymentStatus).toHaveBeenCalledWith(
+      user,
+      'application-1',
+      'invoice-1',
+    );
   });
 });
 
@@ -158,5 +185,25 @@ describe('XenditService.confirmPaidInvoice', () => {
 
   it('throws when Xendit cannot be asked, so the callback is retried', async () => {
     await expect(respond(503, {}).confirmPaidInvoice(paid)).rejects.toThrow();
+  });
+
+  it('returns a normalized pending invoice status for manual reconciliation', async () => {
+    const xendit = respond(200, {
+      id: 'inv_1',
+      external_id: 'hire_app1_abcd1234',
+      status: 'PENDING',
+      amount: 1500,
+      currency: 'PHP',
+      payment_channel: 'GCASH',
+    });
+
+    await expect(xendit.invoiceStatus('inv_1')).resolves.toMatchObject({
+      invoiceId: 'inv_1',
+      externalId: 'hire_app1_abcd1234',
+      status: 'PENDING',
+      amountCentavos: 150000,
+      currency: 'php',
+      channel: 'GCASH',
+    });
   });
 });

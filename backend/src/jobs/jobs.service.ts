@@ -65,7 +65,7 @@ function haversineKm(
 // review and read the error. `reviews.job_id` is UNIQUE, so this embed is
 // one-to-one.
 const JOB_SELECT =
-  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name), job_tasks(id, label, position, is_done, completed_at, proof_photo_paths), reviews(id, rating, comment, created_at)';
+  '*, service_categories(name), assigned_provider:profiles!jobs_assigned_provider_id_fkey(id, full_name, avatar_url), job_tasks(id, label, position, is_done, completed_at, proof_photo_paths), reviews(id, rating, comment, created_at)';
 
 /** The one status an incoming booking request can be accepted from. */
 const AWAITING_PROVIDER_ANSWER = ['assigned'];
@@ -164,14 +164,25 @@ export class JobsService {
         { ...(await this.pricingRates(dto.category_id, urgency)), efforts },
         dto.price_tier!,
       );
-    const location =
-      dto.location_reference === undefined
-        ? await this.geocoding.geocode(dto.address)
-        : this.geocoding.resolveLocationReference(
-            user.id,
-            dto.location_reference,
-            dto.address,
-          );
+    const matchesSavedAddress =
+      dto.location_reference === undefined &&
+      user.address !== null &&
+      user.latitude !== null &&
+      user.longitude !== null &&
+      dto.address.trim() === user.address.trim();
+    const location = dto.location_reference
+      ? this.geocoding.resolveLocationReference(
+          user.id,
+          dto.location_reference,
+          dto.address,
+        )
+      : matchesSavedAddress
+        ? {
+            latitude: user.latitude!,
+            longitude: user.longitude!,
+            formatted_address: user.address!,
+          }
+        : await this.geocoding.geocode(dto.address);
     if (dto.photo_urls?.length) {
       this.uploads.assertOwnedPaths(user, dto.photo_urls);
     }
@@ -184,6 +195,7 @@ export class JobsService {
         description: dto.description,
         urgency,
         address: dto.address,
+        address_details: dto.address_details ?? null,
         latitude: location.latitude,
         longitude: location.longitude,
         budget,
@@ -412,17 +424,25 @@ export class JobsService {
           : `Cannot accept a job in status '${job.status}'`,
       );
     }
+    const location = dto.location_reference
+      ? this.geocoding.resolveLocationReference(
+          user.id,
+          dto.location_reference,
+          dto.address ?? '',
+        )
+      : undefined;
     const hasLocation =
-      dto.address != null && dto.latitude != null && dto.longitude != null;
+      location !== undefined ||
+      (dto.address != null && dto.latitude != null && dto.longitude != null);
     const updated = await this.setStatus(
       jobId,
       'confirmed',
       AWAITING_PROVIDER_ANSWER,
       hasLocation
         ? {
-            provider_accept_address: dto.address,
-            provider_accept_latitude: dto.latitude,
-            provider_accept_longitude: dto.longitude,
+            provider_accept_address: location?.formatted_address ?? dto.address,
+            provider_accept_latitude: location?.latitude ?? dto.latitude,
+            provider_accept_longitude: location?.longitude ?? dto.longitude,
           }
         : undefined,
     );

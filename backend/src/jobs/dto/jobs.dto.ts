@@ -73,6 +73,11 @@ export class CreateJobDto {
   @IsNotEmpty()
   address!: string;
 
+  @IsOptional()
+  @IsString()
+  @Length(1, 120)
+  address_details?: string;
+
   @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsString()
   @Length(1, 4096)
@@ -313,6 +318,11 @@ export class AcceptJobDto {
   @IsString()
   @Length(3, 300)
   address?: string;
+
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString()
+  @Length(1, 4096)
+  location_reference?: string;
 
   @IsOptional()
   @IsLatitude()
