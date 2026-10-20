@@ -415,6 +415,9 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
     setTogglingAvail(true);
     try {
       await api.setAvailability(next);
+      // Update the cached profile, or the feed re-reads the old value when it remounts. The save already succeeded,
+      // so a failed refresh changes nothing.
+      refreshProfile().catch(() => {});
     } catch {
       setAvailable(!next); // revert on failure
       showToast("Couldn't update your availability. Check your connection and try again.", 'error');
