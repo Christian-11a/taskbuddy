@@ -292,7 +292,7 @@ type Scene = { from: number; to: number; render: (f: number) => React.ReactNode 
 const SCENES: Scene[] = [
   { from: 0, to: S(5), render: (f) => <Hook f={f} /> },
   { from: S(5), to: S(9), render: (f) => <Orbit f={f} /> },
-  { from: S(9), to: S(18), render: (f) => <PhoneScene f={f} head={['Post', 'a', 'job', 'in', 'a', <Kw key="m">minute.</Kw>]} sub="Pick a service, tick the tasks, choose one of three prices."
+  { from: S(9), to: S(18), render: (f) => <PhoneScene f={f} head={['Post', 'a', 'job', 'in', 'a', <Kw key="m">minute.</Kw>]} sub="Pick a service, tick the tasks, set your budget."
     phones={[{ role: 'c', from: 146, to: 320, dur: S(8.4), focus: { hero: [262, 292], y: 520, s: 1.28 } }]} /> },
   { from: S(18), to: S(22), render: (f) => <MapScene f={f} /> },
   { from: S(22), to: S(29), render: (f) => <PhoneScene f={f} head={['Every', 'provider,', <Kw key="v">verified.</Kw>]}

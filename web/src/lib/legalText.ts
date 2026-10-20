@@ -33,7 +33,7 @@ export const TERMS_CONTENT: LegalDoc = {
     },
     {
       heading: '3. Pricing and urgency levels',
-      body: 'Prices are not entered manually. When a job is posted, TaskBuddy estimates price options from the service, the listed tasks and how demanding they are, and the selected urgency level; the client selects one. Urgent jobs are priced higher than Normal jobs and Flexible jobs lower, because urgency affects how quickly providers must respond. The selected price is the agreed price for the job and may change only through a change request accepted in the app by both parties.',
+      body: 'When posting a job, the client sets a starting budget. Where a comparable local task and scope are available, TaskBuddy may show a suggested labor range as guidance; it is not the final price. Each provider submits a total quote, which may equal the starting budget or differ from it. Before hiring, the client sees the selected quote and provider payout, then accepts the quoted charge by choosing Hire and pay. The paid quote becomes the agreed job price. After hire, the price may change only through a change request accepted in the app by both parties.',
     },
     {
       heading: '4. Payment and holding of funds',

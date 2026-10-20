@@ -19,7 +19,41 @@ ends = [float(x) for x in re.findall(r'silence_end: ([\d.]+)', out)]
 gaps = [(e - s, s, e) for s, e in zip(starts, ends) if s > 0.15 and e < dur - 0.15]
 if len(gaps) < n - 1:
     sys.exit(f'only {len(gaps)} pauses found, need {n - 1}')
-cuts = sorted(sorted(gaps, reverse=True)[: n - 1], key=lambda g: g[1])
+# Pick the n-1 pauses that best match where each line should end (word-count proportional),
+# favouring longer pauses: a voice can pause mid-sentence, so "the longest pauses" alone mis-splits.
+try:
+    js = subprocess.run('npx tsx scripts/guide-scripts.ts ' + lid, shell=True, cwd=root, capture_output=True, text=True).stdout
+    lines = json.loads(js.strip().splitlines()[-1])['prompt'].replace('[warmly]', '').split('[pause]')
+    words = [len(x.split()) for x in lines]
+except Exception:
+    words = None
+if words and len(words) == n:
+    total = sum(words)
+    exp, acc = [], 0
+    for w in words[:-1]:
+        acc += w
+        exp.append(dur * acc / total)
+    G = sorted(gaps, key=lambda g: g[1])
+    INF = float('inf')
+    # cost[k][j]: best cost placing cut k at gap j
+    cost = [[INF] * len(G) for _ in range(n - 1)]
+    back = [[-1] * len(G) for _ in range(n - 1)]
+    for k in range(n - 1):
+        for j, (L, s0, e0) in enumerate(G):
+            c = abs((s0 + e0) / 2 - exp[k]) - 2.5 * L
+            if k == 0:
+                cost[k][j] = c
+            else:
+                best = min(((cost[k - 1][i], i) for i in range(j)), default=(INF, -1))
+                if best[0] < INF:
+                    cost[k][j] = best[0] + c; back[k][j] = best[1]
+    j = min(range(len(G)), key=lambda x: cost[n - 2][x])
+    pick = []
+    for k in range(n - 2, -1, -1):
+        pick.append(G[j]); j = back[k][j]
+    cuts = list(reversed(pick))
+else:
+    cuts = sorted(sorted(gaps, reverse=True)[: n - 1], key=lambda g: g[1])
 segs, a = [], 0.0
 lead = [(s, e) for s, e in zip(starts, ends) if s <= 0.15]
 if lead:

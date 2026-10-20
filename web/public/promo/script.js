@@ -63,10 +63,10 @@
         {
           image: "/film/story/customer-3.jpg",
           video: "/film/story/customer-3.mp4",
-          alt: "Client posting a job: service, address, tasks, urgency and a price option",
+          alt: "Client posting a job: service, address, tasks, timing and a starting budget",
           caption: "Tell providers what you need.",
           title: "Tell providers what you need.",
-          body: "Pick a service, its tasks and urgency, then choose one of three estimated price options.",
+          body: "Pick a service, its tasks and how soon you need it, then set a starting budget.",
           lesson: "post-a-job",
           lessonTitle: "Post a job"
         },
