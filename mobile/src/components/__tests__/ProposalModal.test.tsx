@@ -21,6 +21,7 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     const props = {
       visible: true,
       jobTitle: 'Fix the sink',
+      jobBudget: 1000,
       onSubmit: jest.fn(),
       onCancel: jest.fn(),
       ...overrides,
@@ -38,7 +39,7 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     expect(screen.getByText('For "Fix the sink"')).toBeTruthy();
     expect(screen.getByText('Good proposals mention:')).toBeTruthy();
     expect(screen.getByText('When you can come')).toBeTruthy();
-    expect(screen.getByText("What's included (tools, parts)")).toBeTruthy();
+    expect(screen.getByText('How you will handle the listed tasks')).toBeTruthy();
     expect(screen.getByText("Similar jobs you've done")).toBeTruthy();
     expect(screen.getByText("The client compares proposals and hires one provider. You'll be notified.")).toBeTruthy();
   });
@@ -74,7 +75,7 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     fireEvent.changeText(message(), 'a'.repeat(20));
     expect(send().props.accessibilityState?.disabled).toBe(false);
     fireEvent.press(send());
-    expect(onSubmit).toHaveBeenCalledWith('a'.repeat(20));
+    expect(onSubmit).toHaveBeenCalledWith('a'.repeat(20), 1000);
   });
 
   it('sends the message without the spaces at either end', () => {
@@ -83,7 +84,17 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     fireEvent.changeText(message(), `  ${'a'.repeat(20)}  `);
     fireEvent.press(send());
 
-    expect(onSubmit).toHaveBeenCalledWith('a'.repeat(20));
+    expect(onSubmit).toHaveBeenCalledWith('a'.repeat(20), 1000);
+  });
+
+  it('submits one different total quote when the provider chooses it', () => {
+    const { onSubmit } = renderModal();
+    fireEvent.press(screen.getByRole('button', { name: 'Quote a different total' }));
+    fireEvent.changeText(screen.getByTestId('proposal-quote'), '1250');
+    fireEvent.changeText(message(), 'I can complete the listed tasks tomorrow.');
+    fireEvent.press(send());
+
+    expect(onSubmit).toHaveBeenCalledWith('I can complete the listed tasks tomorrow.', 1250);
   });
 
   it('keeps the 300 character limit and closes from Cancel', () => {
@@ -107,7 +118,7 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
 
 describe('ProposalModal — the message is checked once the field is left', () => {
   const renderOpen = (onSubmit = jest.fn()) => {
-    render(<ProposalModal visible jobTitle="Fix the sink" onSubmit={onSubmit} onCancel={jest.fn()} />);
+    render(<ProposalModal visible jobTitle="Fix the sink" jobBudget={1000} onSubmit={onSubmit} onCancel={jest.fn()} />);
     return { onSubmit };
   };
   const send = () => screen.getByRole('button', { name: 'Send proposal' });
@@ -139,7 +150,7 @@ describe('ProposalModal — the message is checked once the field is left', () =
 
     fireEvent.press(send());
 
-    expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\n\n\nBring tools.');
+    expect(onSubmit).toHaveBeenCalledWith('I can come Friday.\n\n\n\nBring tools.', 1000);
   });
 });
 

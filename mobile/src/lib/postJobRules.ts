@@ -109,8 +109,9 @@ export function fieldError(field: PostField, values: PostFormValues, now: Date):
       }
       return undefined;
     case 'budget':
-      // The amount comes from the server's price options; only the pick is checked here.
-      return values.budget.trim() ? undefined : 'Please pick a price for this job.';
+      return /^\d+(?:\.\d{1,2})?$/.test(values.budget.trim()) && Number(values.budget) >= 50 && Number(values.budget) <= 100000
+        ? undefined
+        : 'Enter a starting budget from ₱50 to ₱100,000.';
   }
 }
 

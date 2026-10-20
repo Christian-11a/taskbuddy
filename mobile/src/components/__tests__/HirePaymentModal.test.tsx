@@ -56,7 +56,7 @@ describe('HirePaymentModal: paying online', () => {
     fireEvent.press(onlineRadio());
     fireEvent.press(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByText('GCash, Maya, card or bank')).toBeTruthy();
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
 
     expect(props.onPayCard).toHaveBeenCalledTimes(1);
     expect(props.onPayWallet).not.toHaveBeenCalled();
@@ -277,9 +277,9 @@ describe('HirePaymentModal: the sheet stays locked while a payment is in flight'
     );
 
     expect(screen.getByRole('button', { name: 'Back', disabled: true })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00', disabled: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00', disabled: true })).toBeTruthy();
 
-    fireEvent.press(screen.getByRole('button', { name: 'Confirm and hire · ₱1,000.00' }));
+    fireEvent.press(screen.getByRole('button', { name: 'Hire and pay ₱1,000.00' }));
     fireEvent.press(screen.getByRole('button', { name: 'Back' }));
 
     expect(props.onPayCard).not.toHaveBeenCalled();

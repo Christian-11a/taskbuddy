@@ -148,6 +148,27 @@ export class EscrowService {
     return { escrow: result?.escrow ?? null, placed: result?.placed === true };
   }
 
+  /** Lock a selected proposal's quote onto the job and place its funded hold atomically. */
+  async holdProposal(
+    applicationId: string,
+    amount: number,
+    funding?: CardFunding,
+  ): Promise<HoldResult> {
+    const { data, error } = await this.supabase.admin.rpc(
+      'escrow_place_proposal_hold',
+      {
+        p_application_id: applicationId,
+        p_amount: amount,
+        p_funding_method: funding ? 'card' : 'wallet',
+        p_payment_intent_id: funding?.paymentIntentId ?? null,
+        p_charge_id: funding?.chargeId ?? null,
+      },
+    );
+    if (error) throw moneyError(error);
+    const result = data as HoldResult | null;
+    return { escrow: result?.escrow ?? null, placed: result?.placed === true };
+  }
+
   /**
    * Undoes a hold placed for a hire that then failed to go through. Distinct
    * from `cancelForJob` only in the ledger line the client reads: nothing

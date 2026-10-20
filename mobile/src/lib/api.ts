@@ -19,6 +19,7 @@ import { notifyNotificationChange } from './notificationEvents';
 import EventSource from 'react-native-sse';
 import { friendlyApiMessage } from './apiMessages';
 import type { PriceTier, TaskEffort } from './taskEffort';
+import type { JobFee } from './feeBreakdown';
 
 /** One clickable price for a job, from `POST /jobs/price-estimate`. */
 export interface PriceOption {
@@ -26,6 +27,14 @@ export interface PriceOption {
   amount: number;
   min: number;
   max: number;
+}
+
+export interface LaborGuide {
+  min: number;
+  max: number;
+  area: string;
+  scope: string;
+  basis: string;
 }
 
 const PRIMARY_API_URL =
@@ -279,6 +288,9 @@ export interface JobApplication {
   status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
   source: 'organic' | 'recommended';
   cover_message: string | null;
+  quote_amount?: number | null;
+  posted_budget?: number | null;
+  fee?: JobFee | null;
   applied_at: string;
   decided_at: string | null;
   provider: {
@@ -1294,8 +1306,8 @@ export const api = {
     address: string;
     latitude: number;
     longitude: number;
-    /** One of the options from `estimatePrice`; the server sets the amount. */
-    price_tier: PriceTier;
+    /** The client's editable starting budget. Providers may quote another total. */
+    budget: number;
     /**
      * Single ISO instant. The form collects a date and a time separately and
      * combines them here — two fields for one instant is timezone-ambiguous,
@@ -1316,13 +1328,15 @@ export const api = {
     return authRequest<Job>('/jobs', { method: 'POST', body: input });
   },
 
-  /** The three clickable price options for the job as described so far. */
+  /** Starting budget estimate and a local guide only where a sourced scope matches. */
   estimatePrice(input: {
     category_id: number;
     urgency: 'urgent' | 'normal' | 'flexible';
     task_efforts: TaskEffort[];
+    address: string;
+    tasks: string[];
   }) {
-    return authRequest<{ options: PriceOption[] }>('/jobs/price-estimate', {
+    return authRequest<{ options: PriceOption[]; guide: LaborGuide | null }>('/jobs/price-estimate', {
       method: 'POST',
       body: input,
     });
@@ -1421,10 +1435,10 @@ export const api = {
   },
 
   // ── Applications ──────────────────────────────────────────────────────────────
-  applyToJob(jobId: string, cover_message?: string) {
+  applyToJob(jobId: string, cover_message: string | undefined, quote_amount: number) {
     return authRequest<unknown>(`/jobs/${jobId}/applications`, {
       method: 'POST',
-      body: { cover_message },
+      body: { cover_message, quote_amount },
     });
   },
 

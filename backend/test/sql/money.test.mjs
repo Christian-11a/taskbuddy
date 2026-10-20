@@ -183,6 +183,39 @@ describe('escrow_place_hold', () => {
   });
 });
 
+describe('escrow_place_proposal_hold', () => {
+  it('holds the selected quote and makes it the job price in the same transaction', async () => {
+    const job = await postJob(1000);
+    const application = await one(
+      `insert into job_applications (job_id, provider_id, posted_budget, quote_amount)
+       values ($1, $2, 1000, 1250) returning id`,
+      [job, PROVIDER],
+    );
+    await credit(CLIENT, 1250);
+
+    const result = await rpc('escrow_place_proposal_hold($1, $2, $3)', [application.id, 1250, 'wallet']);
+
+    assert.equal(Number(result.escrow.amount), 1250);
+    assert.equal(Number((await one('select budget from jobs where id = $1', [job])).budget), 1250);
+    assert.equal(Number((await one('select posted_budget from job_applications where id = $1', [application.id])).posted_budget), 1000);
+  });
+
+  it('does not change the job or hold funds when the payment differs from the quote', async () => {
+    const job = await postJob(1000);
+    const application = await one(
+      `insert into job_applications (job_id, provider_id, posted_budget, quote_amount)
+       values ($1, $2, 1000, 1250) returning id`,
+      [job, PROVIDER],
+    );
+    await credit(CLIENT, 1250);
+
+    await refusal('select escrow_place_proposal_hold($1, $2, $3)', [application.id, 1000, 'wallet'], 'TB409');
+
+    assert.equal(Number((await one('select budget from jobs where id = $1', [job])).budget), 1000);
+    assert.deepEqual(await q('select id from escrow_transactions where job_id = $1', [job]), []);
+  });
+});
+
 describe('escrow_settle', () => {
   async function held(method = 'wallet') {
     const job = await postJob(1500);

@@ -284,16 +284,19 @@ function JobProposals({
     setBudget(null);
     setJobTitle(null);
     setHireScheduledAt(null);
-    // Until the job is read, the sheet cannot offer a payment: the
-    // budget decides what is charged, so no option is usable yet.
+    // Until the job is read, the sheet cannot offer a payment. The selected
+    // proposal quote decides what is charged.
     setHireLoading(true);
     setHireLoadFailed(false);
     setHireTarget(app);
     try {
       const job = await api.getJob(jobId);
+      if (job.budget != null && Number(job.budget) > 0 && app.quote_amount == null) {
+        throw new Error('This proposal has no confirmed quote. Refresh proposals before hiring.');
+      }
       setJobTitle(job.title);
       setHireScheduledAt(job.scheduled_at ?? null);
-      setBudget(job.budget == null ? null : Number(job.budget));
+      setBudget(app.quote_amount == null ? null : Number(app.quote_amount));
     } catch (e) {
       // A failed read leaves the budget unknown. It must not fall through to the
       // no-budget "hire straight away" path, so the sheet offers no hire.
@@ -566,6 +569,15 @@ function JobProposals({
           <Text style={styles.messageText}>{app.cover_message ?? 'No cover message.'}</Text>
           {!!sent && <Text style={styles.sentText}>Sent {sent}</Text>}
         </View>
+        {app.quote_amount != null && (
+          <View style={styles.quoteSummary}>
+            <Text style={styles.quoteText}>Total quote: {peso(app.quote_amount)}</Text>
+            {app.posted_budget != null && Number(app.posted_budget) !== Number(app.quote_amount) && (
+              <Text style={styles.providerMeta}>Your posted budget: {peso(app.posted_budget)}</Text>
+            )}
+            {app.fee && <Text style={styles.providerMeta}>Provider receives {peso(app.fee.provider_receives)} after the {peso(app.fee.amount)} platform fee</Text>}
+          </View>
+        )}
 
         {state === 'open' && (
           <>
@@ -667,6 +679,8 @@ function JobProposals({
         providerName={hireTarget?.provider?.full_name ?? 'this provider'}
         jobTitle={jobTitle}
         budget={budget}
+        fee={hireTarget?.fee ?? null}
+        postedBudget={hireTarget?.posted_budget ?? null}
         loading={hireLoading}
         loadFailed={hireLoadFailed}
         busy={hireBusy}
@@ -885,6 +899,8 @@ function createThemedStyles(theme: ThemePalette) {
     providerMeta: { color: C.ink500, fontSize: 12, fontFamily: 'Inter', flexShrink: 1 },
 
     messageBox: { backgroundColor: V6Colors.wellBg, borderRadius: 11, padding: 11, marginVertical: 11 },
+    quoteSummary: { marginBottom: 11, gap: 3 },
+    quoteText: { color: C.ink900, fontSize: 14, fontWeight: '700', fontFamily: 'Inter' },
     messageBoxMuted: { backgroundColor: C.surface },
     messageText: { color: C.ink700, fontSize: 12.5, lineHeight: 17, fontFamily: 'Inter' },
     sentText: { color: C.ink500, fontSize: 11.5, fontFamily: 'Inter', marginTop: 6 },
