@@ -73,13 +73,22 @@ export class CreateJobDto {
   @IsNotEmpty()
   address!: string;
 
+  @ValidateIf((_object, value: unknown) => value !== undefined)
+  @IsString()
+  @Length(1, 4096)
+  location_reference?: string;
+
+  // Legacy clients send coordinates. The server validates but never uses them
+  // to place a job; it resolves the signed reference or geocodes the address.
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsLatitude()
   @Type(() => Number)
-  latitude!: number;
+  latitude?: number;
 
+  @ValidateIf((_object, value: unknown) => value !== undefined)
   @IsLongitude()
   @Type(() => Number)
-  longitude!: number;
+  longitude?: number;
 
   // Which of the three server-computed price options the client tapped
   // (POST /jobs/price-estimate). The amount is never taken from the client.

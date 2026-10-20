@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SupabaseService } from '../supabase/supabase.service';
@@ -30,8 +31,12 @@ interface FeatureRow {
   provider_bio: string;
 }
 
-/** Covers a free-tier cold start (30–60 s) with some margin. */
-const ML_SCORE_TIMEOUT_MS = 75_000;
+/** Two attempts and the retry delay fit inside mobile's 90 s request timeout. */
+const ML_SCORE_ATTEMPT_TIMEOUT_MS = 35_000;
+const ML_SCORE_RETRY_DELAY_MS = 2_000;
+const MATCHING_UNAVAILABLE_MESSAGE =
+  'The matching service is waking up. Try again in a minute.';
+const RETRYABLE_MODEL_STATUSES = new Set([429, 502, 503, 504]);
 
 /** Scheme + host only: never log a path or credentials from the configured URL. */
 function safeOrigin(url: string): string {
@@ -225,38 +230,59 @@ export class RecommendationsService {
     // ML_SERVICE_URL (HANDOFF.md §9) is visible in the logs rather than
     // looking like the scorer itself is down.
     const origin = safeOrigin(this.mlServiceUrl);
-    let response: Response;
-    try {
-      response = await fetch(`${this.mlServiceUrl}/score`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ records }),
-        // Without a bound, a hung scorer holds the scheduler's `running` flag
-        // and stalls every later tick. Long enough for a free-tier cold start;
-        // a job that times out is picked up again by the retry sweep.
-        signal: AbortSignal.timeout(ML_SCORE_TIMEOUT_MS),
-      });
-    } catch (err) {
-      const reason =
-        (err as Error).name === 'TimeoutError'
-          ? `timed out after ${ML_SCORE_TIMEOUT_MS / 1000}s`
-          : (err as Error).message;
-      throw new Error(`Model service at ${origin} unreachable: ${reason}`);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let response: Response;
+      try {
+        response = await fetch(`${this.mlServiceUrl}/score`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records }),
+          // A hung scorer must not hold the scheduler's running flag. Two
+          // bounded attempts also leave time for mobile to receive the 503.
+          signal: AbortSignal.timeout(ML_SCORE_ATTEMPT_TIMEOUT_MS),
+        });
+      } catch (err) {
+        const reason =
+          (err as Error).name === 'TimeoutError'
+            ? `timed out after ${ML_SCORE_ATTEMPT_TIMEOUT_MS / 1000}s`
+            : (err as Error).message;
+        const detail = `Model service at ${origin} unreachable: ${reason}`;
+        if (attempt === 0) {
+          this.logger.warn(`${detail}; retrying once`);
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, ML_SCORE_RETRY_DELAY_MS),
+          );
+          continue;
+        }
+        this.logger.error(detail);
+        throw new ServiceUnavailableException(MATCHING_UNAVAILABLE_MESSAGE);
+      }
+      if (!response.ok) {
+        const detail = `Model service at ${origin} returned ${response.status}: ${await response.text()}`;
+        if (RETRYABLE_MODEL_STATUSES.has(response.status)) {
+          if (attempt === 0) {
+            this.logger.warn(`${detail}; retrying once`);
+            await new Promise<void>((resolve) =>
+              setTimeout(resolve, ML_SCORE_RETRY_DELAY_MS),
+            );
+            continue;
+          }
+          this.logger.error(detail);
+          throw new ServiceUnavailableException(MATCHING_UNAVAILABLE_MESSAGE);
+        }
+        throw new Error(detail);
+      }
+      const body = (await response.json()) as {
+        model_version: string;
+        scores: number[];
+      };
+      if (!Array.isArray(body.scores) || body.scores.length !== pool.length) {
+        throw new Error(
+          'Model service returned a score array of the wrong length',
+        );
+      }
+      return body;
     }
-    if (!response.ok) {
-      throw new Error(
-        `Model service at ${origin} returned ${response.status}: ${await response.text()}`,
-      );
-    }
-    const body = (await response.json()) as {
-      model_version: string;
-      scores: number[];
-    };
-    if (!Array.isArray(body.scores) || body.scores.length !== pool.length) {
-      throw new Error(
-        'Model service returned a score array of the wrong length',
-      );
-    }
-    return body;
+    throw new Error('Model service retry loop ended without a response');
   }
 }

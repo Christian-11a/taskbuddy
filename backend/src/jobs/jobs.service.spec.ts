@@ -4,12 +4,17 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { JobsService } from './jobs.service';
-import { IsNotPastInstantConstraint, MineJobsQueryDto } from './dto/jobs.dto';
+import {
+  CreateJobDto,
+  IsNotPastInstantConstraint,
+  MineJobsQueryDto,
+} from './dto/jobs.dto';
 import type { SupabaseService } from '../supabase/supabase.service';
 import type { UploadsService } from '../uploads/uploads.service';
 import type { EscrowService } from '../escrow/escrow.service';
-import type { GeocodingService } from '../geocoding/geocoding.service';
+import { GeocodingService } from '../geocoding/geocoding.service';
 import type { Profile } from '../common/types';
 
 type QueryResult = {
@@ -85,7 +90,10 @@ const job = (overrides: Record<string, unknown> = {}) => ({
 
 const ok = (data: unknown): QueryResult => ({ data, error: null });
 
-function createService(resultsByTable: Record<string, QueryResult[]>) {
+function createService(
+  resultsByTable: Record<string, QueryResult[]>,
+  geocodingOverride?: GeocodingService,
+) {
   const { supabase, calls } = createSupabaseMock(resultsByTable);
   const uploads = {
     assertOwnedPaths: jest.fn(),
@@ -118,11 +126,13 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
     findByJob,
     feePreview,
   } as unknown as EscrowService;
-  const geocoding = {
-    geocode: jest
-      .fn()
-      .mockResolvedValue({ latitude: 14.676, longitude: 121.0437 }),
-  } as unknown as GeocodingService;
+  const geocoding =
+    geocodingOverride ??
+    ({
+      geocode: jest
+        .fn()
+        .mockResolvedValue({ latitude: 14.676, longitude: 121.0437 }),
+    } as unknown as GeocodingService);
   return {
     service: new JobsService(supabase, uploads, escrow, geocoding),
     calls,
@@ -130,6 +140,7 @@ function createService(resultsByTable: Record<string, QueryResult[]>) {
     releaseIfHeld,
     findByJob,
     feePreview,
+    geocoding,
   };
 }
 
@@ -396,6 +407,149 @@ describe('JobsService.create', () => {
   const rates = () => ({
     service_categories: [ok({ base_price: 800 })],
     urgency_settings: [ok({ price_multiplier: 1 })],
+  });
+
+  const signedLocation = () => {
+    const geocoding = new GeocodingService(
+      new ConfigService({ SUPABASE_SERVICE_ROLE_KEY: 'unit-location-key' }),
+    );
+    const resolved = geocoding.issueLocationReference('c1', {
+      latitude: 13.9417,
+      longitude: 121.1631,
+      formatted_address: 'HSSi Building, Lipa, Batangas, Philippines',
+      city: 'Lipa',
+    });
+    return { geocoding, resolved };
+  };
+
+  it('uses signed coordinates without forward-geocoding the address', async () => {
+    const { geocoding, resolved } = signedLocation();
+    const geocode = jest
+      .spyOn(geocoding, 'geocode')
+      .mockRejectedValue(new Error('Must not forward geocode'));
+    const { service, calls } = createService(
+      { ...rates(), jobs: [ok({ id: 'j1' })] },
+      geocoding,
+    );
+
+    await service.create(client, {
+      ...dto,
+      address: resolved.formatted_address,
+      latitude: 0,
+      longitude: 0,
+      location_reference: resolved.location_reference,
+    });
+
+    expect(geocode).not.toHaveBeenCalled();
+    const insert = calls.find(
+      (call) => call.table === 'jobs' && call.method === 'insert',
+    )?.args[0] as Record<string, unknown>;
+    expect(insert).toMatchObject({ latitude: 13.9417, longitude: 121.1631 });
+    expect(insert).not.toHaveProperty('location_reference');
+  });
+
+  it('keeps geocoding the address for clients without a reference', async () => {
+    const { service, geocoding } = createService({
+      ...rates(),
+      jobs: [ok({ id: 'j1' })],
+    });
+    const geocode = jest.spyOn(geocoding, 'geocode');
+
+    await service.create(client, dto);
+
+    expect(geocode).toHaveBeenCalledWith(dto.address);
+  });
+
+  it('rejects a tampered signature before inserting a job', async () => {
+    const { geocoding, resolved } = signedLocation();
+    const [payload, signature] = resolved.location_reference!.split('.');
+    const tampered = `${payload}.${signature[0] === 'A' ? 'B' : 'A'}${signature.slice(1)}`;
+    const { service, calls } = createService(rates(), geocoding);
+
+    await expect(
+      service.create(client, {
+        ...dto,
+        address: resolved.formatted_address,
+        location_reference: tampered,
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(calls.some((call) => call.table === 'jobs')).toBe(false);
+  });
+
+  it('rejects another account’s reference before inserting a job', async () => {
+    const { geocoding, resolved } = signedLocation();
+    const { service, calls } = createService(rates(), geocoding);
+
+    await expect(
+      service.create(
+        { ...client, id: 'c2' },
+        {
+          ...dto,
+          address: resolved.formatted_address,
+          location_reference: resolved.location_reference,
+        },
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(calls.some((call) => call.table === 'jobs')).toBe(false);
+  });
+
+  it('rejects an expired reference before inserting a job', async () => {
+    const issuedAt = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(issuedAt);
+    try {
+      const { geocoding, resolved } = signedLocation();
+      const { service, calls } = createService(rates(), geocoding);
+      clock.mockReturnValue(issuedAt + 15 * 60 * 1000);
+
+      await expect(
+        service.create(client, {
+          ...dto,
+          address: resolved.formatted_address,
+          location_reference: resolved.location_reference,
+        }),
+      ).rejects.toThrow('Location confirmation expired');
+      expect(calls.some((call) => call.table === 'jobs')).toBe(false);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('rejects a changed address before inserting a job', async () => {
+    const { geocoding, resolved } = signedLocation();
+    const { service, calls } = createService(rates(), geocoding);
+
+    await expect(
+      service.create(client, {
+        ...dto,
+        address: 'Different address',
+        location_reference: resolved.location_reference,
+      }),
+    ).rejects.toThrow(BadRequestException);
+    expect(calls.some((call) => call.table === 'jobs')).toBe(false);
+  });
+
+  it('rejects an empty reference while allowing omitted client coordinates', async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+    const metadata = { type: 'body' as const, metatype: CreateJobDto };
+
+    await expect(
+      pipe.transform({ ...dto, location_reference: '' }, metadata),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      pipe.transform(
+        {
+          ...dto,
+          latitude: undefined,
+          longitude: undefined,
+          location_reference: 'signed-reference',
+        },
+        metadata,
+      ),
+    ).resolves.toMatchObject({ location_reference: 'signed-reference' });
   });
 
   it('prices the job from the chosen tier, never from the client', async () => {
