@@ -11,28 +11,18 @@ import { feeRows, type JobFee } from '../lib/feeBreakdown';
 
 /** Matches ApplyDto.cover_message's MaxLength on the backend. */
 export const PROPOSAL_MAX_LENGTH = 300;
-/**
- * The shortest message that can be sent. An approved UX gate: the backend
- * still accepts an empty message, but the app no longer sends one.
- */
-export const PROPOSAL_MIN_LENGTH = 20;
 
 /** Said wherever a proposal is blocked for want of a payout account. */
 export const PAYOUT_NOTE = 'Link a GCash, Maya or bank account to send proposals';
 
 const TIPS = ['When you can come', 'How you will handle the listed tasks', "Similar jobs you've done"];
 
-/** Why the message can't be sent yet, or null. Spaces at either end do not count. */
+/** Why the message can't be sent, or null. The message is optional; only its length is checked. */
 export function proposalError(message: string): string | null {
-  return validateText(message, {
-    min: PROPOSAL_MIN_LENGTH,
-    max: PROPOSAL_MAX_LENGTH,
-    label: 'your message',
-    required: true,
-  });
+  return validateText(message, { max: PROPOSAL_MAX_LENGTH, label: 'your message' });
 }
 
-/** True once the message is long enough, not counting spaces at either end. */
+/** True unless the message is over the limit. An empty message is fine. */
 export function canSendProposal(message: string): boolean {
   return proposalError(message) === null;
 }
@@ -97,12 +87,9 @@ export default function ProposalModal({
   };
 
   const breakdown = quoteMode === 'accept' ? feeRows(jobBudget, fee) : null;
-  const ready = canSendProposal(message);
   // Shown once the field is left or Send is tapped, never while the first words are being typed.
   const messageError = proposalError(message) ?? undefined;
-  const counter = ready
-    ? `${message.length} / ${PROPOSAL_MAX_LENGTH}`
-    : `${message.length} / ${PROPOSAL_MAX_LENGTH} · at least ${PROPOSAL_MIN_LENGTH} characters`;
+  const counter = `Optional · ${message.length} / ${PROPOSAL_MAX_LENGTH}`;
 
   return (
     <SheetFrame visible={visible} onClose={busy ? undefined : onCancel} contentStyle={styles.sheet}>
@@ -165,7 +152,7 @@ export default function ProposalModal({
       </View>
 
       <TextField
-        label="Your message"
+        label="Your message (optional)"
         value={message}
         onChangeText={setMessage}
         placeholder="Hi! I can come on Oct 14 at 2 PM…"

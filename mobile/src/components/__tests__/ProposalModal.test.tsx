@@ -1,22 +1,22 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
-import ProposalModal, {
-  PROPOSAL_MAX_LENGTH,
-  PROPOSAL_MIN_LENGTH,
-  canSendProposal,
-} from '../ProposalModal';
+import ProposalModal, { PROPOSAL_MAX_LENGTH, canSendProposal, proposalError } from '../ProposalModal';
 
-describe('canSendProposal', () => {
-  it('needs at least 20 characters once the spaces at both ends are not counted', () => {
-    expect(PROPOSAL_MIN_LENGTH).toBe(20);
-    expect(canSendProposal('a'.repeat(19))).toBe(false);
-    expect(canSendProposal('a'.repeat(20))).toBe(true);
-    expect(canSendProposal(`   ${'a'.repeat(10)}   `)).toBe(false);
-    expect(canSendProposal(`   ${'a'.repeat(20)}   `)).toBe(true);
+describe('proposalError: the message is optional', () => {
+  it('accepts no message, or spaces only', () => {
+    expect(proposalError('')).toBeNull();
+    expect(proposalError('    ')).toBeNull();
+    expect(canSendProposal('')).toBe(true);
+  });
+  it('accepts a short message', () => {
+    expect(proposalError('Hi po')).toBeNull();
+  });
+  it('refuses a message over the limit', () => {
+    expect(proposalError('a'.repeat(PROPOSAL_MAX_LENGTH + 1))).toMatch(/Keep it under 300/);
   });
 });
 
-describe('ProposalModal — a bottom sheet with tips and a minimum length', () => {
+describe('ProposalModal — a bottom sheet with tips and an optional message', () => {
   const renderModal = (overrides: Partial<React.ComponentProps<typeof ProposalModal>> = {}) => {
     const props = {
       visible: true,
@@ -51,31 +51,32 @@ describe('ProposalModal — a bottom sheet with tips and a minimum length', () =
     expect(screen.getByText('Send a proposal')).toBeTruthy();
   });
 
-  it('shows a live counter, and the minimum until it is reached', () => {
+  it('labels the message optional and shows a live counter', () => {
     renderModal();
-    expect(screen.getByText('0 / 300 · at least 20 characters')).toBeTruthy();
-
-    fireEvent.changeText(message(), 'a'.repeat(5));
-    expect(screen.getByText('5 / 300 · at least 20 characters')).toBeTruthy();
-
-    fireEvent.changeText(message(), 'a'.repeat(20));
-    expect(screen.getByText('20 / 300')).toBeTruthy();
-    expect(screen.queryByText(/at least 20/)).toBeNull();
+    expect(screen.getByText('Your message (optional)')).toBeTruthy();
+    expect(screen.getByText('Optional · 0 / 300')).toBeTruthy();
+    fireEvent.changeText(message(), 'Hi po');
+    expect(screen.getByText('Optional · 5 / 300')).toBeTruthy();
   });
 
-  it('keeps Send proposal tappable but only sends once the message has 20 characters', () => {
+  it('sends a proposal with no message at all', () => {
     const { onSubmit } = renderModal();
-
-    fireEvent.changeText(message(), 'a'.repeat(19));
-    expect(send().props.accessibilityState?.disabled).toBe(false);
     fireEvent.press(send());
-    expect(onSubmit).not.toHaveBeenCalled();
-    expect(screen.getByText('Add a few more words (at least 20 characters)')).toBeTruthy();
+    expect(onSubmit).toHaveBeenCalledWith('', 1000);
+  });
 
-    fireEvent.changeText(message(), 'a'.repeat(20));
-    expect(send().props.accessibilityState?.disabled).toBe(false);
+  it('sends a short message as typed', () => {
+    const { onSubmit } = renderModal();
+    fireEvent.changeText(message(), 'Hi po');
     fireEvent.press(send());
-    expect(onSubmit).toHaveBeenCalledWith('a'.repeat(20), 1000);
+    expect(onSubmit).toHaveBeenCalledWith('Hi po', 1000);
+  });
+
+  it('turns a message of spaces alone into no message', () => {
+    const { onSubmit } = renderModal();
+    fireEvent.changeText(message(), '     ');
+    fireEvent.press(send());
+    expect(onSubmit).toHaveBeenCalledWith('', 1000);
   });
 
   it('sends the message without the spaces at either end', () => {
@@ -123,26 +124,6 @@ describe('ProposalModal — the message is checked once the field is left', () =
   };
   const send = () => screen.getByRole('button', { name: 'Send proposal' });
   const message = () => screen.getByTestId('proposal-message');
-
-  it('refuses a message of spaces alone, and says so only once the field is left', () => {
-    renderOpen();
-    fireEvent.changeText(message(), '        ');
-
-    expect(screen.queryByText('Add your message')).toBeNull();
-    fireEvent(message(), 'blur');
-    expect(screen.getByText('Add your message')).toBeTruthy();
-  });
-
-  it('names how many more words a short message needs, and clears the words once it is long enough', () => {
-    renderOpen();
-    fireEvent.changeText(message(), 'a'.repeat(19));
-    fireEvent(message(), 'blur');
-    expect(screen.getByText('Add a few more words (at least 20 characters)')).toBeTruthy();
-
-    fireEvent.changeText(message(), 'a'.repeat(20));
-    expect(screen.queryByText('Add a few more words (at least 20 characters)')).toBeNull();
-    expect(send().props.accessibilityState?.disabled).toBe(false);
-  });
 
   it('sends the message with the spaces and blank lines at its ends removed, and the blank lines inside kept as typed', () => {
     const { onSubmit } = renderOpen();
