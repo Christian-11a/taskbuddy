@@ -5,6 +5,34 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [Low] Terms — no version line above the intro
+
+The Terms of Use no longer open with "TaskBuddy Terms of Use (version 3, …)"; the intro paragraph comes first and the 12 numbered sections follow. The accepted-terms version sent to the backend is still 3, and the forced re-accept prompt is unchanged.
+
+## [Medium] Bottom actions — clear of the Android navigation bar
+
+On Android, `BottomActionBar` and the Post job footer now pad the system inset plus 16 dp (new `bottomBarPadding` helper), so buttons no longer sit flush against the 3-button navigation bar. iOS keeps the old `max(inset, 16)` rule. Still needs a check on a physical phone with 3-button navigation.
+
+## [Medium] Find providers — time for a cold matching service
+
+Find providers now waits up to 90 s instead of the 30 s default, and after a few seconds shows "Waking up the matching service, this can take up to a minute". Full resilience needs the backend to turn an ML 429/5xx into a clear 503 with one retry (`UAT-B3` in `docs/backend-handoff-uat-blockers-2026-10-20.md`).
+
+## [High] Post job — refused addresses send the client back to the address step
+
+When posting fails because the server cannot place the address, the client lands back on the Where step with the message under the Address field and the "Location confirmed" tick cleared, instead of a banner on the last step. Other 400s stay where they are. The real fix is the backend accepting the signed `location_reference` on `POST /jobs` (`UAT-B2`).
+
+## [Medium] Create Job — one price per urgency
+
+The price step shows a single option tied to the urgency (Flexible = Basic, Normal = Standard, Urgent = Premium) and posts that tier; changing the urgency re-prices. The server formula is unchanged (whether its urgency multiplier should stack is `UAT-B6`).
+
+## [Medium] Provider feed — availability switch stays on
+
+Turning availability on now refreshes the cached profile after the server saves it, so leaving the feed (for example to Profile) and coming back no longer flips the switch off. A failed save still reverts the switch.
+
+## [High] Verification — approved providers are treated as verified
+
+Stopgap for the live `GET /verifications/me` bug (`UAT-B1`): when it answers identity `none` with no services, the feed, job detail, Verification screen and notification routing trust the signed-in profile (`is_verified`, or `identity_verified` when only the ID is approved). A verified provider can apply again, and the Verification screen shows "You're verified!" with "Link payout account" or "See jobs near you" instead of restarting step 1. `reconcileVerification` is removed once the backend fix is deployed.
+
 ## [Low] Help & Support — address data attribution
 
 Both roles' Help & Support screen gains an **Address data** section linking to Geoapify and OpenStreetMap. The backend now geocodes addresses through Geoapify instead of Google (no payment method needed), and Geoapify's free plan requires a visible link to it, while its OpenStreetMap data requires crediting OSM contributors.
