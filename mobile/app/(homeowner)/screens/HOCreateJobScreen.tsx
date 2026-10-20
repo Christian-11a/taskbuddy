@@ -114,7 +114,7 @@ import Banner from '../../../src/components/ui/Banner';
 import AddTaskRow from '../../../src/components/post/AddTaskRow';
 import UrgencyRow from '../../../src/components/post/UrgencyRow';
 import PriceOptionRow from '../../../src/components/post/PriceOptionRow';
-import { effortFor, type PriceTier } from '../../../src/lib/taskEffort';
+import { effortFor, TIER_FOR_URGENCY, type PriceTier } from '../../../src/lib/taskEffort';
 import {
   DESCRIPTION_MAX,
   LOCATION_MAX,
@@ -258,7 +258,7 @@ export default function HOCreateJobScreen({
   const [tempTime, setTempTime] = useState<Date | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-  // The tier the client tapped, and its amount as the server last priced it.
+  // The tier set from the urgency once the estimate lands, and its amount as the server last priced it.
   // `budget` stays the form's amount so the review and rules read one value.
   const [priceTier, setPriceTier] = useState<PriceTier | null>(null);
   const [priceOptions, setPriceOptions] = useState<PriceOption[] | null>(null);
@@ -316,7 +316,20 @@ export default function HOCreateJobScreen({
     setPriceLoading(true);
     setPriceError(null);
     api.estimatePrice({ category_id: categoryId, urgency, task_efforts: taskEfforts })
-      .then((res) => { if (live) { setPriceOptions(res.options); setPriceLoading(false); } })
+      .then((res) => {
+        if (!live) return;
+        // One price per urgency, so the tier is set here, never picked. An answer
+        // without that tier cannot be posted: treat it like a failed estimate.
+        const tier = TIER_FOR_URGENCY[urgency];
+        setPriceLoading(false);
+        if (!res.options.some((option) => option.tier === tier)) {
+          setPriceOptions(null);
+          setPriceError("Prices aren't available right now. Please try again in a moment.");
+          return;
+        }
+        setPriceOptions(res.options);
+        setPriceTier(tier);
+      })
       .catch((err) => {
         if (!live) return;
         // An ApiError with a real HTTP status came from the server; anything
@@ -1116,14 +1129,9 @@ export default function HOCreateJobScreen({
               <Text style={styles.budgetHint}>
                 Estimated from your tasks and how soon you need it. Urgent and heavier jobs cost more.
               </Text>
-              <View accessibilityRole="radiogroup" style={styles.priceOptions}>
-                {priceOptions?.map((option) => (
-                  <PriceOptionRow
-                    key={option.tier}
-                    option={option}
-                    selected={priceTier === option.tier}
-                    onSelect={() => setPriceTier(option.tier)}
-                  />
+              <View style={styles.priceOptions}>
+                {priceOptions?.filter((option) => option.tier === TIER_FOR_URGENCY[urgency]).map((option) => (
+                  <PriceOptionRow key={option.tier} option={option} selected onSelect={() => {}} />
                 ))}
                 {!priceOptions && !priceError && <ActivityIndicator />}
                 {priceError && (
