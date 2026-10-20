@@ -5,6 +5,13 @@ app works today; this file covers how it got there and why. Newest first.
 
 ---
 
+## [High] Post job — a GPS or suggestion address posts at its pin
+
+The app now sends the signed `location_reference` that "Use my current location" and precise suggestions return, so `POST /jobs`
+places the job at that point instead of looking the text up again (the backend side, `UAT-B2`, is live). The saved home address
+and references older than 12 minutes are renewed from the same point before posting. An expired or refused reference sends
+the client back to the address with one instruction. Backend follow-ups are JL-1 to JL-5 in `docs/backend-handoff-job-location-2026-10-20.md`.
+
 ## [Low] Terms — no version line above the intro
 
 The Terms of Use no longer open with "TaskBuddy Terms of Use (version 3, …)"; the intro paragraph comes first and the 12 numbered sections follow. The accepted-terms version sent to the backend is still 3, and the forced re-accept prompt is unchanged.
