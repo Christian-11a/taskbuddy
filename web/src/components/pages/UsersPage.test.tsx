@@ -89,6 +89,60 @@ describe("UsersPage — suspend flow", () => {
     await user.click(await screen.findByRole("button", { name: /suspend account/i }));
   }
 
+  it("starts at 7 days, and 30 days or Indefinite change what is sent", async () => {
+    setUserStatus.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    await openSuspendPrompt(user);
+
+    const days = screen.getByLabelText("Suspension duration in days (leave blank for indefinite)");
+    expect(days).toHaveValue(7);
+    expect(screen.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/^Suspended until /)).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Reason (required)"), "Repeated no-shows");
+    await user.click(screen.getByRole("button", { name: /confirm suspend/i }));
+    expect(setUserStatus).toHaveBeenCalledWith("u-1", "Suspended", {
+      reason: "Repeated no-shows",
+      durationDays: 7,
+    });
+
+    await openSuspendPrompt(user);
+    const daysAgain = screen.getByLabelText("Suspension duration in days (leave blank for indefinite)");
+    await user.click(screen.getByRole("button", { name: "30 days" }));
+    expect(daysAgain).toHaveValue(30);
+    expect(screen.getByText(/^Suspended until /)).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Reason (required)"), "Repeated no-shows");
+    await user.click(screen.getByRole("button", { name: /confirm suspend/i }));
+    expect(setUserStatus).toHaveBeenLastCalledWith("u-1", "Suspended", {
+      reason: "Repeated no-shows",
+      durationDays: 30,
+    });
+
+    await openSuspendPrompt(user);
+    const daysIndefinite = screen.getByLabelText("Suspension duration in days (leave blank for indefinite)");
+    await user.click(screen.getByRole("button", { name: "Indefinite" }));
+    expect(daysIndefinite).toHaveValue(null);
+    expect(screen.getByText("No end date")).toBeInTheDocument();
+    await user.type(screen.getByPlaceholderText("Reason (required)"), "Repeated no-shows");
+    await user.click(screen.getByRole("button", { name: /confirm suspend/i }));
+    expect(setUserStatus).toHaveBeenLastCalledWith("u-1", "Suspended", {
+      reason: "Repeated no-shows",
+      durationDays: undefined,
+    });
+  });
+
+  it("starts a bulk suspension at 7 days", async () => {
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    await user.click(screen.getByRole("checkbox", { name: "Select all 1 matching users" }));
+    await user.click(screen.getByRole("button", { name: "Suspend" }));
+
+    expect(screen.getByLabelText("Suspension duration in days (leave blank for indefinite)")).toHaveValue(7);
+    expect(screen.getByRole("button", { name: "7 days" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/^Suspended until /)).toBeInTheDocument();
+  });
+
   it("keeps the confirm button disabled until a reason is entered (backend requires one)", async () => {
     const user = userEvent.setup();
     renderWithToast(<UsersPage />);
