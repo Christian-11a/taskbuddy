@@ -6,10 +6,21 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { useApp } from "@/context/AppContext";
 import { downloadCsv } from "@/lib/export/csv";
 import type { UserRow } from "@/lib/adapters";
+import * as services from "@/lib/services";
 
 vi.mock("@/context/AppContext", () => ({
   useApp: vi.fn(),
 }));
+
+vi.mock("@/lib/services", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/services")>();
+  return {
+    ...actual,
+    getScreeningBookings: vi.fn().mockResolvedValue([]),
+    getScreeningCertificates: vi.fn().mockResolvedValue([]),
+    getScreeningRejections: vi.fn().mockResolvedValue([]),
+  };
+});
 
 vi.mock("@/lib/export/csv", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/export/csv")>()),
@@ -394,6 +405,51 @@ describe("UsersPage — suspend flow", () => {
     expect(await screen.findByText(/check the refreshed account status before selecting it again/i)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select Morgan Lee" })).not.toBeChecked();
     expect(screen.queryByText("Some account outcomes are unconfirmed.")).not.toBeInTheDocument();
+  });
+});
+
+describe("UsersPage — provider screening", () => {
+  beforeEach(() => {
+    vi.mocked(services.getScreeningBookings).mockResolvedValue([
+      { providerId: "u-1", status: "cancelled" },
+      { providerId: "u-1", status: "cancelled" },
+      { providerId: "u-1", status: "completed" },
+    ]);
+    vi.mocked(services.getScreeningCertificates).mockResolvedValue([]);
+    vi.mocked(services.getScreeningRejections).mockResolvedValue([]);
+    mockedUseApp.mockReturnValue({
+      ensureUsers: vi.fn(),
+      users: [makeUser(), makeUser({ id: "u-2", name: "Jamie Kim", email: "jamie@example.com", isProvider: false, role: "Client", rolePlain: "Client" })],
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      usersLoading: false,
+      disputes: [],
+      disputesLoading: false,
+    } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("shows screening when a provider drawer opens, and does not load the lists again", async () => {
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    expect(services.getScreeningBookings).not.toHaveBeenCalled();
+    await user.click(screen.getByText("Morgan Lee"));
+    expect(await screen.findByRole("heading", { name: "Screening" })).toBeInTheDocument();
+    expect(await screen.findByText("1 thing to check")).toBeInTheDocument();
+    expect(screen.getByText("66.7% (2/3)")).toBeInTheDocument();
+    expect(screen.getByText("Check")).toBeInTheDocument();
+    expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("Not available");
+
+    await user.click(screen.getAllByRole("button", { name: "Close" })[0]);
+    await user.click(screen.getByText("Jamie Kim"));
+    expect(screen.queryByRole("heading", { name: "Screening" })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Close" })[0]);
+    await user.click(screen.getByText("Morgan Lee"));
+    expect(await screen.findByText("66.7% (2/3)")).toBeInTheDocument();
+    expect(services.getScreeningBookings).toHaveBeenCalledTimes(1);
+    expect(services.getScreeningCertificates).toHaveBeenCalledTimes(1);
+    expect(services.getScreeningRejections).toHaveBeenCalledTimes(1);
   });
 });
 

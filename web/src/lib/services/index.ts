@@ -5,6 +5,7 @@
 // them real tables, so the in-memory mock DB is gone.
 
 import { splitPayoutFailures, owedProviders, payoutHeadline, walletAvailableBalance, type OwedProvider, type PayoutFailureSplit } from "@/lib/adapters";
+import { toScreeningBooking, toScreeningCertificate, toScreeningRejection, type ScreeningBooking, type ScreeningCertificate } from "@/lib/screening";
 import { ApiError, client } from "@/lib/api/client";
 import {
   clearAdminSession,
@@ -992,6 +993,15 @@ export async function getReportEscrows(): Promise<ReportEscrow[]> {
   return rows.map(mapReportEscrow);
 }
 
+/**
+ * Every booking, with the provider id kept. Screening loads this once per page
+ * session. `mapBookingRow` is unchanged and still drops the id for the Bookings page.
+ */
+export async function getScreeningBookings(): Promise<ScreeningBooking[]> {
+  const rows = await fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings");
+  return rows.map(toScreeningBooking);
+}
+
 /** Every booking status the API filters on. */
 export const BOOKING_STATUSES_API = ["open", "recommending", "assigned", "confirmed", "in_progress", "completed", "cancelled", "expired"] as const;
 
@@ -1556,6 +1566,30 @@ export interface VerificationHistoryEntry {
   reason: string | null;
   /** When it was decided; falls back to the submission date. */
   decidedAt: string;
+}
+
+/**
+ * Approved certificates, including those the API reports as "expired".
+ * `expires_on` is kept here and is not added to the history mapping.
+ */
+export async function getScreeningCertificates(): Promise<ScreeningCertificate[]> {
+  const rows = await fetchAllRows<AdminCredentialApiRow>("/admin/credentials?status=approved", "credentials", CREDENTIALS_PAGE_SIZE);
+  return rows.flatMap((row) => {
+    const mapped = toScreeningCertificate(row);
+    return mapped ? [mapped] : [];
+  });
+}
+
+/** Rejected identity checks and certificates, for a per-provider count. */
+export async function getScreeningRejections(): Promise<{ providerId: string }[]> {
+  const [identity, certificates] = await Promise.all([
+    fetchAllRows<AdminVerificationApiRow>("/admin/verifications?status=rejected&include_documents=false", "verifications"),
+    fetchAllRows<AdminCredentialApiRow>("/admin/credentials?status=rejected", "credentials", CREDENTIALS_PAGE_SIZE),
+  ]);
+  return [...identity, ...certificates].flatMap((row) => {
+    const mapped = toScreeningRejection(row);
+    return mapped ? [mapped] : [];
+  });
 }
 
 /**

@@ -15,6 +15,10 @@ vi.mock("@/lib/services", () => ({
   getVerificationCases: vi.fn(),
   decideVerificationCase: vi.fn(),
   getVerificationHistory: vi.fn(),
+  getUsers: vi.fn(),
+  getScreeningBookings: vi.fn(),
+  getScreeningCertificates: vi.fn(),
+  getScreeningRejections: vi.fn(),
 }));
 
 const mocked = vi.mocked(services);
@@ -95,6 +99,10 @@ describe("VerificationsPage", () => {
     vi.clearAllMocks();
     setCases([newProvider, stripeCase, renewal, extra]);
     mocked.decideVerificationCase.mockResolvedValue({ provider_id: "p1", identity: "approved", certificate: "approved", identity_verified: true, verified: true });
+    mocked.getUsers.mockResolvedValue([]);
+    mocked.getScreeningBookings.mockResolvedValue([]);
+    mocked.getScreeningCertificates.mockResolvedValue([]);
+    mocked.getScreeningRejections.mockResolvedValue([]);
   });
 
   it("counts the cases loaded against the queue total", async () => {
@@ -207,6 +215,27 @@ describe("VerificationsPage", () => {
     renderPage();
     expect(await screen.findByText("Couldn't load verifications")).toBeInTheDocument();
     expect(screen.getByText("boom")).toBeInTheDocument();
+  });
+
+  it("shows screening for the provider being reviewed, and loads the shared lists once", async () => {
+    mocked.getUsers.mockResolvedValue([{
+      id: "p1", email: "ana@example.com", role: "provider", createdAt: "2024-03-10", name: "Ana Reyes",
+      status: "ACTIVE", jobsCompleted: 4, rating: 4.8, phone: null, city: null, categoryName: "Plumbing",
+      suspendedUntil: null, suspensionReason: null, verification: "PENDING",
+    }]);
+    mocked.getScreeningCertificates.mockResolvedValue([{ providerId: "p1", status: "expired", expiresOn: "2020-01-01" }]);
+    const user = userEvent.setup();
+    setCases([newProvider, stripeCase]);
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Screening" })).toBeInTheDocument();
+    expect(await screen.findByText("1 thing to check")).toBeInTheDocument();
+    expect(screen.getByText("Mar 10, 2024")).toBeInTheDocument();
+    expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("Not available");
+    expect(screen.getByText("Check")).toBeInTheDocument();
+    await user.click(screen.getByText("Ben Cruz"));
+    expect(mocked.getScreeningBookings).toHaveBeenCalledTimes(1);
+    expect(mocked.getUsers).toHaveBeenCalledTimes(1);
+    expect(mocked.getScreeningCertificates).toHaveBeenCalledTimes(1);
   });
 
   it("shows the empty state", async () => {

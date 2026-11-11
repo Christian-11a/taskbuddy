@@ -36,6 +36,7 @@ import { formatDate } from "@/lib/adapters";
 import type { CasePart } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
 import { decideVerificationCase, getVerificationCases, getVerificationHistory, type VerificationCase, type VerificationHistoryEntry } from "@/lib/services";
+import { ProviderScreeningSection, useScreeningLists } from "@/components/admin/ProviderScreening";
 
 /** The API accepts a note of up to 500 characters. */
 const NOTE_MAX = 500;
@@ -170,7 +171,7 @@ function VerificationTabs({ tab, onChange }: { tab: "review" | "history"; onChan
 }
 
 function ReviewQueue({ tabs }: { tabs: ReactNode }) {
-  const { refreshCounts } = useApp();
+  const { refreshCounts, disputes, disputesLoading } = useApp();
   const { showToast } = useToast();
   const isWide = useIsWide();
   const [items, setItems] = useState<VerificationCase[]>([]);
@@ -233,6 +234,7 @@ function ReviewQueue({ tabs }: { tabs: ReactNode }) {
   const selected = items.find((i) => i.id === selectedId) ?? (isWide ? items[0] : undefined);
   const effectiveId = selected?.id ?? null;
   const expiredOn = selected ? expiredOnOf(selected) : null;
+  const screening = useScreeningLists(!!selected, true);
 
   async function finish(target: VerificationCase, toast: string) {
     showToast(toast);
@@ -430,6 +432,17 @@ function ReviewQueue({ tabs }: { tabs: ReactNode }) {
                 </>
               }
             >
+              {selected && (
+                <DetailSection title="Screening">
+                  <ProviderScreeningSection
+                    providerId={selected.providerId}
+                    presetUser={null}
+                    lists={screening.lists}
+                    disputes={disputes ?? []}
+                    loading={screening.loading || !!disputesLoading}
+                  />
+                </DetailSection>
+              )}
               <DetailSection title="Identity">
                 {selected.verification ? (
                   selected.verification.documents.length === 0 ? (
