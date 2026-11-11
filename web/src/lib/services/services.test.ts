@@ -367,6 +367,18 @@ describe("paginated admin searches", () => {
     );
   });
 
+  it("sends category_id when a booking search is limited to one service", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ bookings: [], total: 0 })));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await services.searchBookings({ search: "", categoryId: 2, page: 1, pageSize: 7 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/bookings?category_id=2&limit=7&offset=0"),
+      expect.any(Object),
+    );
+  });
+
   it("constructs escrow search, status, limit, and offset from page state", async () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ transactions: [], total: 8 })));
     global.fetch = fetchMock as unknown as typeof fetch;

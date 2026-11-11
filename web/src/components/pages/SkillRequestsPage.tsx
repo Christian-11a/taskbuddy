@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ReasonField } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/Panel";
+import { ClearFilters, ResultCount } from "@/components/admin/table";
 import {
   Avatar,
   DetailCard,
@@ -232,11 +233,21 @@ export function SkillRequestsPage() {
               ]}
             />
             <SearchField value={search} onChange={(value) => { setSearch(value); setPage(1); setSelectedId(null); }} placeholder="Search by provider or service…" label="Search service requests" maxLength={100} error={searchError} />
-            {status === "pending" ? (
-              <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
-            ) : (
-              <span className="tabular text-[12px] text-muted-foreground">{total.toLocaleString()} request{total === 1 ? "" : "s"}</span>
+            {(search.trim() !== "" || status !== "pending") && (
+              <ClearFilters
+                onClick={() => {
+                  setSearch("");
+                  setStatus("pending");
+                  setPage(1);
+                  setSelectedId(null);
+                  setSearchError(null);
+                }}
+              />
             )}
+            {status === "pending" && (
+              <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "request" : "requests"} />
+            )}
+            <ResultCount shown={items.length} total={total} loading={loading && items.length === 0} />
           </>
         }
         list={

@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle, Download, Home, KeyRound, MailCheck, MoreHo
 import { useApp } from "@/context/AppContext";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
+import { inDateRange } from "@/lib/listFilters";
 import { REASON_MAX_LENGTH, validateDurationDays } from "@/lib/validation";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
@@ -18,6 +19,9 @@ import { Avatar, FilterTabs, SearchField } from "@/components/admin/queue";
 import {
   BulkBar,
   DataTable,
+  ClearFilters,
+  DateRangeFilter,
+  ResultCount,
   SelectFilter,
   SummaryStrip,
   TableCard,
@@ -104,6 +108,9 @@ export function UsersPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [joinedFilter, setJoinedFilter] = useState<JoinedFilter>("all");
   const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdTo, setCreatedTo] = useState("");
   // Read once per mount: "new in the last 7 days" doesn't need to tick.
   const [now] = useState(() => Date.now());
   const [page, setPage] = useState(1);
@@ -168,10 +175,42 @@ export function UsersPage() {
           joinedFilter === "all" || now - new Date(u.createdAt).getTime() <= JOINED_DAYS[joinedFilter] * 86_400_000;
         // Verification only applies to providers, so picking one narrows to them.
         const matchVerification = verificationFilter === "all" || u.verification === verificationFilter;
-        return matchSearch && matchRole && matchStatus && matchJoined && matchVerification;
+        const matchCategory = categoryFilter === "all" || u.category === categoryFilter;
+        const matchCreated = inDateRange(u.createdAt, createdFrom, createdTo);
+        return matchSearch && matchRole && matchStatus && matchJoined && matchVerification && matchCategory && matchCreated;
       }),
-    [users, search, roleFilter, statusFilter, joinedFilter, verificationFilter, now],
+    [users, search, roleFilter, statusFilter, joinedFilter, verificationFilter, categoryFilter, createdFrom, createdTo, now],
   );
+
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const user of users) {
+      if (user.category && user.category !== "—") names.add(user.category);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [users]);
+
+  const filtersActive =
+    search.trim() !== "" ||
+    roleFilter !== "all" ||
+    statusFilter !== "all" ||
+    joinedFilter !== "all" ||
+    verificationFilter !== "all" ||
+    categoryFilter !== "all" ||
+    createdFrom !== "" ||
+    createdTo !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setRoleFilter("all");
+    setStatusFilter("all");
+    setJoinedFilter("all");
+    setVerificationFilter("all");
+    setCategoryFilter("all");
+    setCreatedFrom("");
+    setCreatedTo("");
+    clearSelectionOnScopeChange();
+  }
 
   const columns: Column<UserRow>[] = useMemo(
     () => [
@@ -625,9 +664,36 @@ export function UsersPage() {
               <option value="Rejected">Rejected</option>
               <option value="Not submitted">Not submitted</option>
             </SelectFilter>
-            <span className="ml-auto tabular text-[12px] text-muted-foreground">
-              {filtered.length.toLocaleString()} {filtered.length === 1 ? "user" : "users"}
-            </span>
+            <SelectFilter
+              label="Filter users by service category"
+              value={categoryFilter}
+              onChange={(v) => {
+                setCategoryFilter(v);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">Category: any</option>
+              {categories.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </SelectFilter>
+            <DateRangeFilter
+              label="Filter users by created date"
+              from={createdFrom}
+              to={createdTo}
+              onFromChange={(v) => {
+                setCreatedFrom(v);
+                clearSelectionOnScopeChange();
+              }}
+              onToChange={(v) => {
+                setCreatedTo(v);
+                clearSelectionOnScopeChange();
+              }}
+            />
+            {filtersActive && <ClearFilters onClick={clearFilters} />}
+            <ResultCount shown={paginated.length} total={filtered.length} loading={usersLoading && users.length === 0} />
           </>
         }
       >

@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DisputesPage } from "./DisputesPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -765,5 +765,39 @@ describe("DisputesPage — console parts", () => {
   it("lists the disputes as soon as they arrive, while the rest of the console is still loading", () => {
     renderParts({ loading: true }, [row({ jobTitle: "Move sofa" })]);
     expect(screen.getAllByText("Move sofa").length).toBeGreaterThan(0);
+  });
+});
+
+describe("DisputesPage list filters", () => {
+  const disputes = [
+    row({ id: "d1", jobTitle: "Repair tap", service: "Plumbing", createdAt: "Oct 1, 2026" }),
+    row({ id: "d2", jobTitle: "Mop floors", service: "Cleaning", createdAt: "Sep 1, 2026" }),
+  ];
+
+  it("filters by service category and counts the matches", async () => {
+    const user = userEvent.setup();
+    renderDisputes(disputes);
+    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter disputes by service category" }), "Plumbing");
+    expect(screen.getAllByText("Repair tap").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Mop floors")).not.toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+  });
+
+  it("filters by the date the case was opened", () => {
+    renderDisputes(disputes);
+    fireEvent.change(screen.getByLabelText("Filter disputes by opened date from"), { target: { value: "2026-10-01" } });
+    expect(screen.getAllByText("Repair tap").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Mop floors")).not.toBeInTheDocument();
+  });
+
+  it("clears the category, date, and queue filters", async () => {
+    const user = userEvent.setup();
+    renderDisputes(disputes);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter disputes by service category" }), "Cleaning");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getAllByText("Repair tap").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mop floors").length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "Filter disputes by service category" })).toHaveValue("all");
   });
 });

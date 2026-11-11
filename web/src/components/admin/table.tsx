@@ -288,6 +288,62 @@ export function SelectFilter({
   );
 }
 
+const rangeFieldClass =
+  "h-8 rounded-[8px] border border-input bg-surface px-2 text-[12.5px] text-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/20";
+
+/** Inclusive created/updated bounds. Empty dates stay open. */
+export function DateRangeFilter({
+  from,
+  to,
+  onFromChange,
+  onToChange,
+  label,
+}: {
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  label: string;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex items-center gap-1.5">
+      <input
+        type="date"
+        aria-label={`${label} from`}
+        value={from}
+        onChange={(e) => onFromChange(e.target.value)}
+        className={cn(rangeFieldClass, from && "border-primary/50 bg-primary-soft/50")}
+      />
+      <span className="text-[12px] text-muted-foreground">to</span>
+      <input
+        type="date"
+        aria-label={`${label} to`}
+        value={to}
+        onChange={(e) => onToChange(e.target.value)}
+        className={cn(rangeFieldClass, to && "border-primary/50 bg-primary-soft/50")}
+      />
+    </div>
+  );
+}
+
+/** Resets every list filter on the page back to its initial value. */
+export function ClearFilters({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="h-8 px-1 text-[12.5px] font-medium text-primary hover:underline">
+      Clear filters
+    </button>
+  );
+}
+
+/** "Showing 12 of 48" for the rows on screen against the full filtered total. */
+export function ResultCount({ shown, total, loading }: { shown: number; total: number; loading?: boolean }) {
+  return (
+    <span className="ml-auto tabular text-[12px] text-muted-foreground">
+      {loading ? "Loading…" : `Showing ${shown.toLocaleString()} of ${total.toLocaleString()}`}
+    </span>
+  );
+}
+
 /** Card wrapping a table: toolbar on top, table, pagination below. */
 export function TableCard({ toolbar, children, className }: { toolbar?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (

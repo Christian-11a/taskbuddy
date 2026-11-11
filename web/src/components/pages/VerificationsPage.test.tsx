@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificationsPage } from "./VerificationsPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -95,6 +95,11 @@ describe("VerificationsPage", () => {
     vi.clearAllMocks();
     setCases([newProvider, stripeCase, renewal, extra]);
     mocked.decideVerificationCase.mockResolvedValue({ provider_id: "p1", identity: "approved", certificate: "approved", identity_verified: true, verified: true });
+  });
+
+  it("counts the cases loaded against the queue total", async () => {
+    renderPage();
+    expect(await screen.findByText("Showing 4 of 4")).toBeInTheDocument();
   });
 
   it("lists every case type and shows the first one in detail", async () => {
@@ -281,6 +286,73 @@ describe("VerificationsPage", () => {
       await openHistory();
       expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Reject" })).not.toBeInTheDocument();
+    });
+
+    it("filters decisions by result", async () => {
+      const user = await openHistory();
+      expect(screen.getByText("Showing 3 of 3")).toBeInTheDocument();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Filter decisions by result" }), "Rejected");
+      expect(screen.getByText("Ben Cruz")).toBeInTheDocument();
+      expect(screen.queryByText("Ana Reyes")).not.toBeInTheDocument();
+      expect(screen.queryByText("Cara Lim")).not.toBeInTheDocument();
+      expect(screen.getByText("Showing 1 of 1")).toBeInTheDocument();
+    });
+
+    it("counts the decisions on this page against the decisions that match", async () => {
+      const many: services.VerificationHistoryEntry[] = [
+        ...Array.from({ length: 22 }, (_, i) => ({
+          id: `a:${i}`,
+          kind: "identity" as const,
+          providerId: `pa-${i}`,
+          providerName: `Approved ${i}`,
+          subject: "Identity (ID + selfie)",
+          result: "approved" as const,
+          reason: null,
+          decidedAt: "2026-10-15T08:00:00Z",
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          id: `r:${i}`,
+          kind: "certificate" as const,
+          providerId: `pr-${i}`,
+          providerName: `Rejected ${i}`,
+          subject: "Certificate: Handyman - Carpentry NC II",
+          result: "rejected" as const,
+          reason: "Photo is blurry",
+          decidedAt: "2026-10-10T08:00:00Z",
+        })),
+      ];
+      mocked.getVerificationHistory.mockResolvedValue(many);
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText("Ben Cruz");
+      await user.click(screen.getByRole("tab", { name: "History" }));
+      expect(await screen.findByText("Showing 20 of 25")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Next page" }));
+      expect(screen.getByText("Showing 5 of 25")).toBeInTheDocument();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Filter decisions by result" }), "Approved");
+      expect(screen.getByText("Showing 20 of 22")).toBeInTheDocument();
+    });
+
+    it("filters decisions by service category", async () => {
+      const user = await openHistory();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Filter decisions by service category" }), "Handyman");
+      expect(screen.getByText("Ben Cruz")).toBeInTheDocument();
+      expect(screen.queryByText("Cara Lim")).not.toBeInTheDocument();
+    });
+
+    it("filters decisions by the date they were decided", async () => {
+      await openHistory();
+      fireEvent.change(screen.getByLabelText("Filter decisions by decided date from"), { target: { value: "2026-10-12" } });
+      expect(screen.getByText("Ana Reyes")).toBeInTheDocument();
+      expect(screen.queryByText("Ben Cruz")).not.toBeInTheDocument();
+    });
+
+    it("clears the history filters", async () => {
+      const user = await openHistory();
+      await user.selectOptions(screen.getByRole("combobox", { name: "Filter decisions by result" }), "Rejected");
+      await user.click(screen.getByRole("button", { name: "Clear filters" }));
+      expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
+      expect(screen.getByRole("combobox", { name: "Filter decisions by result" })).toHaveValue("all");
     });
   });
 });

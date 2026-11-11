@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TransactionsPage } from "./TransactionsPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -406,7 +406,7 @@ describe("TransactionsPage - online payments and payment records", () => {
     expect(screen.queryByRole("button", { name: /wallet history/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Payment records" }));
     expect(await screen.findByText("Payout to provider")).toBeInTheDocument();
-    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "Payment records table" })).getByText("Failed")).toBeInTheDocument();
   });
 
   it("labels a 'Refund sent' withdrawal as a refund to client", async () => {
@@ -456,6 +456,37 @@ describe("TransactionsPage — legacy test records are hidden", () => {
     expect(screen.queryByRole("button", { name: /show details for card-1/i })).not.toBeInTheDocument();
     expect(screen.getAllByText("₱900").length).toBeGreaterThan(0);
     expect(screen.queryByText("₱5,900")).not.toBeInTheDocument();
+  });
+
+  it("filters payment records by status", async () => {
+    mockedSearchWalletTransactions.mockResolvedValue({ items: [], total: 3 });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    await user.click(screen.getByRole("button", { name: "Payment records" }));
+    await user.selectOptions(await screen.findByRole("combobox", { name: "Filter payment records by status" }), "Failed");
+    await waitFor(() => {
+      expect(mockedSearchWalletTransactions).toHaveBeenLastCalledWith({ search: "", status: "failed", page: 1, pageSize: 12 });
+    });
+    expect(screen.getByText("Showing 0 of 3")).toBeInTheDocument();
+  });
+
+  it("clears the escrow search and status and counts the loaded page", async () => {
+    mockedSearchTransactions.mockResolvedValue({
+      items: [{
+        id: "esc-1", jobId: "job-1", customerName: "Jamie Kim", providerName: "Pat Morgan",
+        service: "Plumbing", amount: 900, status: "COMPLETED", date: "2026-10-01",
+        fundingMethod: "wallet", transferStatus: "none", stripeTransferId: null, transferError: null,
+      }],
+      total: 8,
+    });
+    const user = userEvent.setup();
+    renderWithToast(<TransactionsPage />);
+    expect(await screen.findByText("Showing 1 of 8")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Disputed" }));
+    await user.type(screen.getByLabelText("Search escrow transactions"), "Jamie");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByLabelText("Search escrow transactions")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("hides wallet-era payment records and keeps current ones", async () => {
