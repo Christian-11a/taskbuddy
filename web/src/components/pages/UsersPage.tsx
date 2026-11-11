@@ -657,7 +657,7 @@ export function UsersPage() {
               }}
             />
             {filtersActive && <ClearFilters onClick={clearFilters} />}
-            <ResultCount shown={filtered.length} total={users.length} loading={usersLoading && users.length === 0} />
+            <ResultCount shown={paginated.length} total={filtered.length} loading={usersLoading && users.length === 0} />
           </>
         }
       >

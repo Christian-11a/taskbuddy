@@ -656,7 +656,7 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
           onToChange={(value) => { setDecidedTo(value); setPage(1); }}
         />
         {filtersActive && <ClearFilters onClick={clearFilters} />}
-        <ResultCount shown={filtered.length} total={entries.length} loading={loading && entries.length === 0} />
+        <ResultCount shown={rows.length} total={filtered.length} loading={loading && entries.length === 0} />
       </div>
       {loading ? (
         <p className="py-10 text-center text-[13px] text-muted-foreground">Loading history…</p>
