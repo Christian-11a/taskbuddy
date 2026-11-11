@@ -15,6 +15,7 @@ vi.mock("@/context/AppContext", () => ({
 vi.mock("@/lib/services", () => ({
   searchBookings: vi.fn(),
   getBookingDetail: vi.fn(),
+  getCategories: vi.fn().mockResolvedValue([{ id: 2, name: "Plumbing", isActive: true }]),
 }));
 
 const mockedUseApp = vi.mocked(useApp);
@@ -375,5 +376,46 @@ describe("BookingsPage search input", () => {
     expect(await screen.findByText("Search is too long.")).toHaveAttribute("role", "alert");
     expect(search).toHaveAccessibleDescription("Search is too long.");
     expect(screen.queryByText(/may be stale/)).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingsPage category filter", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(services.getCategories).mockResolvedValue([{ id: 2, name: "Plumbing", isActive: true }]);
+    mockedUseApp.mockReturnValue({
+      cancelBooking: vi.fn(),
+      refreshCounts: vi.fn().mockResolvedValue(undefined),
+      lastUpdated: null,
+    } as unknown as ReturnType<typeof useApp>);
+    mockedSearchBookings.mockResolvedValue({ items: [], total: 4, statusCounts: counts() });
+  });
+
+  it("asks the server for the selected service category and counts the page", async () => {
+    const user = userEvent.setup();
+    renderBookings();
+    expect(await screen.findByRole("option", { name: "Plumbing" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by service category" }), "Plumbing");
+    await waitFor(() => {
+      expect(mockedSearchBookings).toHaveBeenLastCalledWith({ search: "", status: undefined, categoryId: 2, page: 1, pageSize: 12 });
+    });
+    expect(screen.getByText("Showing 0 of 4")).toBeInTheDocument();
+  });
+
+  it("clears the search, status, and category together", async () => {
+    const user = userEvent.setup();
+    renderBookings();
+    const search = await screen.findByLabelText("Search bookings");
+    expect(await screen.findByRole("option", { name: "Plumbing" })).toBeInTheDocument();
+    await user.type(search, "Ava");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by status" }), "Open");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter bookings by service category" }), "Plumbing");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Filter bookings by status" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "Filter bookings by service category" })).toHaveValue("");
+    await waitFor(() => {
+      expect(mockedSearchBookings).toHaveBeenLastCalledWith({ search: "", status: undefined, page: 1, pageSize: 12 });
+    });
   });
 });

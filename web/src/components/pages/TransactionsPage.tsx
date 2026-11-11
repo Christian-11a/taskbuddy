@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/admin/Panel";
 import { FilterTabs, SearchField, searchErrorMessage } from "@/components/admin/queue";
-import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { BulkBar, ClearFilters, DataTable, LoadFailedState, RefreshFailedBanner, ResultCount, SelectFilter, SummaryStrip, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { toneFromBadgeClass } from "@/components/admin/tones";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useBookingDetailCache } from "@/hooks/useBookingDetailCache";
@@ -281,6 +281,16 @@ const EscrowTab = forwardRef<ExportHandle, TabProps>(function EscrowTab({ onExpo
                 label: f === "all" ? "All" : f,
               }))}
             />
+            {(search.trim() !== "" || statusFilter !== "all") && (
+              <ClearFilters
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                  clearSelectionOnScopeChange();
+                }}
+              />
+            )}
+            <ResultCount shown={transactions.length} total={totalCount} loading={loading && transactions.length === 0} />
           </>
         }
       >
@@ -424,6 +434,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
   const [error, setError] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
   const debouncedSearch = useDebouncedValue(search, 250);
@@ -434,7 +445,12 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
     setLoading(true);
     setError(false);
     void services
-      .searchWalletTransactions({ search: debouncedSearch, page, pageSize: PAGE_SIZE })
+      .searchWalletTransactions({
+        search: debouncedSearch,
+        page,
+        pageSize: PAGE_SIZE,
+        ...(statusFilter === "all" ? {} : { status: statusFilter }),
+      })
       .then((result) => {
         if (!cancelled) {
           // Wallet-era rows are hidden per page; the server total still counts them (see report).
@@ -461,7 +477,7 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
       cancelled = true;
     };
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [debouncedSearch, page, reloadKey]);
+  }, [debouncedSearch, statusFilter, page, reloadKey]);
 
   const searchPending = search !== debouncedSearch;
   const walletBusy = loading || searchPending;
@@ -540,18 +556,43 @@ const WalletTab = forwardRef<ExportHandle, TabProps>(function WalletTab({ onExpo
 
       <TableCard
         toolbar={
-          <SearchField
-            className="w-full sm:w-72"
-            value={search}
-            onChange={(v) => {
-              setSearch(v);
-              clearSelectionOnScopeChange();
-            }}
-            placeholder="Search by user or description…"
-            label="Search payment records"
-            maxLength={100}
-            error={searchError}
-          />
+          <>
+            <SearchField
+              className="w-full sm:w-72"
+              value={search}
+              onChange={(v) => {
+                setSearch(v);
+                clearSelectionOnScopeChange();
+              }}
+              placeholder="Search by user or description…"
+              label="Search payment records"
+              maxLength={100}
+              error={searchError}
+            />
+            <SelectFilter
+              label="Filter payment records by status"
+              value={statusFilter}
+              onChange={(value) => {
+                setStatusFilter(value);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="all">All statuses</option>
+              <option value="pending">Pending</option>
+              <option value="completed">Completed</option>
+              <option value="failed">Failed</option>
+            </SelectFilter>
+            {(search.trim() !== "" || statusFilter !== "all") && (
+              <ClearFilters
+                onClick={() => {
+                  setSearch("");
+                  setStatusFilter("all");
+                  clearSelectionOnScopeChange();
+                }}
+              />
+            )}
+            <ResultCount shown={visibleRows.length} total={totalCount} loading={walletBusy && visibleRows.length === 0} />
+          </>
         }
       >
         {error && !walletBusy && visibleRows.length > 0 && (

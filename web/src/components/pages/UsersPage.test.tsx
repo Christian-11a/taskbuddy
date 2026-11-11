@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { UsersPage, bulkMessage } from "./UsersPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -445,5 +445,51 @@ describe("UsersPage — users list loading", () => {
     renderWithState({ users: [], usersLoading: false, loading: true });
     expect(screen.getByText("No users yet.")).toBeInTheDocument();
     expect(screen.queryByText("Loading users…")).not.toBeInTheDocument();
+  });
+});
+
+describe("UsersPage list filters", () => {
+  const users = [
+    makeUser(),
+    makeUser({ id: "u-2", name: "Ava Cruz", email: "ava@example.com", category: "Cleaning", createdAt: "2026-02-02" }),
+  ];
+
+  beforeEach(() => {
+    mockedUseApp.mockReturnValue({
+      ensureUsers: vi.fn(),
+      users,
+      setUserStatus: vi.fn(),
+      bulkSetUserStatus: vi.fn(),
+      sendPasswordReset: vi.fn(),
+      refreshUsers: vi.fn(),
+      usersLoading: false,
+    } as unknown as ReturnType<typeof useApp>);
+  });
+
+  it("filters providers by service category", async () => {
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    expect(screen.getByText("Showing 2 of 2")).toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter users by service category" }), "Cleaning");
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    expect(screen.getByText("Ava Cruz")).toBeInTheDocument();
+    expect(screen.getByText("Showing 1 of 2")).toBeInTheDocument();
+  });
+
+  it("filters by the created-date range", () => {
+    renderWithToast(<UsersPage />);
+    fireEvent.change(screen.getByLabelText("Filter users by created date from"), { target: { value: "2026-01-01" } });
+    expect(screen.queryByText("Morgan Lee")).not.toBeInTheDocument();
+    expect(screen.getByText("Ava Cruz")).toBeInTheDocument();
+  });
+
+  it("clears every user filter", async () => {
+    const user = userEvent.setup();
+    renderWithToast(<UsersPage />);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Filter users by service category" }), "Cleaning");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("Morgan Lee")).toBeInTheDocument();
+    expect(screen.getByText("Ava Cruz")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter users by service category" })).toHaveValue("all");
   });
 });

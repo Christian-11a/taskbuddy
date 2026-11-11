@@ -641,16 +641,19 @@ export interface PageQuery {
 
 export interface SearchBookingsQuery extends PageQuery {
   status?: string;
+  /** `category_id` on GET /admin/bookings. Omitted for every category. */
+  categoryId?: number;
 }
 
 export interface SearchTransactionsQuery extends PageQuery {
   status?: EscrowStatusApi;
 }
 
-function paginatedPath(path: string, query: PageQuery & { status?: string }): string {
+function paginatedPath(path: string, query: PageQuery & { status?: string; categoryId?: number }): string {
   const params = new URLSearchParams();
   if (query.search.trim()) params.set("search", query.search.trim());
   if (query.status) params.set("status", query.status);
+  if (query.categoryId) params.set("category_id", String(query.categoryId));
   params.set("limit", String(query.pageSize));
   params.set("offset", String((query.page - 1) * query.pageSize));
   return `${path}?${params}`;
@@ -691,7 +694,7 @@ export async function getWalletTransactions(): Promise<WalletTransaction[]> {
   return rows.map(mapWalletTxnRow);
 }
 
-export async function searchWalletTransactions(query: PageQuery): Promise<{ items: WalletTransaction[]; total: number }> {
+export async function searchWalletTransactions(query: PageQuery & { status?: string }): Promise<{ items: WalletTransaction[]; total: number }> {
   const res = await client.get<{ transactions: AdminWalletTxnApiRow[]; total: number }>(
     paginatedPath("/admin/wallet-transactions", query),
   );

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNod
 import { motion } from "motion/react";
 import { Check, Clock, FileText, Gavel, History, ImageOff, Images, MessagesSquare, RefreshCw, RotateCcw, Scale, ShieldAlert } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { inDateRange } from "@/lib/listFilters";
+import { ClearFilters, DateRangeFilter, ResultCount, SelectFilter } from "@/components/admin/table";
 import * as services from "@/lib/services";
 import type { ConversationMessage } from "@/lib/domain";
 import { formatCurrency, type DisputeRow } from "@/lib/adapters";
@@ -201,6 +203,9 @@ export function DisputesPage() {
   const twoColumns = useWidthAtLeast(paneRef, TWO_COLUMN_MIN_WIDTH);
   const [filter, setFilter] = useState<Filter>("needs-decision");
   const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [openedFrom, setOpenedFrom] = useState("");
+  const [openedTo, setOpenedTo] = useState("");
   // Held in state and refreshed on the live tick, so "overdue" turns on without a reload.
   const [now, setNow] = useState(() => new Date());
   useLiveTick(() => setNow(new Date()));
@@ -260,11 +265,32 @@ export function DisputesPage() {
           row.jobTitle.toLowerCase().includes(q) ||
           row.clientName.toLowerCase().includes(q) ||
           row.providerName.toLowerCase().includes(q);
-        return matchesFilter(filter, item) && matchSearch;
+        const matchCategory = category === "all" || row.service === category;
+        const matchOpened = inDateRange(row.createdAt, openedFrom, openedTo);
+        return matchesFilter(filter, item) && matchSearch && matchCategory && matchOpened;
       })
       // Open cases first, most urgent first. The sort is stable, so ties keep the API order.
       .sort((a, b) => Number(b.row.isOpen) - Number(a.row.isOpen) || byUrgency(a, b));
-  }, [signalled, filter, search]);
+  }, [signalled, filter, search, category, openedFrom, openedTo]);
+
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const dispute of disputes) {
+      if (dispute.service.trim()) names.add(dispute.service);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [disputes]);
+
+  const filtersActive = search.trim() !== "" || filter !== "needs-decision" || category !== "all" || openedFrom !== "" || openedTo !== "";
+
+  function clearFilters() {
+    setFilter("needs-decision");
+    setSearch("");
+    setCategory("all");
+    setOpenedFrom("");
+    setOpenedTo("");
+    setSelectedId(null);
+  }
   const ids = useMemo(() => rows.map((item) => item.row.id), [rows]);
 
   const count = (f: Filter) => signalled.filter((item) => matchesFilter(f, item)).length;
@@ -447,7 +473,7 @@ export function DisputesPage() {
     <QueueListSkeleton />
   ) : disputes.length === 0 ? (
     <QueueListState icon={Scale} title="No disputes raised yet" description="Client complaints and provider appeals land here for review." />
-  ) : emptyCopy && !search.trim() ? (
+  ) : emptyCopy && !search.trim() && category === "all" && !openedFrom && !openedTo ? (
     <QueueListState icon={emptyCopy.icon} tone={emptyCopy.tone} title={emptyCopy.title} description={emptyCopy.description} />
   ) : (
     <QueueListState title="Nothing matches" description="Try a different search or filter." />
@@ -487,6 +513,21 @@ export function DisputesPage() {
               ]}
             />
             <SearchField value={search} onChange={setSearch} placeholder="Search by job, client, or provider…" label="Search disputes" />
+            <SelectFilter label="Filter disputes by service category" value={category} onChange={(value) => { setCategory(value); setSelectedId(null); }}>
+              <option value="all">All categories</option>
+              {categories.map((name) => (
+                <option key={name} value={name}>{name}</option>
+              ))}
+            </SelectFilter>
+            <DateRangeFilter
+              label="Filter disputes by opened date"
+              from={openedFrom}
+              to={openedTo}
+              onFromChange={(value) => { setOpenedFrom(value); setSelectedId(null); }}
+              onToChange={(value) => { setOpenedTo(value); setSelectedId(null); }}
+            />
+            {filtersActive && <ClearFilters onClick={clearFilters} />}
+            <ResultCount shown={rows.length} total={disputes.length} loading={disputesLoading && disputes.length === 0} />
             <QueueProgress remaining={openCount} done={doneThisSession} noun={openCount === 1 ? "case" : "cases"} />
           </>
         }

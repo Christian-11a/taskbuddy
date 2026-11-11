@@ -6,7 +6,7 @@ import { useApp } from "@/context/AppContext";
 import { exportMasks } from "@/lib/export/anonymize";
 import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
 import * as services from "@/lib/services";
-import type { AdminBookingDetail } from "@/lib/domain";
+import type { AdminBookingDetail, ServiceCategory } from "@/lib/domain";
 import { formatCurrency, toBookingRow, type BookingRow } from "@/lib/adapters";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ReviewDrawer, DrawerField, DrawerSection } from "@/components/ui/ReviewDrawer";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/admin/Panel";
 import { SearchField, searchErrorMessage } from "@/components/admin/queue";
-import { BulkBar, DataTable, LoadFailedState, RefreshFailedBanner, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
+import { BulkBar, ClearFilters, DataTable, LoadFailedState, RefreshFailedBanner, ResultCount, SelectFilter, TableCard, TableEmpty, type Column } from "@/components/admin/table";
 import { useLiveTick } from "@/hooks/useLiveTick";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 
@@ -97,6 +97,8 @@ export function BookingsPage() {
   /** The API rejected the search term (HTTP 400); shown under the search box. */
   const [searchError, setSearchError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [categoryId, setCategoryId] = useState("");
+  const [categories, setCategories] = useState<ServiceCategory[]>([]);
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(null);
   // GET /admin/bookings/:id (migration 0014) — fetched on demand and cached by id.
@@ -116,11 +118,29 @@ export function BookingsPage() {
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
     let cancelled = false;
+    void services
+      .getCategories()
+      .then((rows) => {
+        if (!cancelled) setCategories(rows);
+      })
+      .catch(() => {
+        /* The status list still works without the category dropdown. */
+      });
+    return () => {
+      cancelled = true;
+    };
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- fetching page-local data */
+    let cancelled = false;
     setLoading(true);
     void services
       .searchBookings({
         search: debouncedSearch,
         status: statusFilter === "all" ? undefined : STATUS_API[statusFilter],
+        ...(categoryId ? { categoryId: Number(categoryId) } : {}),
         page,
         pageSize: PAGE_SIZE,
       })
@@ -155,7 +175,7 @@ export function BookingsPage() {
       cancelled = true;
     };
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [debouncedSearch, statusFilter, page, reloadNonce]);
+  }, [debouncedSearch, statusFilter, categoryId, page, reloadNonce]);
 
   useLiveTick(() => setReloadNonce((n) => n + 1));
   const retryLoad = () => setReloadNonce((n) => n + 1);
@@ -342,21 +362,32 @@ export function BookingsPage() {
                 </optgroup>
               ))}
             </SelectFilter>
-            {statusFilter !== "all" && (
-              <Button
-                variant="ghost"
-                size="sm"
+            <SelectFilter
+              label="Filter bookings by service category"
+              value={categoryId}
+              onChange={(v) => {
+                setCategoryId(v);
+                clearSelectionOnScopeChange();
+              }}
+            >
+              <option value="">All categories</option>
+              {categories.map((category) => (
+                <option key={category.id} value={String(category.id)}>
+                  {category.name}
+                </option>
+              ))}
+            </SelectFilter>
+            {(statusFilter !== "all" || categoryId !== "" || search.trim() !== "") && (
+              <ClearFilters
                 onClick={() => {
                   setStatusFilter("all");
+                  setCategoryId("");
+                  setSearch("");
                   clearSelectionOnScopeChange();
                 }}
-              >
-                Clear filter
-              </Button>
+              />
             )}
-            <span className="ml-auto tabular text-[12px] text-muted-foreground">
-              {loading ? "Loading…" : `${total.toLocaleString()} ${total === 1 ? "booking" : "bookings"}`}
-            </span>
+            <ResultCount shown={bookings.length} total={total} loading={loading && bookings.length === 0} />
           </>
         }
       >
@@ -388,7 +419,7 @@ export function BookingsPage() {
                     scope is the real signal for which message is true. */}
                 {loading
                   ? "Loading bookings…"
-                  : statusFilter !== "all" || search.trim()
+                  : statusFilter !== "all" || search.trim() || categoryId
                     ? "No bookings match this search or filter."
                     : "No bookings yet."}
               </TableEmpty>

@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input, ReasonField } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/admin/Panel";
+import { ClearFilters, DateRangeFilter, ResultCount, SelectFilter } from "@/components/admin/table";
+import { certificateCategory, inDateRange } from "@/lib/listFilters";
 import {
   Avatar,
   DetailCard,
@@ -381,7 +383,12 @@ function ReviewQueue({ tabs }: { tabs: ReactNode }) {
         storageKey="admin.queue.verifications"
         railCount={total}
         railLabel="cases"
-        toolbar={<QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "case" : "cases"} />}
+        toolbar={
+          <>
+            <QueueProgress remaining={total} done={doneThisSession} noun={total === 1 ? "case" : "cases"} />
+            <ResultCount shown={items.length} total={total} loading={loading && items.length === 0} />
+          </>
+        }
         list={
           <>
             {listBody}
@@ -557,6 +564,10 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [resultFilter, setResultFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [decidedFrom, setDecidedFrom] = useState("");
+  const [decidedTo, setDecidedTo] = useState("");
   const [page, setPage] = useState(1);
 
   const load = useCallback(async () => {
@@ -575,11 +586,37 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
   useEffect(() => { void load(); }, [load]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  // The API cannot search these lists, so this filters the loaded rows by provider name.
+  const categories = useMemo(() => {
+    const names = new Set<string>();
+    for (const entry of entries) {
+      const name = certificateCategory(entry.subject);
+      if (name) names.add(name);
+    }
+    return [...names].sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
+  // The API cannot search these lists, so this filters the loaded rows.
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return q ? entries.filter((e) => e.providerName.toLowerCase().includes(q)) : entries;
-  }, [entries, search]);
+    return entries.filter((entry) => {
+      const matchSearch = !q || entry.providerName.toLowerCase().includes(q);
+      const matchResult = resultFilter === "all" || entry.result === resultFilter;
+      const matchCategory = categoryFilter === "all" || certificateCategory(entry.subject) === categoryFilter;
+      const matchDecided = inDateRange(entry.decidedAt, decidedFrom, decidedTo);
+      return matchSearch && matchResult && matchCategory && matchDecided;
+    });
+  }, [entries, search, resultFilter, categoryFilter, decidedFrom, decidedTo]);
+
+  const filtersActive = search.trim() !== "" || resultFilter !== "all" || categoryFilter !== "all" || decidedFrom !== "" || decidedTo !== "";
+
+  function clearFilters() {
+    setSearch("");
+    setResultFilter("all");
+    setCategoryFilter("all");
+    setDecidedFrom("");
+    setDecidedTo("");
+    setPage(1);
+  }
   const lastPage = Math.max(1, Math.ceil(filtered.length / HISTORY_PAGE_SIZE));
   const current = Math.min(page, lastPage);
   const rows = filtered.slice((current - 1) * HISTORY_PAGE_SIZE, current * HISTORY_PAGE_SIZE);
@@ -597,8 +634,29 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
         }
       />
       {tabs}
-      <div className="mb-3 max-w-sm">
-        <Input type="search" aria-label="Search by provider" placeholder="Search by provider name" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Input className="max-w-sm" type="search" aria-label="Search by provider" placeholder="Search by provider name" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
+        <SelectFilter label="Filter decisions by result" value={resultFilter} onChange={(value) => { setResultFilter(value); setPage(1); }}>
+          <option value="all">All results</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="expired">Approved (now expired)</option>
+        </SelectFilter>
+        <SelectFilter label="Filter decisions by service category" value={categoryFilter} onChange={(value) => { setCategoryFilter(value); setPage(1); }}>
+          <option value="all">All categories</option>
+          {categories.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </SelectFilter>
+        <DateRangeFilter
+          label="Filter decisions by decided date"
+          from={decidedFrom}
+          to={decidedTo}
+          onFromChange={(value) => { setDecidedFrom(value); setPage(1); }}
+          onToChange={(value) => { setDecidedTo(value); setPage(1); }}
+        />
+        {filtersActive && <ClearFilters onClick={clearFilters} />}
+        <ResultCount shown={filtered.length} total={entries.length} loading={loading && entries.length === 0} />
       </div>
       {loading ? (
         <p className="py-10 text-center text-[13px] text-muted-foreground">Loading history…</p>

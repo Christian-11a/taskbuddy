@@ -53,4 +53,28 @@ describe("SkillRequestsPage search input", () => {
     expect(search).toHaveAccessibleDescription("Search is too long.");
     expect(screen.queryByText("Couldn't load service requests")).not.toBeInTheDocument();
   });
+
+  it("counts the loaded page against the full result", async () => {
+    mockedGetSkillRequests.mockResolvedValue({
+      items: [{
+        id: "s1", providerId: "p1", providerName: "Rico Santos", type: "add_secondary", categoryName: "Plumbing",
+        reason: "Ten years of repairs", status: "pending", reviewNote: null, createdAt: "2026-10-01T00:00:00Z",
+      }],
+      total: 4,
+    });
+    renderPage();
+    expect(await screen.findByText("Showing 1 of 4")).toBeInTheDocument();
+  });
+
+  it("clears the search and returns the queue to needs review", async () => {
+    mockedGetSkillRequests.mockResolvedValue({ items: [], total: 0 });
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Approved" }));
+    const search = screen.getByLabelText("Search service requests");
+    await user.type(search, "Rico");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Needs review" })).toHaveAttribute("aria-pressed", "true");
+  });
 });
