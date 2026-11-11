@@ -19,8 +19,6 @@ const PRINT_CSS = `
   .report-print th, .report-print td { border: 1px solid #000; padding: 4px 6px; font-size: 11px; text-align: left; }
   .report-print tr { break-inside: avoid; }
   .report-print h1 { font-size: 18px; margin: 8px 0 4px; }
-  .report-print .print-page { position: fixed; right: 0; bottom: 0; font-size: 10px; }
-  .print-page::after { content: counter(page); }
 }
 @media screen {
   .report-print {
@@ -168,7 +166,6 @@ export function ReportPrintView({
           )}
         </div>
       ))}
-      <p className="print-page" style={{ fontSize: 10, textAlign: "right" }}>Page </p>
     </section>
   );
 }

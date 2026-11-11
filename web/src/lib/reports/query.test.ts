@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseReportQuery, periodFor, serializeReportQuery } from "./query";
+import { manilaDay, parseReportQuery, periodFor, serializeReportQuery } from "./query";
 
 describe("report period", () => {
   const now = new Date("2026-11-11T15:00:00Z");
@@ -10,6 +10,14 @@ describe("report period", () => {
     expect(periodFor("6", "", "", now)).toEqual({ from: "2026-06-01", to: "2026-11-11" });
     expect(periodFor("12", "", "", now)).toEqual({ from: "2025-12-01", to: "2026-11-11" });
     expect(periodFor("custom", "2026-10-31", "2026-10-01", now)).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+  });
+
+  it("ends on Manila's date after midnight there, not the UTC date", () => {
+    // 00:30 on Nov 12 in Manila is still Nov 11 in UTC.
+    const afterMidnight = new Date("2026-11-11T16:30:00Z");
+    expect(manilaDay(afterMidnight)).toBe("2026-11-12");
+    expect(periodFor("this", "", "", afterMidnight)).toEqual({ from: "2026-11-01", to: "2026-11-12" });
+    expect(periodFor("12", "", "", afterMidnight)).toEqual({ from: "2025-12-01", to: "2026-11-12" });
   });
 
   it("round-trips the filters through the query string", () => {
