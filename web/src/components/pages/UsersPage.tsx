@@ -29,7 +29,7 @@ import {
 } from "@/components/admin/table";
 import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
-import { formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
+import { formatDate, formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
 
 const PAGE_SIZE = 12;
 
@@ -59,6 +59,24 @@ type JoinedFilter = "all" | "7d" | "30d";
 type VerificationFilter = "all" | "Verified" | "Identity approved · certificate needed" | "Pending review" | "Rejected" | "Not submitted";
 
 const JOINED_DAYS: Record<Exclude<JoinedFilter, "all">, number> = { "7d": 7, "30d": 30 };
+const DEFAULT_SUSPEND_DAYS = "7";
+const SUSPEND_LENGTHS: { label: string; days: string }[] = [
+  { label: "3 days", days: "3" },
+  { label: "7 days", days: "7" },
+  { label: "30 days", days: "30" },
+  { label: "Indefinite", days: "" },
+];
+
+/** Empty days means no end date. A valid count is today plus that many days. */
+function suspensionEndText(days: string, nowMs: number): string | null {
+  const trimmed = days.trim();
+  if (!trimmed) return "No end date";
+  if (validateDurationDays(trimmed)) return null;
+  const end = new Date(nowMs);
+  end.setDate(end.getDate() + Number(trimmed));
+  const iso = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
+  return `Suspended until ${formatDate(iso)}`;
+}
 
 const STATUS_TONE: Record<string, "ok" | "danger" | "warn" | "neutral"> = {
   Active: "ok",
@@ -314,20 +332,21 @@ export function UsersPage() {
 
   function openSuspendPrompt(id: string) {
     setSuspendReason("");
-    setSuspendDays("");
+    setSuspendDays(DEFAULT_SUSPEND_DAYS);
     setSuspending({ id, bulk: false });
   }
 
   function openBulkSuspendPrompt() {
     if (selected.size === 0) return;
     setSuspendReason("");
-    setSuspendDays("");
+    setSuspendDays(DEFAULT_SUSPEND_DAYS);
     setSuspending({ id: "", bulk: true });
   }
 
   const suspendReasonTooLong = suspendReason.length > REASON_MAX_LENGTH;
   const suspendDaysError = validateDurationDays(suspendDays);
   const suspendInvalid = !suspendReason.trim() || suspendReasonTooLong || !!suspendDaysError;
+  const suspensionPreview = suspensionEndText(suspendDays, now);
 
   async function confirmSuspend() {
     if (!suspending || suspendInvalid || usersStale) return;
@@ -442,7 +461,24 @@ export function UsersPage() {
           value={suspendDays}
           onChange={(e) => setSuspendDays(e.target.value)}
         />
+        <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Suspension length">
+          {SUSPEND_LENGTHS.map((choice) => {
+            const active = suspendDays.trim() === choice.days;
+            return (
+              <Button
+                key={choice.label}
+                size="sm"
+                variant={active ? "secondary" : "outline"}
+                aria-pressed={active}
+                onClick={() => setSuspendDays(choice.days)}
+              >
+                {choice.label}
+              </Button>
+            );
+          })}
+        </div>
         {suspendDaysError && <div className="mt-1 text-[11.5px] text-danger">{suspendDaysError}</div>}
+        {suspensionPreview && <div className="mt-1 text-[11.5px] text-muted-foreground">{suspensionPreview}</div>}
       </div>
     </div>
   );
