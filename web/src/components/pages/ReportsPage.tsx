@@ -14,7 +14,7 @@ import {
   type ReportFilters,
 } from "@/lib/reports/build";
 import { platformReportCsv, providerReportCsv } from "@/lib/reports/exportReport";
-import { periodFor, readReportQuery, serializeReportQuery } from "@/lib/reports/query";
+import { manilaDay, periodFor, readReportQuery, serializeReportQuery } from "@/lib/reports/query";
 import type { ReportBooking, ReportEscrow, ReportProviderOption, ReportQuery, ReportStatus } from "@/lib/reports/types";
 import { monthLabel, toChartSeries } from "@/lib/services/monthSeries";
 import * as services from "@/lib/services";
@@ -182,7 +182,7 @@ export function ReportsPage() {
   const periodLabel = `${formatDate(period.from)} – ${formatDate(period.to)}`;
   const categoryLabel = filters.categoryName ?? "All categories";
   const filtersLabel = `Status: ${STATUS_LABEL[query.status]}. Category: ${categoryLabel}.`;
-  const generatedLabel = `Generated ${formatDate(new Date().toISOString())} by ${adminProfile?.name || "Admin"}`;
+  const generatedLabel = `Generated ${formatDate(manilaDay(new Date()))} by ${adminProfile?.name || "Admin"}`;
   const printTitle = query.tab === "platform"
     ? "Platform report"
     : `Provider report${selectedProvider ? `: ${selectedProvider.name}` : ""}`;

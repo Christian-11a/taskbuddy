@@ -31,12 +31,17 @@ export function inRange(iso: string | null | undefined, from: string, to: string
 }
 
 /**
- * Inclusive period for a preset. "This month" and "Last N months" end today (UTC)
+ * Inclusive period for a preset. "This month" and "Last N months" end today (Manila)
  * and start on the first of the earliest month in the window. Custom uses the
  * two dates, swapped when they were entered backwards.
  */
+/** Manila's calendar day as YYYY-MM-DD. The UTC date is still yesterday until 8 AM in Manila. */
+export function manilaDay(now: Date): string {
+  return new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+}
+
 export function periodFor(preset: RangePreset, from: string, to: string, now: Date): ReportPeriod {
-  const today = now.toISOString().slice(0, 10);
+  const today = manilaDay(now);
   if (preset === "custom") {
     const start = /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : today;
     const end = /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : today;

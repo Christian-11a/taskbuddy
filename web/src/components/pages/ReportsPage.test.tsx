@@ -207,6 +207,9 @@ describe("ReportsPage", () => {
     expect(print.textContent).toContain("Status: All");
     expect(print.textContent).toContain("Category: All categories");
     expect(print.textContent).toContain("by Ana Cruz");
+    // Browsers do not fill a page counter in the body, so it printed "Page 0".
+    expect(print.textContent).not.toMatch(/Page\s*\d*$/m);
+    expect(print.querySelector(".print-page")).toBeNull();
     expect(totalsText()).toMatch(/Gross released payments₱1,500/);
   });
 });
