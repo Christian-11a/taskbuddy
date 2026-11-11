@@ -1703,3 +1703,46 @@ describe("getVerificationHistory", () => {
     for (const u of credentialUrls) expect(Number(/limit=(\d+)/.exec(u)?.[1])).toBeLessThanOrEqual(100);
   });
 });
+
+describe("report lists", () => {
+  it("asks bookings for status and category, and keeps commission on escrow rows", async () => {
+    global.fetch = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/admin/bookings")) {
+        return Promise.resolve(jsonResponse({
+          bookings: [{
+            id: "j1", status: "completed", posted_at: "2026-10-02T00:00:00Z", budget: "1000",
+            category_id: 4, dispute_state: null, title: "Fix sink",
+            service_categories: { name: "Plumbing" },
+            client: { id: "c1", full_name: "Ana" },
+            provider: { id: "p1", full_name: "Mark Santos" },
+          }],
+          total: 1,
+        }));
+      }
+      return Promise.resolve(jsonResponse({
+        transactions: [{
+          id: "e1", job_id: "j1", amount: "1000.00", status: "released",
+          held_at: "2026-10-02T00:00:00Z", released_at: "2026-10-05T00:00:00Z",
+          commission_amount: "150.50",
+          jobs: { title: "Fix sink", service_categories: { name: "Plumbing" } },
+          client: { id: "c1", full_name: "Ana" },
+          provider: { id: "p1", full_name: "Mark Santos" },
+        }],
+        total: 1,
+      }));
+    }) as unknown as typeof fetch;
+
+    await expect(services.getReportBookings({ status: "completed", categoryId: 4 })).resolves.toMatchObject([
+      { id: "j1", categoryId: 4, providerId: "p1", categoryName: "Plumbing", budget: 1000 },
+    ]);
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/bookings?status=completed&category_id=4&limit=200&offset=0"),
+      expect.any(Object),
+    );
+
+    await expect(services.getReportEscrows()).resolves.toMatchObject([
+      { jobId: "j1", amount: 1000, commission: 150.5, status: "released", providerId: "p1", categoryName: "Plumbing" },
+    ]);
+  });
+});
