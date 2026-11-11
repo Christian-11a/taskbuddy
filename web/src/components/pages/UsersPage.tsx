@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
 import { formatDate, formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
+import { ProviderScreeningSection, screeningUserFromRow, useScreeningLists } from "@/components/admin/ProviderScreening";
 
 const PAGE_SIZE = 12;
 
@@ -97,7 +98,7 @@ const VERIFICATION_TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = 
 };
 
 export function UsersPage() {
-  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, settings } = useApp();
+  const { users, setUserStatus, bulkSetUserStatus, sendPasswordReset, refreshUsers, ensureUsers, usersLoading, settings, disputes, disputesLoading } = useApp();
   const { showToast } = useToast();
   // The list is read once the console is up, then re-read here only when it is more than 5 minutes old.
   useEffect(() => {
@@ -472,6 +473,7 @@ export function UsersPage() {
   const suspended = users.filter((u) => u.status === "Suspended").length;
   const deleted = users.filter((u) => u.status === "Deleted").length;
   const reviewing = users.find((u) => u.id === reviewingId) ?? null;
+  const screening = useScreeningLists(!!reviewing?.isProvider, false);
 
   const suspendFields = (
     <div className="space-y-2">
@@ -817,6 +819,18 @@ export function UsersPage() {
                 )}
               </div>
             </DrawerSection>
+
+            {reviewing.isProvider && (
+              <DrawerSection title="Screening">
+                <ProviderScreeningSection
+                  providerId={reviewing.id}
+                  presetUser={screeningUserFromRow(reviewing)}
+                  lists={screening.lists}
+                  disputes={disputes ?? []}
+                  loading={screening.loading || !!disputesLoading}
+                />
+              </DrawerSection>
+            )}
 
             {suspending && !suspending.bulk && suspending.id === reviewing.id && (
               <DrawerSection title="Suspend this user">
