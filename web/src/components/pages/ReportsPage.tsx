@@ -1,23 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { AlertTriangle, CalendarRange, CheckCircle2, Download, Star, TrendingUp, Wallet } from "lucide-react";
+import { AlertTriangle, CalendarRange, CheckCircle2, Download, Printer, Star, Wallet, XCircle } from "lucide-react";
 import { useApp } from "@/context/AppContext";
-import { formatCurrency, formatCurrencyCompact, formatRating, ratingForCsv } from "@/lib/adapters";
-import { exportMasks } from "@/lib/export/anonymize";
-import { datedFilename, downloadCsv, toCsv } from "@/lib/export/csv";
+import { formatCurrency, formatCurrencyCompact, formatDate } from "@/lib/adapters";
+import { downloadCsv } from "@/lib/export/csv";
+import {
+  RATING_UNAVAILABLE,
+  buildPlatformReport,
+  buildProviderReport,
+  type BreakdownRow,
+  type ReportFilters,
+} from "@/lib/reports/build";
+import { platformReportCsv, providerReportCsv } from "@/lib/reports/exportReport";
+import { periodFor, readReportQuery, serializeReportQuery } from "@/lib/reports/query";
+import type { ReportBooking, ReportEscrow, ReportProviderOption, ReportQuery, ReportStatus } from "@/lib/reports/types";
+import { monthLabel, toChartSeries } from "@/lib/services/monthSeries";
+import * as services from "@/lib/services";
+import type { ServiceCategory } from "@/lib/domain";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, Panel } from "@/components/admin/Panel";
-import { Avatar, FilterTabs, initialsOf } from "@/components/admin/queue";
-import { BarList, ProgressRing } from "@/components/admin/meters";
-import { Delta, KpiCard } from "@/components/admin/KpiCard";
-import { currentMonthKey, monthValue, percentChange, previousMonth, toChartSeries } from "@/lib/services/monthSeries";
-import { AnalyticsSourceNote } from "@/components/admin/AnalyticsSourceNote";
+import { FilterTabs, SearchField } from "@/components/admin/queue";
+import { KpiCard } from "@/components/admin/KpiCard";
+import { SelectFilter } from "@/components/admin/table";
+import { ReportPrintView, platformPrintSections, providerPrintSections } from "./ReportPrintView";
 
-// Recharts loads after the page's text and tiles. Each skeleton keeps its chart's height (see the height props below).
 const TrendChart = dynamic(() => import("@/components/admin/charts").then((m) => m.TrendChart), {
   ssr: false,
   loading: () => <Skeleton className="w-full" style={{ height: 260 }} />,
@@ -31,35 +41,171 @@ const DonutChart = dynamic(() => import("@/components/admin/charts").then((m) =>
   loading: () => <Skeleton className="h-[168px] w-full" />,
 });
 
-type Range = "3" | "6" | "12";
+const STATUS_LABEL: Record<ReportStatus, string> = {
+  all: "All",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  disputed: "Disputed",
+};
+
+interface Loaded {
+  bookings: ReportBooking[];
+  escrows: ReportEscrow[];
+  categories: ServiceCategory[];
+  providers: ReportProviderOption[];
+}
+
+function categoryShares(rows: BreakdownRow[]): { label: string; value: number }[] {
+  const total = rows.reduce((sum, row) => sum + row.bookings, 0);
+  if (total <= 0) return [];
+  return rows
+    .filter((row) => row.bookings > 0)
+    .map((row) => ({ label: row.label, value: Math.round((row.bookings / total) * 1000) / 10 }));
+}
+
+function MoneyTable({ rows, first, months }: { rows: BreakdownRow[]; first: string; months?: boolean }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-[12.5px]">
+        <thead>
+          <tr className="text-[11.5px] text-muted-foreground">
+            {[first, "Bookings", "Gross released", "Commission", "Payouts", "Refunds"].map((header) => (
+              <th key={header} scope="col" className="px-5 py-2 font-medium">{header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={6} className="px-5 py-6 text-muted-foreground">No rows in this period.</td>
+            </tr>
+          ) : (
+            rows.map((row) => (
+              <tr key={row.label} className="border-t border-border">
+                <td className="px-5 py-2">{months ? monthLabel(row.label, true) : row.label}</td>
+                <td className="px-5 py-2 tabular">{row.bookings.toLocaleString("en-PH")}</td>
+                <td className="px-5 py-2 tabular">{formatCurrency(row.grossReleased)}</td>
+                <td className="px-5 py-2 tabular">{formatCurrency(row.commission)}</td>
+                <td className="px-5 py-2 tabular">{formatCurrency(row.providerPayouts)}</td>
+                <td className="px-5 py-2 tabular">{formatCurrency(row.refunds)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 export function ReportsPage() {
-  const {
-    dashboardStats,
-    revenueSeries,
-    bookingsSeries,
-    bookingsByCategory,
-    topProviders,
-    analyticsLoading,
-    analyticsUnavailable,
-    analyticsInBrowser,
-    retryLoad,
-    settings,
-  } = useApp();
+  const { settings, adminProfile } = useApp();
+  const [query, setQuery] = useState<ReportQuery>(() => readReportQuery(""));
+  const [booted, setBooted] = useState(false);
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [confirmingExport, setConfirmingExport] = useState(false);
-  // Only narrows what the charts show — the series already arrive from the server.
-  const [range, setRange] = useState<Range>("12");
+  const [providerSearch, setProviderSearch] = useState("");
+
+  useEffect(() => {
+    const next = readReportQuery(window.location.search);
+    const period = periodFor(next.preset, next.from, next.to, new Date());
+    window.history.replaceState(null, "", `${window.location.pathname}?${serializeReportQuery(next, period)}`);
+    setQuery(next);
+    setBooted(true);
+    const onPop = () => setQuery(readReportQuery(window.location.search));
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    if (!booted) return;
+    let stale = false;
+    setError(null);
+    const categoryId = query.category === "all" ? undefined : Number(query.category);
+    Promise.all([
+      services.getReportBookings({
+        status: query.status === "all" ? undefined : query.status,
+        categoryId: categoryId != null && Number.isFinite(categoryId) ? categoryId : undefined,
+      }),
+      services.getReportEscrows(),
+      services.getCategories(),
+      services.getUsers(),
+    ])
+      .then(([bookings, escrows, categories, users]) => {
+        if (stale) return;
+        setLoaded({
+          bookings,
+          escrows,
+          categories,
+          providers: users
+            .filter((user) => user.role === "provider")
+            .map((user) => ({ id: user.id, name: user.name }))
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        });
+      })
+      .catch((err: unknown) => {
+        if (stale) return;
+        setError(err instanceof Error ? err.message : "The report could not be loaded.");
+      });
+    return () => {
+      stale = true;
+    };
+  }, [booted, query.status, query.category, reloadKey]);
+
+  const period = periodFor(query.preset, query.from, query.to, new Date());
+
+  function update(patch: Partial<ReportQuery>) {
+    const next = { ...query, ...patch };
+    const nextPeriod = periodFor(next.preset, next.from, next.to, new Date());
+    window.history.replaceState(null, "", `${window.location.pathname}?${serializeReportQuery(next, nextPeriod)}`);
+    setQuery(next);
+  }
+
+  const filters = useMemo<ReportFilters>(() => {
+    const category = loaded?.categories.find((item) => String(item.id) === query.category);
+    const categoryId = query.category === "all" ? null : Number(query.category);
+    return {
+      from: period.from,
+      to: period.to,
+      status: query.status,
+      categoryId: categoryId != null && Number.isFinite(categoryId) ? categoryId : null,
+      categoryName: category?.name ?? null,
+      providerId: query.providerId || null,
+    };
+  }, [loaded?.categories, period.from, period.to, query.category, query.providerId, query.status]);
+
+  const selectedProvider = loaded?.providers.find((provider) => provider.id === query.providerId) ?? null;
+  const platform = loaded ? buildPlatformReport(loaded.bookings, loaded.escrows, filters) : null;
+  const providerReport = loaded ? buildProviderReport(loaded.bookings, loaded.escrows, filters, selectedProvider) : null;
+
+  const periodLabel = `${formatDate(period.from)} – ${formatDate(period.to)}`;
+  const categoryLabel = filters.categoryName ?? "All categories";
+  const filtersLabel = `Status: ${STATUS_LABEL[query.status]}. Category: ${categoryLabel}.`;
+  const generatedLabel = `Generated ${formatDate(new Date().toISOString())} by ${adminProfile?.name || "Admin"}`;
+  const printTitle = query.tab === "platform"
+    ? "Platform report"
+    : `Provider report${selectedProvider ? `: ${selectedProvider.name}` : ""}`;
+
+  function exportCsv() {
+    if (!platform || !providerReport) return;
+    const anonymize = settings?.anonymizeExports ?? false;
+    const file = query.tab === "platform"
+      ? platformReportCsv(platform, period.from, period.to)
+      : providerReportCsv(providerReport, period.from, period.to, anonymize);
+    downloadCsv(file.filename, file.csv);
+  }
 
   const header = (actions?: React.ReactNode) => (
     <PageHeader
       eyebrow="Records"
       title="Reports"
-      description="How the marketplace is performing: money, bookings, services and the providers doing the work."
+      description="Platform and provider reports for a period, a service category, and a job status."
       actions={actions}
     />
   );
 
-  if (analyticsLoading) {
+  if (!loaded && !error) {
     return (
       <div aria-busy="true" aria-label="Loading reports…">
         {header()}
@@ -73,212 +219,265 @@ export function ReportsPage() {
     );
   }
 
-  if (analyticsUnavailable || !dashboardStats) {
+  if (!loaded && error) {
     return (
       <div>
         {header()}
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-[12px] border border-warn/30 bg-warn-soft px-4 py-3.5 text-[13px]">
           <AlertTriangle className="size-4 shrink-0 text-warn" />
-          <span className="flex-1">
-            {analyticsUnavailable
-              ? "Analytics are temporarily unavailable. No report values or charts are shown as zero while the data request is failing."
-              : "Report data could not be loaded. Retry or check the console error above."}
-          </span>
-          <Button size="sm" variant="outline" onClick={retryLoad}>
-            Retry
-          </Button>
+          <span className="flex-1">{error}</span>
+          <Button size="sm" variant="outline" onClick={() => setReloadKey((n) => n + 1)}>Retry</Button>
         </div>
       </div>
     );
   }
 
-  // Captured after the null guard above so the export closure keeps the narrowing.
-  const stats = dashboardStats;
-  const months = Number(range);
-  const revenueInRange = revenueSeries.slice(-months);
-  const bookingsInRange = bookingsSeries.slice(-months);
-  const revenueTotalInRange = revenueInRange.reduce((s, r) => s + r.value, 0);
-  const bookingsTotalInRange = bookingsInRange.reduce((s, r) => s + r.value, 0);
-  // "vs last month" compares this calendar month (UTC) with the real previous one; a missing month counts as 0.
-  const thisMonth = currentMonthKey();
-  const lastMonth = previousMonth(thisMonth);
-  const revenueThisMonth = monthValue(revenueSeries, thisMonth);
-  const revenueLastMonth = monthValue(revenueSeries, lastMonth);
-  const revenueChange = percentChange(revenueThisMonth, revenueLastMonth);
-  const categoryTotal = bookingsByCategory.reduce((s, c) => s + c.value, 0);
+  if (!loaded || !platform || !providerReport) return null;
 
-  /**
-   * One CSV covering every section on this page. A dashboard mixes several
-   * unrelated tables, so each is emitted as its own labelled block rather than
-   * forcing them into one incompatible header row.
-   */
-  function exportCsv() {
-    const mask = exportMasks(settings.anonymizeExports);
-    const blocks = [
-      toCsv(["Metric", "Value"], [
-        ["Revenue: total commission earned", stats.totalCommission],
-        ["Revenue: commission earned this month", stats.monthlyCommission],
-        ["Total released payments (provider payout + commission)", stats.totalRevenue],
-        ["Released payments this month", stats.monthlyRevenue],
-        ["Completed jobs (% of posted)", stats.completionRate],
-        ["Average provider rating", ratingForCsv(stats.avgRating)],
-        ["Total users", stats.totalUsers],
-        ["Registered providers", stats.activeProviders],
-        ["Total bookings", stats.totalBookings],
-      ]),
-      toCsv(["Month", "Released payments"], revenueSeries.map((r) => [r.month, r.value])),
-      toCsv(["Month", "Bookings"], bookingsSeries.map((b) => [b.month, b.value])),
-      toCsv(["Category", "Share (%)"], bookingsByCategory.map((c) => [c.label, c.value])),
-      toCsv(["Provider", "Completed jobs", "Rating"], topProviders.map((p) => [mask.name(p.name), p.jobs, ratingForCsv(p.rating)])),
-    ];
-    const labels = ["SUMMARY", "RELEASED PAYMENTS TREND", "MONTHLY BOOKINGS", "BOOKINGS BY CATEGORY", "TOP PROVIDERS"];
-    const csv = blocks.map((b, i) => `${labels[i]}\r\n${b}`).join("\r\n\r\n");
-    downloadCsv(datedFilename("taskbuddy-analytics"), csv);
-  }
+  const shares = categoryShares(platform.byCategory);
+  const shareTotal = platform.byCategory.reduce((sum, row) => sum + row.bookings, 0);
+  const visibleProviders = loaded.providers.filter((provider) =>
+    provider.name.toLowerCase().includes(providerSearch.trim().toLowerCase()),
+  ).slice(0, 8);
+
+  const print = query.tab === "platform" ? platformPrintSections(platform) : providerPrintSections(providerReport);
 
   return (
     <div>
-      {header(
-        <>
+      <div className="report-screen">
+        {error && (
+          <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded-[12px] border border-warn/30 bg-warn-soft px-4 py-3 text-[13px]">
+            <AlertTriangle className="size-4 shrink-0 text-warn" />
+            <span className="flex-1">{error} The figures below are the last ones that loaded.</span>
+            <Button size="sm" variant="outline" onClick={() => setReloadKey((n) => n + 1)}>Retry</Button>
+          </div>
+        )}
+        {header(
+          <>
+            <Button variant="outline" size="sm" onClick={() => setConfirmingExport(true)}>
+              <Download /> Export CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => window.print()}>
+              <Printer /> Download PDF
+            </Button>
+          </>,
+        )}
+
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           <FilterTabs
-            id="reports-range"
-            label="Chart range"
-            value={range}
-            onChange={setRange}
+            id="reports-tab"
+            label="Report type"
+            value={query.tab}
+            onChange={(tab) => update({ tab })}
             options={[
-              { value: "3", label: "3M" },
-              { value: "6", label: "6M" },
-              { value: "12", label: "12M" },
+              { value: "platform", label: "Platform" },
+              { value: "provider", label: "Provider" },
             ]}
           />
-          <Button variant="outline" size="sm" onClick={() => setConfirmingExport(true)} title="Download every section on this page as one CSV">
-            <Download /> Export CSV
-          </Button>
-        </>,
-      )}
+          <FilterTabs
+            id="reports-range"
+            label="Date range"
+            value={query.preset}
+            onChange={(preset) => {
+              const next = periodFor(preset, query.from, query.to, new Date());
+              update({ preset, from: next.from, to: next.to });
+            }}
+            options={[
+              { value: "this", label: "This month" },
+              { value: "3", label: "Last 3 months" },
+              { value: "6", label: "Last 6 months" },
+              { value: "12", label: "Last 12 months" },
+              { value: "custom", label: "Custom" },
+            ]}
+          />
+          <FilterTabs
+            id="reports-status"
+            label="Status"
+            value={query.status}
+            onChange={(status) => update({ status })}
+            options={[
+              { value: "all", label: "All" },
+              { value: "completed", label: "Completed" },
+              { value: "cancelled", label: "Cancelled" },
+              { value: "disputed", label: "Disputed" },
+            ]}
+          />
+          <SelectFilter label="Service category" value={query.category} onChange={(category) => update({ category })}>
+            <option value="all">All categories</option>
+            {loaded.categories.map((category) => (
+              <option key={category.id} value={String(category.id)}>{category.name}</option>
+            ))}
+          </SelectFilter>
+        </div>
 
-      {analyticsInBrowser && <AnalyticsSourceNote />}
-      <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Revenue (commission earned)"
-          icon={<Wallet />}
-          value={stats.totalCommission}
-          format={formatCurrencyCompact}
-          footer={
-            <span className="text-[12px] text-muted-foreground" title="TaskBuddy's commission on payments released to providers">
-              <span className="font-semibold text-foreground tabular">{formatCurrency(stats.monthlyCommission)}</span> this month
-            </span>
-          }
-        />
-        <KpiCard
-          label="Released payments this month"
-          icon={<TrendingUp />}
-          value={stats.monthlyRevenue}
-          format={formatCurrency}
-          trend={revenueSeries.map((r) => r.value)}
-          footer={
-            <span title="Released payments = what providers received plus TaskBuddy's commission, for jobs the client confirmed done">
-              {revenueLastMonth === 0
-                ? <span className="text-[12px] text-subtle">No released payments last month</span>
-                : <Delta value={revenueChange} label="vs last month" />}
-            </span>
-          }
-        />
-        <Panel bodyClassName="flex items-center gap-4 pt-4">
-          <ProgressRing value={stats.completionRate} size={64} stroke={7} label={`${stats.completionRate}%`} />
-          <div>
-            <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-              <CheckCircle2 className="size-3.5" /> Completed jobs
-            </div>
-            <div className="mt-1 text-[12px] text-subtle">Share of all posted jobs that finished</div>
-          </div>
-        </Panel>
-        <Panel bodyClassName="pt-4">
-          <div className="flex items-center gap-1.5 text-[12.5px] text-muted-foreground">
-            <Star className="size-3.5" /> Avg provider rating
-          </div>
-          <div className="mt-2 flex items-end gap-2">
-            <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{formatRating(stats.avgRating)}</span>
-            <span className="mb-0.5 flex text-warn" aria-hidden>
-              {Array.from({ length: 5 }, (_, i) => (
-                <Star key={i} className={stats.avgRating > 0 && i < Math.round(stats.avgRating) ? "size-3.5 fill-current" : "size-3.5 opacity-25"} />
-              ))}
-            </span>
-          </div>
-          <div className="mt-2 text-[12px] text-subtle">Across {stats.activeProviders.toLocaleString()} registered providers</div>
-        </Panel>
-      </div>
-
-      <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
-        <Panel
-          title="Released payments trend"
-          description={`Provider payout plus commission, released when the client confirms the job is done · ${formatCurrency(revenueTotalInRange)} over ${months} months`}
-          action={<CalendarRange className="size-4 text-subtle" />}
-        >
-          {!revenueInRange.some((r) => r.value > 0) ? (
-            <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">
-              No released payments yet — this fills in once a client confirms a job and its escrow is released.
-            </div>
-          ) : (
-            <TrendChart data={toChartSeries(revenueInRange)} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
-          )}
-        </Panel>
-        <Panel title="Service categories" description="Share of all bookings">
-          {bookingsByCategory.length === 0 ? (
-            <div className="grid h-[240px] place-items-center text-[12.5px] text-muted-foreground">No bookings yet.</div>
-          ) : (
-            <DonutChart data={bookingsByCategory} centerLabel="categories" centerValue={bookingsByCategory.length} />
-          )}
-          {categoryTotal > 0 && categoryTotal !== 100 && (
-            <p className="mt-2 text-[11.5px] text-subtle">Shares are rounded, so they may not add up to exactly 100%.</p>
-          )}
-        </Panel>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
-        <Panel title="Monthly bookings" description={`${bookingsTotalInRange.toLocaleString()} bookings over ${months} months`}>
-          <BarTrend data={toChartSeries(bookingsInRange)} format={(n) => `${n} bookings`} color="var(--ui-chart-2)" height={240} />
-        </Panel>
-        <Panel title="Top providers" description="By completed jobs">
-          {topProviders.length === 0 ? (
-            <div className="grid h-[200px] place-items-center text-[12.5px] text-muted-foreground">No completed jobs yet.</div>
-          ) : (
-            <BarList
-              items={topProviders.map((p, i) => ({
-                label: (
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="w-4 shrink-0 text-right tabular text-[11px] text-subtle">{i + 1}</span>
-                    <Avatar initials={initialsOf(p.name)} tone={i === 0 ? "warn" : "neutral"} />
-                    <span className="truncate">{p.name}</span>
-                  </span>
-                ),
-                value: p.jobs,
-                hint:
-                  p.rating > 0 ? (
-                    <span className="inline-flex items-center gap-0.5">
-                      {`${p.jobs} jobs · ${formatRating(p.rating)}`} <Star className="size-3 fill-current text-warn" />
-                    </span>
-                  ) : (
-                    <span>{`${p.jobs} jobs · — unrated`}</span>
-                  ),
-              }))}
-              format={(n) => `${n} jobs`}
+        <div className="mb-4 flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[11px] font-medium text-subtle" htmlFor="report-from">
+            From
+            <input
+              id="report-from"
+              type="date"
+              value={period.from}
+              onChange={(e) => {
+                if (e.target.value) update({ preset: "custom", from: e.target.value, to: period.to });
+              }}
+              className="h-8 rounded-[8px] border border-input bg-surface px-2.5 text-[12.5px] font-normal text-foreground"
             />
-          )}
-        </Panel>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-medium text-subtle" htmlFor="report-to">
+            To
+            <input
+              id="report-to"
+              type="date"
+              value={period.to}
+              onChange={(e) => {
+                if (e.target.value) update({ preset: "custom", from: period.from, to: e.target.value });
+              }}
+              className="h-8 rounded-[8px] border border-input bg-surface px-2.5 text-[12.5px] font-normal text-foreground"
+            />
+          </label>
+          <p className="pb-1.5 text-[12.5px] text-muted-foreground">{periodLabel}. {filtersLabel}</p>
+        </div>
+
+        {query.tab === "provider" && (
+          <Panel title="Provider" description="Search by name, then pick one provider. Figures below are only theirs." className="mb-4">
+            <SearchField label="Search providers" value={providerSearch} onChange={setProviderSearch} placeholder="Search by name" />
+            {selectedProvider && <p className="mt-3 text-[13px]">Showing {selectedProvider.name}</p>}
+            {visibleProviders.length === 0 ? (
+              <p className="mt-3 text-[12.5px] text-muted-foreground">No matching provider.</p>
+            ) : (
+              <ul className="mt-2 flex flex-wrap gap-1.5">
+                {visibleProviders.map((provider) => (
+                  <li key={provider.id}>
+                    <Button
+                      size="sm"
+                      variant={provider.id === query.providerId ? "secondary" : "outline"}
+                      aria-pressed={provider.id === query.providerId}
+                      onClick={() => update({ providerId: provider.id })}
+                    >
+                      {provider.name}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!selectedProvider && <p className="mt-3 text-[12.5px] text-muted-foreground">Choose a provider to see their jobs.</p>}
+          </Panel>
+        )}
+
+        {query.tab === "platform" ? (
+          <>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard label="Bookings" icon={<CalendarRange />} value={platform.bookings} />
+              <KpiCard label="Completed" icon={<CheckCircle2 />} value={platform.completed} />
+              <KpiCard label="Cancelled" icon={<XCircle />} value={platform.cancelled} />
+              <KpiCard label="Disputed" icon={<AlertTriangle />} value={platform.disputed} />
+              <KpiCard label="Gross released payments" icon={<Wallet />} value={platform.money.grossReleased} format={formatCurrencyCompact} />
+              <KpiCard label="TaskBuddy commission" icon={<Wallet />} value={platform.money.commission} format={formatCurrency} />
+              <KpiCard label="Provider payouts" icon={<Wallet />} value={platform.money.providerPayouts} format={formatCurrency} />
+              <KpiCard label="Refunds" icon={<Wallet />} value={platform.money.refunds} format={formatCurrency} />
+            </div>
+            <div className="mb-4 grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)]">
+              <Panel title="Released payments" description={`${formatCurrency(platform.money.grossReleased)} released in this period`}>
+                {!platform.byMonth.some((row) => row.grossReleased > 0) ? (
+                  <div className="grid h-[260px] place-items-center text-center text-[12.5px] text-muted-foreground">No released payments in this period.</div>
+                ) : (
+                  <TrendChart data={toChartSeries(platform.byMonth.map((row) => ({ month: row.label, value: row.grossReleased })))} format={formatCurrency} yFormat={formatCurrencyCompact} height={260} />
+                )}
+              </Panel>
+              <Panel title="Service categories" description="Share of bookings in this period">
+                {shares.length === 0 ? (
+                  <div className="grid h-[240px] place-items-center text-[12.5px] text-muted-foreground">No bookings in this period.</div>
+                ) : (
+                  <DonutChart data={shares} centerLabel="bookings" centerValue={shareTotal} />
+                )}
+              </Panel>
+            </div>
+            <Panel title="Monthly bookings" description={`${platform.bookings.toLocaleString("en-PH")} bookings in this period`} className="mb-4">
+              <BarTrend data={toChartSeries(platform.byMonth.map((row) => ({ month: row.label, value: row.bookings })))} format={(n) => `${n} bookings`} color="var(--ui-chart-2)" height={240} />
+            </Panel>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Panel title="By service category" bodyClassName="px-0 pb-2">
+                <MoneyTable rows={platform.byCategory} first="Category" />
+              </Panel>
+              <Panel title="By month" bodyClassName="px-0 pb-2">
+                <MoneyTable rows={platform.byMonth} first="Month" months />
+              </Panel>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mb-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard label="Jobs" icon={<CalendarRange />} value={providerReport.jobs} />
+              <KpiCard label="Completed" icon={<CheckCircle2 />} value={providerReport.completed} />
+              <KpiCard label="Cancelled" icon={<XCircle />} value={providerReport.cancelled} />
+              <KpiCard label="Disputed" icon={<AlertTriangle />} value={providerReport.disputed} />
+              <KpiCard label="Gross earned" icon={<Wallet />} value={providerReport.grossEarned} format={formatCurrency} />
+              <KpiCard label="Platform fee" icon={<Wallet />} value={providerReport.platformFee} format={formatCurrency} />
+              <KpiCard label="Net received" icon={<Wallet />} value={providerReport.netReceived} format={formatCurrency} />
+              <div className="flex min-w-0 flex-col rounded-[12px] border border-border bg-surface p-4 shadow-ui-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[12.5px] font-medium text-muted-foreground">Average rating</span>
+                  <span className="grid size-7 place-items-center rounded-[8px] bg-primary-soft text-primary" aria-hidden="true"><Star className="size-3.5" /></span>
+                </div>
+                <div className="mt-2 text-[22px] font-semibold leading-none tracking-tight">{RATING_UNAVAILABLE}</div>
+                <p className="mt-2 text-[12px] text-subtle">The console has no per-job ratings, so this cannot follow the period.</p>
+              </div>
+            </div>
+            <Panel title="Jobs in the period" description="Date posted, the client, the service, the payment, the fee, and the status." bodyClassName="px-0 pb-2">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-[12.5px]">
+                  <thead>
+                    <tr className="text-[11.5px] text-muted-foreground">
+                      {["Date", "Client", "Service", "Amount", "Fee", "Status"].map((header) => (
+                        <th key={header} scope="col" className="px-5 py-2 font-medium">{header}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerReport.jobRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-5 py-6 text-muted-foreground">No jobs in this period.</td>
+                      </tr>
+                    ) : (
+                      providerReport.jobRows.map((row) => (
+                        <tr key={row.id} className="border-t border-border">
+                          <td className="px-5 py-2">{formatDate(row.date)}</td>
+                          <td className="px-5 py-2">{row.client}</td>
+                          <td className="px-5 py-2">{row.service}</td>
+                          <td className="px-5 py-2 tabular">{formatCurrency(row.amount)}</td>
+                          <td className="px-5 py-2 tabular">{formatCurrency(row.fee)}</td>
+                          <td className="px-5 py-2">{row.status}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Panel>
+          </>
+        )}
+
+        <ConfirmDialog
+          open={confirmingExport}
+          danger={false}
+          title="Export to CSV?"
+          message={`This downloads the ${query.tab === "platform" ? "platform" : "provider"} report for ${periodLabel} as one .csv file.`}
+          confirmLabel="Export"
+          onConfirm={() => {
+            setConfirmingExport(false);
+            exportCsv();
+          }}
+          onCancel={() => setConfirmingExport(false)}
+        />
       </div>
 
-      <ConfirmDialog
-        open={confirmingExport}
-        danger={false}
-        title="Export to CSV?"
-        message="This downloads every section on this page — summary, released payments trend, monthly bookings, categories, and top providers — as one .csv file to your device."
-        confirmLabel="Export"
-        onConfirm={() => {
-          setConfirmingExport(false);
-          exportCsv();
-        }}
-        onCancel={() => setConfirmingExport(false)}
+      <ReportPrintView
+        title={printTitle}
+        periodLabel={periodLabel}
+        filtersLabel={filtersLabel}
+        generatedLabel={generatedLabel}
+        totals={print.totals}
+        sections={print.sections}
       />
     </div>
   );

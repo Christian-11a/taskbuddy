@@ -60,6 +60,7 @@ import type {
   MaintenanceApiResponse,
   UserSettingsApiResponse,
 } from "@/lib/api/types";
+import type { ReportBooking, ReportEscrow } from "@/lib/reports/types";
 import type {
   ActivityEvent,
   AdminBooking,
@@ -896,6 +897,96 @@ export async function getDisputes(): Promise<Dispute[]> {
 export async function getBookings(): Promise<AdminBooking[]> {
   const rows = await fetchAllRows<AdminBookingApiRow>("/admin/bookings", "bookings");
   return rows.map(mapBookingRow);
+}
+
+type ReportBookingApiRow = AdminBookingApiRow & {
+  category_id?: number | string | null;
+  assigned_provider_id?: string | null;
+};
+
+type ReportEscrowApiRow = AdminTransactionApiRow & {
+  commission_amount?: number | string | null;
+  released_at?: string | null;
+  refunded_at?: string | null;
+};
+
+function finiteNumber(value: number | string | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function mapReportBooking(row: ReportBookingApiRow): ReportBooking {
+  const categoryId = finiteNumber(row.category_id);
+  return {
+    id: row.id,
+    postedAt: row.posted_at,
+    status: row.status,
+    disputeState: row.dispute_state === "open" || row.dispute_state === "resolved" ? row.dispute_state : null,
+    categoryId: row.category_id == null || row.category_id === "" ? null : categoryId,
+    categoryName: row.service_categories?.name ?? "Uncategorized",
+    clientName: row.client?.full_name ?? "Unknown client",
+    providerId: row.provider?.id ?? row.assigned_provider_id ?? null,
+    providerName: row.provider?.full_name ?? "Unassigned",
+    budget: finiteNumber(row.budget),
+  };
+}
+
+function mapReportEscrow(row: ReportEscrowApiRow): ReportEscrow {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    amount: finiteNumber(row.amount),
+    commission: finiteNumber(row.commission_amount),
+    status: row.status,
+    heldAt: row.held_at,
+    releasedAt: row.released_at ?? null,
+    refundedAt: row.refunded_at ?? null,
+    categoryName: row.jobs?.service_categories?.name ?? "Uncategorized",
+    clientName: row.client?.full_name ?? "Unknown client",
+    providerId: row.provider?.id ?? null,
+    providerName: row.provider?.full_name ?? "Unassigned",
+  };
+}
+
+export interface ReportBookingQuery {
+  /** Sent as `status` — the bookings list accepts completed, cancelled, and disputed. */
+  status?: "completed" | "cancelled" | "disputed";
+  /** Sent as `category_id`. The bookings list has no `from`/`to`; the page filters dates itself. */
+  categoryId?: number;
+}
+
+/**
+ * Every booking for a report. Status and category go to the list route, which
+ * accepts both. A list longer than the console cap throws so a total is never
+ * a silent partial sum.
+ */
+export async function getReportBookings(query: ReportBookingQuery = {}): Promise<ReportBooking[]> {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.categoryId != null) params.set("category_id", String(query.categoryId));
+  const qs = params.toString();
+  const rows = await fetchAllRows<ReportBookingApiRow>(
+    `/admin/bookings${qs ? `?${qs}` : ""}`,
+    "bookings",
+    LIST_PAGE_SIZE,
+    "throw",
+  );
+  return rows.map(mapReportBooking);
+}
+
+/**
+ * Every escrow, including commission and settlement dates (`to_jsonb(escrow)`).
+ * The transactions list accepts `status` but not a category or a date range,
+ * so the report filters those on the rows themselves.
+ */
+export async function getReportEscrows(): Promise<ReportEscrow[]> {
+  const rows = await fetchAllRows<ReportEscrowApiRow>(
+    "/admin/transactions",
+    "transactions",
+    LIST_PAGE_SIZE,
+    "throw",
+  );
+  return rows.map(mapReportEscrow);
 }
 
 /** Every booking status the API filters on. */
