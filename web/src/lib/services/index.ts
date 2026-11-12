@@ -1570,6 +1570,8 @@ export interface VerificationHistoryEntry {
   reason: string | null;
   /** When it was decided; falls back to the submission date. */
   decidedAt: string;
+  /** Certificates only: a short-lived private link to the uploaded file (the credentials list signs it). */
+  documentUrl?: string | null;
 }
 
 /**
@@ -1643,9 +1645,20 @@ export async function getVerificationHistory(): Promise<VerificationHistoryEntry
       result: row.status,
       reason: row.status === "revoked" ? (row.revoke_reason ?? null) : row.rejection_reason,
       decidedAt: (row.status === "revoked" ? row.revoked_at : null) ?? row.reviewed_at ?? row.created_at,
+      documentUrl: row.document_url ?? null,
     });
   }
   return entries.sort((a, b) => (a.decidedAt < b.decidedAt ? 1 : a.decidedAt > b.decidedAt ? -1 : 0));
+}
+
+/**
+ * The ID photo and selfie of one identity submission, as short-lived private
+ * links (GET /admin/verifications/:id). Empty for a Stripe check: Stripe keeps
+ * those documents and never sends them to TaskBuddy.
+ */
+export async function getIdentityDocuments(entry: Pick<VerificationHistoryEntry, "id">): Promise<string[]> {
+  const row = await client.get<AdminVerificationApiRow>(`/admin/verifications/${historyRowId(entry)}`);
+  return row.documents ?? [];
 }
 
 /** The history entry id without its "v:" / "c:" prefix. */

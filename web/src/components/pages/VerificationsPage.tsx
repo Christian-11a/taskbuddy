@@ -35,9 +35,9 @@ import { useLiveTick } from "@/hooks/useLiveTick";
 import { formatDate } from "@/lib/adapters";
 import type { CasePart } from "@/lib/api/types";
 import { ApiError } from "@/lib/api/client";
-import { canRevoke, decideVerificationCase, getVerificationCases, getVerificationHistory, type VerificationCase, type VerificationHistoryEntry } from "@/lib/services";
+import { decideVerificationCase, getVerificationCases, getVerificationHistory, type VerificationCase, type VerificationHistoryEntry } from "@/lib/services";
 import { ProviderScreeningSection, useScreeningLists } from "@/components/admin/ProviderScreening";
-import { RevokeDialog, resultBadge, revokedNotice } from "@/components/admin/RevokeVerification";
+import { resultBadge } from "@/components/admin/RevokeVerification";
 
 /** The API accepts a note of up to 500 characters. */
 const NOTE_MAX = 500;
@@ -583,8 +583,6 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
   const [decidedFrom, setDecidedFrom] = useState("");
   const [decidedTo, setDecidedTo] = useState("");
   const [page, setPage] = useState(1);
-  const [revoking, setRevoking] = useState<VerificationHistoryEntry | null>(null);
-  const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -642,7 +640,7 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
       <PageHeader
         eyebrow="Operations"
         title="Verifications"
-        description="Every identity check and certificate that has been approved, rejected or revoked, newest first."
+        description="Every identity check and certificate that has been approved, rejected or revoked, newest first. To revoke one, open the provider in Users."
         actions={
           <Button variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={loading ? "animate-spin" : ""} /> Refresh
@@ -675,9 +673,6 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
         {filtersActive && <ClearFilters onClick={clearFilters} />}
         <ResultCount shown={rows.length} total={filtered.length} loading={loading && entries.length === 0} />
       </div>
-      {notice && (
-        <p role="status" className="mb-3 text-[12.5px] text-muted-foreground">{notice}</p>
-      )}
       {loading ? (
         <p className="py-10 text-center text-[13px] text-muted-foreground">Loading history…</p>
       ) : error ? (
@@ -698,7 +693,6 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
                   <th className="px-3 py-2 font-medium">Result</th>
                   <th className="px-3 py-2 font-medium">Reason</th>
                   <th className="px-3 py-2 font-medium">Date</th>
-                  <th className="px-3 py-2 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -709,11 +703,6 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
                     <td className="px-3 py-2"><Badge tone={resultBadge(e.result).tone} dot>{resultBadge(e.result).label}</Badge></td>
                     <td className="px-3 py-2 text-muted-foreground">{e.result === "rejected" || e.result === "revoked" ? (e.reason ?? "—") : "—"}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">{e.decidedAt ? formatDate(e.decidedAt) : "—"}</td>
-                    <td className="px-3 py-2 text-right">
-                      {canRevoke(e) && (
-                        <Button size="sm" variant="outline" aria-label={`Revoke ${e.subject} for ${e.providerName}`} onClick={() => setRevoking(e)}>Revoke</Button>
-                      )}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -722,15 +711,6 @@ function HistoryView({ tabs }: { tabs: ReactNode }) {
           <Pagination page={current} pageSize={HISTORY_PAGE_SIZE} total={filtered.length} onPageChange={setPage} itemLabel="decisions" />
         </>
       )}
-      <RevokeDialog
-        entry={revoking}
-        onCancel={() => setRevoking(null)}
-        onRevoked={(_entry, result) => {
-          setRevoking(null);
-          setNotice(revokedNotice(result));
-          void load();
-        }}
-      />
     </div>
   );
 }
