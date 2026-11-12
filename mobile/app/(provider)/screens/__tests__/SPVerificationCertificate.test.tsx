@@ -96,6 +96,7 @@ describe('status screen', () => {
     await screen.findByText('Your Plumbing certificate');
     await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
 
     await waitFor(() => expect(screen.getByText('Certificate: under review')).toBeTruthy());
@@ -212,6 +213,7 @@ describe('deep entry', () => {
     expect(screen.getByText(/TESDA Housekeeping NC II/)).toBeTruthy();
     await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Housekeeping NC II');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
     expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ category_id: 7, title: 'Housekeeping NC II' }));
   });
@@ -249,6 +251,7 @@ describe('the five-step flow', () => {
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
     await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
 
     await waitFor(() => expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy());
@@ -265,6 +268,7 @@ describe('the five-step flow', () => {
     (ImagePicker.launchImageLibraryAsync as jest.Mock).mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///cert' }] });
     await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
     await act(async () => fireEvent.press(screen.getByRole('button', { name: 'Upload certificate' })));
     await waitFor(() => expect(screen.getByText('STEP 5 OF 5 · REVIEW')).toBeTruthy());
 

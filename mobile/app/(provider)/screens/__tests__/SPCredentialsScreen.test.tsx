@@ -2,7 +2,7 @@ import React from 'react';
 import { TextInput } from 'react-native';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import * as ImagePicker from 'expo-image-picker';
-import SPCredentialsScreen, { credentialProblem, isValidExpiry } from '../SPCredentialsScreen';
+import SPCredentialsScreen, { credentialErrors, credentialProblem, isValidExpiry } from '../SPCredentialsScreen';
 import { api } from '../../../../src/lib/api';
 
 jest.mock('../../../../src/lib/api', () => ({
@@ -24,20 +24,41 @@ jest.mock('@react-native-community/datetimepicker', () => {
   };
 });
 
+const EXPIRY_REQUIRED = 'Pick the expiry date printed on the certificate, or tick that it has none.';
+
 describe('credential rules', () => {
-  it('accepts a blank or real YYYY-MM-DD expiry only', () => {
-    expect(isValidExpiry('')).toBe(true);
+  const fields = { hasPhoto: true, title: 'Plumbing NC II', issuer: 'TESDA' };
+  const base = { ...fields, categoryId: 1, expiresOn: '2028-12-31', noExpiry: false };
+
+  it('accepts only a real YYYY-MM-DD expiry', () => {
+    expect(isValidExpiry('')).toBe(false);
     expect(isValidExpiry('2028-12-31')).toBe(true);
     expect(isValidExpiry('2028-02-30')).toBe(false);
     expect(isValidExpiry('12/31/2028')).toBe(false);
   });
 
   it('asks for the photo first, then the name and issuer', () => {
-    const base = { hasPhoto: true, categoryId: 1, title: 'Plumbing NC II', issuer: 'TESDA', expiresOn: '' };
     expect(credentialProblem({ ...base, hasPhoto: false })).toMatch(/photo/);
     expect(credentialProblem({ ...base, title: ' ' })).toMatch(/certificate name/);
     expect(credentialProblem({ ...base, issuer: '' })).toMatch(/issued/);
     expect(credentialProblem(base)).toBeNull();
+  });
+
+  it('requires a date or the no-expiry tick, and rejects both', () => {
+    expect(credentialProblem({ ...base, expiresOn: '2028-12-31', noExpiry: false })).toBeNull();
+    expect(credentialErrors({ ...fields, expiresOn: '2028-12-31', noExpiry: false }).expiry).toBeUndefined();
+
+    expect(credentialProblem({ ...base, expiresOn: '', noExpiry: true })).toBeNull();
+    expect(credentialErrors({ ...fields, expiresOn: '', noExpiry: true }).expiry).toBeUndefined();
+
+    expect(credentialProblem({ ...base, expiresOn: '', noExpiry: false })).toBe(EXPIRY_REQUIRED);
+    expect(credentialErrors({ ...fields, expiresOn: '', noExpiry: false }).expiry).toBe(EXPIRY_REQUIRED);
+
+    expect(credentialProblem({ ...base, expiresOn: '2028-12-31', noExpiry: true })).toBe(EXPIRY_REQUIRED);
+    expect(credentialErrors({ ...fields, expiresOn: '2028-12-31', noExpiry: true }).expiry).toBe(EXPIRY_REQUIRED);
+
+    expect(credentialProblem({ ...base, expiresOn: '2028-02-30', noExpiry: false })).toBe('Enter the expiry date as YYYY-MM-DD, or tick that it has none.');
+    expect(credentialErrors({ ...fields, expiresOn: '2028-02-30', noExpiry: false }).expiry).toMatch(/Pick the expiry date again/);
   });
 });
 
@@ -53,12 +74,15 @@ it('lists credentials with their review status and submits a new one', async () 
   expect(await screen.findByText('Certified')).toBeTruthy();
   await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
   fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+  fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
   await act(async () => fireEvent.press(screen.getByText('Submit for review')));
 
   expect(api.uploadImage).toHaveBeenCalledWith('provider-credentials', 'file:///cert');
-  expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({
-    category_id: 1, credential_type: 'tesda_nc', title: 'Plumbing NC II', issuer: 'TESDA', document_path: 'p1/cert.jpg',
+  const payload = (api.createCredential as jest.Mock).mock.calls[0][0];
+  expect(payload).toEqual(expect.objectContaining({
+    category_id: 1, credential_type: 'tesda_nc', title: 'Plumbing NC II', issuer: 'TESDA', document_path: 'p1/cert.jpg', no_expiry: true,
   }));
+  expect(payload).not.toHaveProperty('expires_on');
 });
 
 describe('certification form UX', () => {
@@ -75,6 +99,7 @@ describe('certification form UX', () => {
     await act(async () => fireEvent.press(screen.getByText('Submit for review')));
     expect(screen.getByText('Add a clear photo of the certificate.')).toBeTruthy();
     expect(screen.getByText('Enter the certificate name, e.g. Plumbing NC II.')).toBeTruthy();
+    expect(screen.getByText(EXPIRY_REQUIRED)).toBeTruthy();
     expect(api.createCredential).not.toHaveBeenCalled();
   });
 
@@ -96,8 +121,11 @@ describe('certification form UX', () => {
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
     fireEvent.press(screen.getByLabelText('Expiry date'));
     fireEvent.press(screen.getByTestId('expiry-picker'));
+    expect(screen.getByRole('checkbox', { name: 'This certificate has no expiry date', checked: false })).toBeTruthy();
     await act(async () => fireEvent.press(screen.getByText('Submit for review')));
-    expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ expires_on: '2099-12-31' }));
+    const payload = (api.createCredential as jest.Mock).mock.calls[0][0];
+    expect(payload).toEqual(expect.objectContaining({ expires_on: '2099-12-31' }));
+    expect(payload).not.toHaveProperty('no_expiry');
     expect(screen.getByText('Sent for review')).toBeTruthy();
   });
 
@@ -109,6 +137,35 @@ describe('certification form UX', () => {
     fireEvent.press(await screen.findByLabelText('Resubmit Old NC'));
     expect(screen.getByLabelText('Certificate name').props.value).toBe('Old NC');
     expect(screen.getByLabelText('Certificate number (optional)').props.value).toBe('N-77');
+    expect(screen.getByRole('checkbox', { name: 'This certificate has no expiry date', checked: false })).toBeTruthy();
+  });
+
+  it('Resubmit pre-ticks no expiry and leaves the date unset', async () => {
+    (api.myCredentials as jest.Mock).mockResolvedValue([
+      { id: 'c4', title: 'Lifetime NC', issuer: 'TESDA', status: 'rejected', credential_type: 'tesda_nc', category_id: 1, no_expiry: true, expires_on: null, service_categories: { id: 1, name: 'Plumbing' } },
+    ]);
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    fireEvent.press(await screen.findByLabelText('Resubmit Lifetime NC'));
+    expect(screen.getByRole('checkbox', { name: 'This certificate has no expiry date', checked: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Expiry date', disabled: true })).toBeTruthy();
+    expect(screen.getByLabelText('Expiry date').props.accessibilityValue.text).toBe('Not set');
+  });
+
+  it('ticking no expiry clears a picked date and disables the date button', async () => {
+    render(<SPCredentialsScreen onBack={jest.fn()} />);
+    await screen.findByText('No credentials yet.');
+    fireEvent.press(screen.getByLabelText('Expiry date'));
+    fireEvent.press(screen.getByTestId('expiry-picker'));
+    expect(screen.getByLabelText('Expiry date').props.accessibilityValue.text).toBe('2099-12-31');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
+    expect(screen.getByRole('checkbox', { name: 'This certificate has no expiry date', checked: true })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Expiry date', disabled: true })).toBeTruthy();
+    expect(screen.getByLabelText('Expiry date').props.accessibilityValue.text).toBe('Not set');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
+    fireEvent.press(screen.getByLabelText('Expiry date'));
+    fireEvent.press(screen.getByTestId('expiry-picker'));
+    expect(screen.getByRole('checkbox', { name: 'This certificate has no expiry date', checked: false })).toBeTruthy();
+    expect(screen.getByLabelText('Expiry date').props.accessibilityValue.text).toBe('2099-12-31');
   });
 });
 
@@ -172,8 +229,9 @@ describe('two services', () => {
 
     await act(async () => fireEvent.press(screen.getByLabelText('Add certificate photo')));
     fireEvent.changeText(screen.getByLabelText('Certificate name'), 'Plumbing NC II');
+    fireEvent.press(screen.getByRole('checkbox', { name: 'This certificate has no expiry date' }));
     await act(async () => fireEvent.press(screen.getByText('Submit for review')));
-    expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ category_id: 1 }));
+    expect(api.createCredential).toHaveBeenCalledWith(expect.objectContaining({ category_id: 1, no_expiry: true }));
     mockProfile = { category_id: 1, service_categories: { name: 'Plumbing' }, approved_secondary_services: [] };
   });
 });
