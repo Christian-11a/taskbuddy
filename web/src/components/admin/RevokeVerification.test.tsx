@@ -38,19 +38,39 @@ describe("ProviderVerificationSection", () => {
     expect(screen.getByText(/Revoked .* — Fake number/)).toBeInTheDocument();
     expect(screen.queryByText("Certificate: Plumbing - Old")).not.toBeInTheDocument();
     expect(screen.queryByText("Certificate: Cleaning - NC II")).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "View certificate" })).toHaveAttribute("href", "https://files.example.com/cert.jpg?token=x");
+    // Files open in the in-page viewer, never as a link to another site.
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View certificate" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ID photo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Selfie" })).toBeInTheDocument();
     // A revoked item cannot be ticked again.
     expect(screen.getAllByRole("checkbox")).toHaveLength(2);
   });
 
-  it("loads the ID photo and selfie only when asked", async () => {
+  it("loads the ID photo and selfie on the first click and shows them in the viewer", async () => {
     mocked.getIdentityDocuments.mockResolvedValue(["https://files.example.com/id.jpg", "https://files.example.com/selfie.jpg"]);
     const user = userEvent.setup();
     renderSection();
-    await user.click(await screen.findByRole("button", { name: "View ID and selfie" }));
-    expect(await screen.findByRole("link", { name: "ID photo" })).toHaveAttribute("href", "https://files.example.com/id.jpg");
-    expect(screen.getByRole("link", { name: "Selfie" })).toHaveAttribute("href", "https://files.example.com/selfie.jpg");
-    expect(mocked.getIdentityDocuments).toHaveBeenCalledWith(expect.objectContaining({ id: "v:1" }));
+    expect(mocked.getIdentityDocuments).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Selfie" }));
+    const viewer = await screen.findByRole("dialog", { name: "Selfie" });
+    expect(within(viewer).getByRole("img", { name: "Selfie" })).toHaveAttribute("src", "https://files.example.com/selfie.jpg");
+    expect(viewer).toHaveTextContent("2 of 2");
+    await user.click(within(viewer).getByRole("button", { name: "Previous image" }));
+    expect(await screen.findByRole("img", { name: "ID photo" })).toHaveAttribute("src", "https://files.example.com/id.jpg");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(mocked.getIdentityDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the certificate in the viewer", async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await user.click(await screen.findByRole("button", { name: "View certificate" }));
+    const viewer = await screen.findByRole("dialog");
+    expect(within(viewer).getByRole("img")).toHaveAttribute("src", "https://files.example.com/cert.jpg?token=x");
+    await user.click(within(viewer).getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("revokes the ticked items one by one with one reason, then reloads", async () => {

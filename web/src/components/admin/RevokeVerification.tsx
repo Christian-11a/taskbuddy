@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ImageViewer, type ViewerImage } from "@/components/ui/ImageViewer";
 import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/adapters";
 import { cn } from "@/lib/utils";
@@ -60,50 +61,67 @@ function errorText(err: unknown): string {
   return err instanceof Error && err.message ? err.message : "Could not revoke. Please try again.";
 }
 
-/** Opens a document in a new tab. Links are private and expire, so they are never shown as text. */
-function DocLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary underline-offset-2 hover:underline">
-      {children}
-    </a>
-  );
-}
+const linkClass = "text-primary underline-offset-2 hover:underline disabled:opacity-60";
 
-/** "View ID and selfie": the identity files are signed on demand, one request per click. */
-function IdentityDocuments({ entry }: { entry: VerificationHistoryEntry }) {
-  const [docs, setDocs] = useState<string[] | null>(null);
+/**
+ * "ID photo · Selfie" (or "View certificate") opening the files in the
+ * in-page viewer. Identity files are signed on the first click, so nothing is
+ * requested until an admin actually looks.
+ */
+function DocumentLinks({ entry }: { entry: VerificationHistoryEntry }) {
+  const [images, setImages] = useState<ViewerImage[] | null>(
+    entry.kind === "certificate" && entry.documentUrl ? [{ label: entry.subject.replace(/^Certificate: /, ""), url: entry.documentUrl }] : null,
+  );
+  const [index, setIndex] = useState<number | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "failed">("idle");
-  if (entry.subject.includes("Stripe")) return <span className="text-subtle">Checked by Stripe, no copy kept</span>;
-  if (docs) {
-    if (docs.length === 0) return <span className="text-subtle">No files on record</span>;
-    return (
-      <span className="flex gap-3">
-        {docs.map((href, i) => (
-          <DocLink key={href} href={href}>
-            {i === 0 ? "ID photo" : i === 1 ? "Selfie" : `File ${i + 1}`}
-          </DocLink>
-        ))}
-      </span>
+
+  if (entry.kind === "identity" && entry.subject.includes("Stripe")) {
+    return <span className="text-subtle">Checked by Stripe, no copy kept</span>;
+  }
+  if (entry.kind === "certificate" && !entry.documentUrl) return <span className="text-subtle">No file on record</span>;
+
+  function open(at: number) {
+    if (images) {
+      setIndex(Math.min(at, images.length - 1));
+      return;
+    }
+    setState("loading");
+    getIdentityDocuments(entry).then(
+      (urls) => {
+        const loaded = urls.map((url, i) => ({ label: i === 0 ? "ID photo" : i === 1 ? "Selfie" : `File ${i + 1}`, url }));
+        setImages(loaded);
+        setState("idle");
+        if (loaded.length > 0) setIndex(Math.min(at, loaded.length - 1));
+      },
+      () => setState("failed"),
     );
   }
+
+  const viewer = images && <ImageViewer images={images} index={index} onIndexChange={setIndex} onClose={() => setIndex(null)} />;
+
+  if (entry.kind === "certificate") {
+    return (
+      <>
+        <button type="button" className={linkClass} onClick={() => open(0)}>
+          View certificate
+        </button>
+        {viewer}
+      </>
+    );
+  }
+  if (images && images.length === 0) return <span className="text-subtle">No files on record</span>;
   return (
-    <button
-      type="button"
-      className="text-primary underline-offset-2 hover:underline disabled:opacity-60"
-      disabled={state === "loading"}
-      onClick={() => {
-        setState("loading");
-        getIdentityDocuments(entry).then(
-          (urls) => {
-            setDocs(urls);
-            setState("idle");
-          },
-          () => setState("failed"),
-        );
-      }}
-    >
-      {state === "loading" ? "Loading…" : state === "failed" ? "Could not load, try again" : "View ID and selfie"}
-    </button>
+    <span className="flex flex-wrap items-center gap-3">
+      <button type="button" className={linkClass} disabled={state === "loading"} onClick={() => open(0)}>
+        ID photo
+      </button>
+      <button type="button" className={linkClass} disabled={state === "loading"} onClick={() => open(1)}>
+        Selfie
+      </button>
+      {state === "loading" && <span className="text-subtle">Loading…</span>}
+      {state === "failed" && <span className="text-danger">Could not load the files. Try again.</span>}
+      {viewer}
+    </span>
   );
 }
 
@@ -239,13 +257,7 @@ export function ProviderVerificationSection({
                     {entry.result === "revoked" && entry.reason ? ` — ${entry.reason}` : ""}
                   </div>
                   <div className="mt-1">
-                    {entry.kind === "identity" ? (
-                      <IdentityDocuments entry={entry} />
-                    ) : entry.documentUrl ? (
-                      <DocLink href={entry.documentUrl}>View certificate</DocLink>
-                    ) : (
-                      <span className="text-subtle">No file on record</span>
-                    )}
+                    <DocumentLinks entry={entry} />
                   </div>
                 </div>
               </li>
