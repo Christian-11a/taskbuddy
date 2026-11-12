@@ -95,6 +95,46 @@ export function namesMatch(verified: string, profile: string): boolean {
   return wanted.length > 0 && wanted.every((part) => have.has(part));
 }
 
+/**
+ * GET /verifications/me for an app that does not know 'revoked' (the APK
+ * before the revoke screens): every 'revoked' becomes 'rejected' and the
+ * revoke reason fills the rejection reason, so the old screens show "not
+ * accepted, upload again" instead of failing on an unknown state.
+ */
+export function revokedAsRejected<
+  T extends {
+    status?: string;
+    rejection_reason?: string | null;
+    revoke_reason?: string | null;
+    identity?: string;
+    certificate?: string;
+    services?: { certificate: string }[];
+  },
+>(me: T): T {
+  const fix = (s: string | undefined) => (s === 'revoked' ? 'rejected' : s);
+  return {
+    ...me,
+    ...(me.status === 'revoked'
+      ? {
+          status: 'rejected',
+          rejection_reason: me.revoke_reason ?? me.rejection_reason ?? null,
+        }
+      : {}),
+    ...(me.identity !== undefined ? { identity: fix(me.identity) } : {}),
+    ...(me.certificate !== undefined
+      ? { certificate: fix(me.certificate) }
+      : {}),
+    ...(me.services
+      ? {
+          services: me.services.map((s) => ({
+            ...s,
+            certificate: fix(s.certificate),
+          })),
+        }
+      : {}),
+  };
+}
+
 @Injectable()
 export class VerificationsService {
   private readonly logger = new Logger(VerificationsService.name);
@@ -374,7 +414,8 @@ export class VerificationsService {
   }
 
   /** The provider's own latest submission, for the mobile status screen. */
-  async mine(user: Profile) {
+  /** `revokedAware`: see knowsRevoked. Older apps get 'revoked' as 'rejected'. */
+  async mine(user: Profile, revokedAware = true) {
     const { data, error } = await this.supabase.admin
       .from('provider_verifications')
       .select('*')
@@ -388,7 +429,8 @@ export class VerificationsService {
       (data as VerificationRow | null)?.status,
     );
     // Existing row fields stay as they were; identity/certificate/verified are added.
-    return { ...((data as VerificationRow | null) ?? {}), ...state };
+    const result = { ...((data as VerificationRow | null) ?? {}), ...state };
+    return revokedAware ? result : revokedAsRejected(result);
   }
 
   /**
@@ -547,7 +589,7 @@ export class VerificationsService {
     const { data: cData, error: cError } = await this.supabase.admin
       .from('provider_credentials')
       .select(
-        'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, created_at, service_categories(id, name), provider_profiles!provider_credentials_provider_id_fkey(category_id, identity_verified, profiles(full_name))',
+        'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, no_expiry, document_path, created_at, service_categories(id, name), provider_profiles!provider_credentials_provider_id_fkey(category_id, identity_verified, profiles(full_name))',
       )
       .eq('status', 'pending')
       .order('created_at', { ascending: true });

@@ -110,6 +110,84 @@ describe('CredentialsService', () => {
     expect(created.document_url).toBe('https://signed/doc');
   });
 
+  describe('expiry date or no expiry (0081)', () => {
+    const base = {
+      category_id: 1,
+      credential_type: 'tesda_nc' as const,
+      title: 'Plumbing NC II',
+      issuer: 'TESDA',
+      document_path: 'p1/cert.jpg',
+    };
+    afterEach(() => {
+      delete process.env.REQUIRE_CREDENTIAL_EXPIRY;
+    });
+
+    it('stores "no expiry" when the provider says so', async () => {
+      const { service, calls } = build({
+        provider_credentials: [{ data: row(), error: null }],
+      });
+      await service.create(provider, { ...base, no_expiry: true });
+      expect(calls.find((c) => c.method === 'insert')?.args[0]).toMatchObject({
+        no_expiry: true,
+      });
+    });
+
+    it('refuses a date and "no expiry" together', async () => {
+      const { service } = build({});
+      await expect(
+        service.create(provider, {
+          ...base,
+          expires_on: '2099-01-01',
+          no_expiry: true,
+        }),
+      ).rejects.toThrow('not both');
+    });
+
+    it('still accepts neither while the switch is off (older apps send neither)', async () => {
+      const { service, calls } = build({
+        provider_credentials: [{ data: row(), error: null }],
+      });
+      await service.create(provider, base);
+      expect(calls.find((c) => c.method === 'insert')?.args[0]).toMatchObject({
+        no_expiry: false,
+      });
+    });
+
+    it('requires one of the two once REQUIRE_CREDENTIAL_EXPIRY is on', async () => {
+      process.env.REQUIRE_CREDENTIAL_EXPIRY = 'true';
+      const { service } = build({
+        provider_credentials: [{ data: row(), error: null }],
+      });
+      await expect(service.create(provider, base)).rejects.toThrow(
+        'or say it has no expiry date',
+      );
+      await expect(
+        service.create(provider, { ...base, no_expiry: true }),
+      ).resolves.toBeTruthy();
+    });
+  });
+
+  it('gives an older app a revoked certificate as rejected, and the new app as revoked', async () => {
+    const revoked = row({
+      status: 'revoked',
+      rejection_reason: null,
+      revoke_reason: 'Fake number',
+    });
+    const old = build({
+      provider_credentials: [{ data: [revoked], error: null }],
+    });
+    const [forOld] = await old.service.mine(provider, false);
+    expect(forOld).toMatchObject({
+      status: 'rejected',
+      rejection_reason: 'Fake number',
+    });
+    const fresh = build({
+      provider_credentials: [{ data: [revoked], error: null }],
+    });
+    const [forNew] = await fresh.service.mine(provider, true);
+    expect(forNew).toMatchObject({ status: 'revoked' });
+  });
+
   it('refuses a credential that has already expired', async () => {
     const { service } = build({});
     await expect(
@@ -277,7 +355,7 @@ describe('CredentialsService', () => {
       p_admin_id: 'a1',
       p_reason: 'Number not found in TESDA records',
     });
-    expect(result.status).toBe('revoked');
+    expect((result as Record<string, unknown>).status).toBe('revoked');
     expect(result.revoke).toEqual({ verified: false, withdrawn_proposals: 2 });
     expect(result).not.toHaveProperty('document_path');
   });
@@ -303,9 +381,24 @@ describe('CredentialsService', () => {
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it('explains why a revoked certificate cannot be removed (older apps offer Remove on it)', async () => {
+    const { service } = build({
+      provider_credentials: [
+        { data: null, error: null },
+        { data: { status: 'revoked' }, error: null },
+      ],
+    });
+    await expect(service.remove(provider, 'c1')).rejects.toThrow(
+      'revoked by an admin and stays on record',
+    );
+  });
+
   it('will not delete an approved credential', async () => {
     const { service, calls } = build({
-      provider_credentials: [{ data: null, error: null }],
+      provider_credentials: [
+        { data: null, error: null },
+        { data: { status: 'approved' }, error: null },
+      ],
     });
     await expect(service.remove(provider, 'c1')).rejects.toBeInstanceOf(
       NotFoundException,

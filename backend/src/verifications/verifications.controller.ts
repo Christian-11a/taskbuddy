@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   Post,
   UseGuards,
@@ -10,6 +11,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { VerificationsService } from './verifications.service';
+import { knowsRevoked } from '../common/client-features';
 import {
   StartIdentitySessionDto,
   SubmitVerificationDto,
@@ -43,7 +45,10 @@ export class VerificationsController {
   }
 
   @Get('me')
-  mine(@CurrentUser() user: Profile) {
-    return this.verificationsService.mine(user);
+  mine(
+    @CurrentUser() user: Profile,
+    @Headers('x-client-features') features?: string,
+  ) {
+    return this.verificationsService.mine(user, knowsRevoked(features));
   }
 }

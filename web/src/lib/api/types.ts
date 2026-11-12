@@ -460,6 +460,8 @@ export interface AdminCaseCredentialApi {
   credential_number: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  /** The provider says no expiry date is printed (migration 0081). Absent on an older API. */
+  no_expiry?: boolean;
   created_at: string;
   document_url: string | null;
   service_categories?: { id: number; name: string } | null;
