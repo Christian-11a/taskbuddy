@@ -1,6 +1,20 @@
 import { canWorkService, certificateExpiry, certificateGuidance, reconcileVerification, verificationSummary } from '../verificationStatus';
 
 describe('verificationSummary', () => {
+  it('says a revoked ID or certificate was revoked, with the reason, and asks for new documents', () => {
+    expect(verificationSummary({ status: 'revoked', identity: 'revoked', certificate: 'approved', verified: false, revoke_reason: 'The ID photo was edited.' }))
+      .toMatchObject({
+        verified: false,
+        headline: 'ID verification revoked',
+        detail: 'The ID photo was edited. Upload new photos to get verified again.',
+        missing: ['identity'],
+      });
+    expect(verificationSummary({ identity: 'revoked', certificate: 'approved', verified: false }).detail)
+      .toBe('Upload new photos to get verified again.');
+    expect(verificationSummary({ identity: 'approved', certificate: 'revoked', verified: false }))
+      .toMatchObject({ headline: 'ID approved · certificate revoked', missing: ['certificate'] });
+  });
+
   it('says verified only when verified is true', () => {
     expect(verificationSummary({ status: 'approved', identity: 'approved', certificate: 'approved', verified: true }))
       .toMatchObject({ verified: true, headline: "You're verified", missing: [] });

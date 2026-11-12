@@ -247,8 +247,10 @@ export interface Credential {
   credential_number?: string | null;
   issued_on: string | null;
   expires_on: string | null;
-  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  /** 'revoked': an admin took back an approval (migration 0080); `revoke_reason` says why. */
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
   rejection_reason?: string | null;
+  revoke_reason?: string | null;
   document_url?: string | null;
   service_categories: { id: number; name: string } | null;
 }
@@ -480,8 +482,8 @@ export interface SignedUpload {
 }
 
 /** Where a certificate stands for one service (migration 0068). */
-export type CertificateState = 'none' | 'pending' | 'approved' | 'rejected' | 'expired';
-export type IdentityState = 'none' | 'pending' | 'approved' | 'rejected';
+export type CertificateState = 'none' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
+export type IdentityState = 'none' | 'pending' | 'approved' | 'rejected' | 'revoked';
 
 /** One service a provider offers (the primary one and approved extras), with its certificate. */
 export interface VerifiedService {
@@ -504,13 +506,16 @@ export interface VerificationState {
 export interface Verification extends VerificationState {
   id: string;
   provider_id: string;
-  status: 'pending' | 'approved' | 'rejected';
+  /** 'revoked': an admin took back an approval (migration 0080). */
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
   /** 'manual' = an admin reviews the uploaded documents; 'stripe_identity' =
    *  Stripe decides and the result arrives by webhook (migration 0013). */
   method: 'manual' | 'stripe_identity';
   submitted_at: string;
   reviewed_at: string | null;
   rejection_reason: string | null;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
 }
 
 /**

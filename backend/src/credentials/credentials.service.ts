@@ -14,10 +14,11 @@ import type {
   ListCredentialsQueryDto,
   RejectCredentialDto,
 } from './dto/credentials.dto';
+import type { RevokeVerificationDto } from '../verifications/dto/verifications.dto';
 
 const BUCKET = 'provider-credentials';
 const SELECT =
-  'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, status, rejection_reason, reviewed_at, created_at, service_categories(id, name)';
+  'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, status, rejection_reason, reviewed_at, revoked_at, revoke_reason, created_at, service_categories(id, name)';
 
 type CredentialRow = {
   id: string;
@@ -95,20 +96,20 @@ export class CredentialsService {
     );
   }
 
-  /** A provider may withdraw anything that is not yet approved. */
+  /** A provider may withdraw a pending or rejected one; approved and revoked ones stay on record. */
   async remove(user: Profile, id: string) {
     const { data, error } = await this.supabase.admin
       .from('provider_credentials')
       .delete()
       .eq('id', id)
       .eq('provider_id', user.id)
-      .neq('status', 'approved')
+      .in('status', ['pending', 'rejected'])
       .select('id')
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
     if (!data)
       throw new NotFoundException(
-        'Credential not found, or already approved and kept on record',
+        'Credential not found, or already decided and kept on record',
       );
     return { removed: true };
   }
@@ -169,6 +170,31 @@ export class CredentialsService {
   async reject(admin: Profile, id: string, dto: RejectCredentialDto) {
     await this.decide(id, false, admin.id, dto.reason.trim());
     return this.shape(await this.fetchRow(id), true);
+  }
+
+  /**
+   * Takes back an approved certificate (0080) in one SQL transaction: status,
+   * Verified refresh, withdrawn proposals, audit row and the provider's notice.
+   */
+  async revoke(admin: Profile, id: string, dto: RevokeVerificationDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_revoke_verification',
+      {
+        p_kind: 'credential',
+        p_id: id,
+        p_admin_id: admin.id,
+        p_reason: dto.reason.trim(),
+      },
+    );
+    if (error) {
+      if (error.code === 'TB404') throw new NotFoundException(error.message);
+      if (error.code === 'TB409') throw new ConflictException(error.message);
+      throw new BadRequestException(error.message);
+    }
+    return {
+      ...(await this.shape(await this.fetchRow(id), true)),
+      revoke: data as { verified: boolean; withdrawn_proposals: number },
+    };
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

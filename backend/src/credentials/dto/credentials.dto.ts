@@ -19,7 +19,12 @@ export const CREDENTIAL_TYPES = [
 ] as const;
 export type CredentialType = (typeof CREDENTIAL_TYPES)[number];
 
-export const CREDENTIAL_STATUSES = ['pending', 'approved', 'rejected'] as const;
+export const CREDENTIAL_STATUSES = [
+  'pending',
+  'approved',
+  'rejected',
+  'revoked',
+] as const;
 
 /** `POST /providers/me/credentials`. The photo is uploaded first. */
 export class CreateCredentialDto {

@@ -77,7 +77,8 @@ describe('the Get verified step', () => {
   });
 
   it('follows the certificate status once the ID is approved', () => {
-    const at = (certificate: 'pending' | 'rejected' | 'expired') => verifyStep('none', { identityApproved: true, certificate });
+    const at = (certificate: 'pending' | 'rejected' | 'expired' | 'revoked') => verifyStep('none', { identityApproved: true, certificate });
+    expect(at('revoked')).toMatchObject({ subtitle: 'Certificate revoked · upload a new one', actionLabel: 'Upload again', opensCertificate: true });
     expect(at('pending')).toMatchObject({ subtitle: 'ID approved · certificate under review', actionLabel: 'View status', opensCertificate: true });
     expect(at('rejected')).toMatchObject({ subtitle: 'Certificate not accepted · upload a new one', actionLabel: 'Upload again', opensCertificate: true });
     expect(at('expired')).toMatchObject({ subtitle: 'Certificate expired · upload a renewed one', actionLabel: 'Renew certificate', opensCertificate: true });

@@ -44,6 +44,7 @@ import {
   ListVerificationCasesQueryDto,
   ListVerificationsQueryDto,
   RejectVerificationDto,
+  RevokeVerificationDto,
 } from '../verifications/dto/verifications.dto';
 import { EscrowService } from '../escrow/escrow.service';
 import { DisputesService } from '../escrow/disputes.service';
@@ -379,6 +380,16 @@ export class AdminController {
     @Body() dto: RejectVerificationDto,
   ) {
     return this.verificationsService.reject(admin, id, dto);
+  }
+
+  /** Take back an approved identity verification (0080). Reason required. */
+  @Post('verifications/:id/revoke')
+  revokeVerification(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RevokeVerificationDto,
+  ) {
+    return this.verificationsService.revoke(admin, id, dto);
   }
 
   // ── Provider service-change requests (migration 0034) ─────────────────────

@@ -58,6 +58,15 @@ export function verificationSummary(me: VerificationMe): VerificationSummary {
   if (identity !== 'approved') {
     if (identity === 'pending') return { verified, identity, certificate, headline: 'ID under review', detail: 'An admin is checking your ID.', missing };
     if (identity === 'rejected') return { verified, identity, certificate, headline: 'ID not accepted', detail: 'Upload new photos to try again.', missing };
+    if (identity === 'revoked') {
+      const reason = me?.revoke_reason?.trim();
+      return {
+        verified, identity, certificate,
+        headline: 'ID verification revoked',
+        detail: reason ? `${reason} Upload new photos to get verified again.` : 'Upload new photos to get verified again.',
+        missing,
+      };
+    }
     return { verified, identity, certificate, headline: 'Get verified', detail: 'Add your ID and a selfie, then a certificate for your service.', missing };
   }
   const CERT: Record<Exclude<CertificateState, 'approved'>, [string, string]> = {
@@ -65,6 +74,7 @@ export function verificationSummary(me: VerificationMe): VerificationSummary {
     pending: ['ID approved · certificate under review', 'An admin is checking your certificate.'],
     expired: ['ID approved · certificate expired', 'Upload a renewed certificate.'],
     rejected: ['ID approved · certificate not accepted', 'Upload a new certificate.'],
+    revoked: ['ID approved · certificate revoked', 'Upload a new certificate to get verified again.'],
   };
   const [headline, detail] = CERT[certificate === 'approved' ? 'none' : certificate];
   return { verified, identity, certificate, headline, detail, missing };

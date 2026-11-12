@@ -11,7 +11,7 @@ import {
   type ScreeningReport,
   type ScreeningUser,
 } from "@/lib/screening";
-import { getScreeningBookings, getScreeningCertificates, getScreeningRejections, getUsers } from "@/lib/services";
+import { getPastSuspensions, getScreeningBookings, getScreeningCertificates, getScreeningRejections, getUsers, type PastSuspensions } from "@/lib/services";
 
 export interface LoadedScreening {
   bookings: Awaited<ReturnType<typeof getScreeningBookings>> | null;
@@ -103,6 +103,20 @@ export function useScreeningLists(enabled: boolean, loadUsers: boolean): { lists
   return { lists, loading: enabled && lists === null };
 }
 
+/** Suspensions on record for one provider; null while loading or when the audit log has no target filter. */
+function usePastSuspensions(providerId: string): PastSuspensions | null {
+  const [state, setState] = useState<{ id: string; value: PastSuspensions | null } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getPastSuspensions(providerId).then(
+      (value) => { if (!cancelled) setState({ id: providerId, value }); },
+      () => { if (!cancelled) setState({ id: providerId, value: null }); },
+    );
+    return () => { cancelled = true; };
+  }, [providerId]);
+  return state && state.id === providerId ? state.value : null;
+}
+
 export function ProviderScreeningSection({
   providerId,
   presetUser,
@@ -120,6 +134,23 @@ export function ProviderScreeningSection({
   if (loading || !lists) {
     return <p className="text-[13px] text-muted-foreground">Loading screening…</p>;
   }
+  return (
+    <LoadedScreeningSection providerId={providerId} presetUser={presetUser} lists={lists} disputes={disputes} />
+  );
+}
+
+function LoadedScreeningSection({
+  providerId,
+  presetUser,
+  lists,
+  disputes,
+}: {
+  providerId: string;
+  presetUser: ScreeningUser | null;
+  lists: LoadedScreening;
+  disputes: DisputeRow[];
+}) {
+  const pastSuspensions = usePastSuspensions(providerId);
   const fromList = lists.users?.find((user) => user.id === providerId);
   const user = presetUser ?? (fromList ? screeningUserFromAdmin(fromList) : null);
   const jobs = lists.bookings ? countProviderBookings(lists.bookings, providerId) : null;
@@ -138,6 +169,7 @@ export function ProviderScreeningSection({
     disputes: disputeCounts,
     certificates: lists.certificates ? lists.certificates.filter((certificate) => certificate.providerId === providerId) : null,
     rejectedVerifications: lists.rejections ? lists.rejections.filter((row) => row.providerId === providerId).length : null,
+    pastSuspensions,
     today: screeningToday(),
   });
   return <ScreeningResults report={report} />;

@@ -165,3 +165,25 @@ Answer each one (yes / no / your change). AI assistants: ask these one at a time
     past suspensions? If yes: is one past suspension enough to flag, or should it be two?
 
 Once all answers are in, write them under this heading as "Agreed: …" and then build.
+
+### Agreed (2026-11-12, project owner)
+
+1. Agreed: new `revoked` status + `admin_revoke_verification` function + two admin routes.
+2. Agreed: both the identity verification and single certificates can be revoked.
+3. Agreed: hired / in-progress jobs continue and pay out normally.
+4. Agreed: pending proposals are withdrawn automatically, for every service the provider can no
+   longer work (so revoking a secondary-service certificate withdraws that service's proposals
+   even though the main Verified badge stays). Exception added while building:
+   a proposal whose client is already paying to hire (open `xendit_hire_payments` row) is
+   left alone so no payment is stranded.
+5. Agreed: the provider can upload new documents and be reviewed again.
+6. Agreed: reason required, 10–500 characters, shown to the provider.
+7. Agreed: push + in-app notice with the reason (written to `notifications` in the same
+   transaction, like every other verification notice).
+8. Agreed: migration `0080_revoke_verification.sql`; the project owner applies it in Supabase
+   before the API is deployed.
+9. Agreed: no other changes. Built in `0080`: approved → revoked is the only change allowed after
+   a decision (identity and certificates); a revoked identity counts as rejected for the old-API
+   guard; the admin Users certificate view shows `revoked`; providers can no longer delete
+   approved or revoked certificates.
+10. Agreed: `target_id` filter on `GET /admin/audit`; one past suspension is enough to flag.

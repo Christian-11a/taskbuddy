@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
 import { formatDate, formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
 import { ProviderScreeningSection, screeningUserFromRow, useScreeningLists } from "@/components/admin/ProviderScreening";
+import { ProviderVerificationItems } from "@/components/admin/RevokeVerification";
 
 const PAGE_SIZE = 12;
 
@@ -61,7 +62,7 @@ export function bulkMessage(verb: string, { succeeded, failed, errors }: BulkCou
 type RoleFilter = "all" | "provider" | "customer";
 type StatusFilter = "all" | "active" | "suspended" | "deleted";
 type JoinedFilter = "all" | "7d" | "30d";
-type VerificationFilter = "all" | "Verified" | "Identity approved · certificate needed" | "Pending review" | "Rejected" | "Not submitted";
+type VerificationFilter = "all" | "Verified" | "Identity approved · certificate needed" | "Pending review" | "Rejected" | "Revoked" | "Not submitted";
 
 const JOINED_DAYS: Record<Exclude<JoinedFilter, "all">, number> = { "7d": 7, "30d": 30 };
 const DEFAULT_SUSPEND_DAYS = "7";
@@ -664,6 +665,7 @@ export function UsersPage() {
               <option value="Identity approved · certificate needed">Identity approved · certificate needed</option>
               <option value="Pending review">Pending review</option>
               <option value="Rejected">Rejected</option>
+              <option value="Revoked">Revoked</option>
               <option value="Not submitted">Not submitted</option>
             </SelectFilter>
             <SelectFilter
@@ -829,6 +831,12 @@ export function UsersPage() {
                   disputes={disputes ?? []}
                   loading={screening.loading || !!disputesLoading}
                 />
+              </DrawerSection>
+            )}
+
+            {reviewing.isProvider && (
+              <DrawerSection title="Verification">
+                <ProviderVerificationItems providerId={reviewing.id} onChanged={() => void refreshUsers()} />
               </DrawerSection>
             )}
 

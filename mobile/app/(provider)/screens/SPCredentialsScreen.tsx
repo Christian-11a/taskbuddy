@@ -34,6 +34,7 @@ const STATUS_LABEL: Record<Credential['status'], string> = {
   approved: 'Certified',
   rejected: 'Not accepted',
   expired: 'Expired',
+  revoked: 'Revoked',
 };
 
 export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) {
@@ -148,13 +149,17 @@ export default function SPCredentialsScreen({ onBack }: { onBack: () => void }) 
               {item.status === 'rejected' && !!item.rejection_reason && (
                 <Text style={styles.cardMeta}>{item.rejection_reason}</Text>
               )}
+              {item.status === 'revoked' && !!item.revoke_reason && (
+                <Text style={styles.cardMeta}>{item.revoke_reason}</Text>
+              )}
             </View>
-            {item.status === 'rejected' && (
+            {(item.status === 'rejected' || item.status === 'revoked') && (
               <Tap disabled={busy} onPress={() => resubmit(item)} accessibilityRole="button" accessibilityLabel={`Resubmit ${item.title}`}>
                 <Text style={styles.link}>Resubmit</Text>
               </Tap>
             )}
-            {item.status !== 'approved' && (
+            {/* Approved and revoked certificates stay on record; the server refuses to delete them. */}
+            {item.status !== 'approved' && item.status !== 'revoked' && (
               <Tap disabled={busy} onPress={() => setRemoving(item)} accessibilityRole="button" accessibilityLabel={`Remove ${item.title}`}>
                 <Text style={styles.link}>Remove</Text>
               </Tap>

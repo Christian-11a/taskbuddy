@@ -1684,6 +1684,7 @@ describe("getVerificationHistory", () => {
       if (String(url).includes("/admin/credentials?status=rejected")) {
         return Promise.resolve(jsonResponse({ credentials: [cert("c-no", "rejected", "2026-09-01T00:00:00Z")], total: 1 }));
       }
+      if (String(url).includes("/admin/credentials")) return Promise.resolve(jsonResponse({ credentials: [], total: 0 }));
       return Promise.resolve(jsonResponse({ verifications: [], total: 0 }));
     }) as unknown as typeof fetch;
 
@@ -1694,6 +1695,45 @@ describe("getVerificationHistory", () => {
       ["c:c-no", "rejected"],
       ["c:c-old", "expired"],
     ]);
+  });
+
+  it("adds revoked rows with the revoke reason and date, and survives an API that refuses status=revoked", async () => {
+    const revokedCert = {
+      id: "c-rv", provider_id: "p1", category_id: 1, title: "NC II", status: "revoked", rejection_reason: null,
+      reviewed_at: "2026-09-01T00:00:00Z", revoked_at: "2026-11-01T00:00:00Z", revoke_reason: "Fake certificate number",
+      created_at: "2026-01-01T00:00:00Z", service_categories: { id: 1, name: "Plumbing" }, profiles: { full_name: "Ana" },
+    };
+    global.fetch = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/admin/credentials?status=revoked")) return Promise.resolve(jsonResponse({ credentials: [revokedCert], total: 1 }));
+      if (u.includes("/admin/credentials")) return Promise.resolve(jsonResponse({ credentials: [], total: 0 }));
+      return Promise.resolve(jsonResponse({ verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+    expect(await services.getVerificationHistory()).toEqual([
+      expect.objectContaining({ id: "c:c-rv", result: "revoked", reason: "Fake certificate number", decidedAt: "2026-11-01T00:00:00Z" }),
+    ]);
+
+    global.fetch = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("status=revoked")) {
+        return Promise.resolve(jsonResponse({ message: ["status must be one of the following values"], statusCode: 400 }, 400));
+      }
+      return Promise.resolve(jsonResponse(u.includes("/admin/credentials") ? { credentials: [], total: 0 } : { verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+    await expect(services.getVerificationHistory()).resolves.toEqual([]);
+  });
+
+  it("posts a revoke to the identity or certificate route with the trimmed reason", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    global.fetch = vi.fn((url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return Promise.resolve(jsonResponse({ id: "x", revoke: { verified: false, withdrawn_proposals: 3 } }));
+    }) as unknown as typeof fetch;
+    await expect(services.revokeVerification({ id: "v:abc", kind: "identity" }, "  The ID photo was edited  ")).resolves.toEqual({ verified: false, withdrawnProposals: 3 });
+    await services.revokeVerification({ id: "c:def", kind: "certificate" }, "Certificate number is fake");
+    expect(calls[0].url).toContain("/admin/verifications/abc/revoke");
+    expect(calls[0].body).toEqual({ reason: "The ID photo was edited" });
+    expect(calls[1].url).toContain("/admin/credentials/def/revoke");
   });
 
   it("asks the credentials list for no more than 100 rows a page (the API rejects more with a 400)", async () => {
