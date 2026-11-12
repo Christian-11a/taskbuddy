@@ -15,6 +15,7 @@ import { Image, Platform, StyleSheet, Text, View } from 'react-native';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Calendar, Check, CircleAlert, ImagePlus } from 'lucide-react-native';
+import CheckRow from './ui/CheckRow';
 import Tap from './ui/Tap';
 import TextField from './ui/TextField';
 import { useThemedStyles, type Palette as ThemePalette } from '../context/ThemeContext';
@@ -33,12 +34,22 @@ export const CREDENTIAL_TYPES: { key: CredentialType; label: string; issuer: str
   { key: 'other', label: 'Other', issuer: '' },
 ];
 
-/** YYYY-MM-DD and a real calendar day. Empty is fine: not every credential expires. */
+/** YYYY-MM-DD and a real calendar day. Empty is not valid on its own; the form also accepts a no-expiry tick. */
 export function isValidExpiry(value: string): boolean {
-  if (!value) return true;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const day = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value;
+}
+
+const EXPIRY_REQUIRED = 'Pick the expiry date printed on the certificate, or tick that it has none.';
+
+/** A picked date, the no-expiry tick, or neither. A date and the tick together is not a valid choice. */
+function expiryIssue(expiresOn: string, noExpiry: boolean): 'ok' | 'required' | 'format' | 'both' {
+  if (noExpiry && expiresOn) return 'both';
+  if (noExpiry) return 'ok';
+  if (!expiresOn) return 'required';
+  if (!isValidExpiry(expiresOn)) return 'format';
+  return 'ok';
 }
 
 /** The first thing missing before a credential can be submitted, or null. */
@@ -48,12 +59,15 @@ export function credentialProblem(input: {
   title: string;
   issuer: string;
   expiresOn: string;
+  noExpiry: boolean;
 }): string | null {
   if (!input.hasPhoto) return 'Add a clear photo of the certificate.';
   if (!input.categoryId) return 'Choose the service this credential is for.';
   if (textLength(input.title) < 2) return 'Enter the certificate name, e.g. Plumbing NC II.';
   if (textLength(input.issuer) < 2) return 'Enter who issued it, e.g. TESDA.';
-  if (!isValidExpiry(input.expiresOn)) return 'Enter the expiry date as YYYY-MM-DD, or leave it blank.';
+  const expiry = expiryIssue(input.expiresOn, input.noExpiry);
+  if (expiry === 'format') return 'Enter the expiry date as YYYY-MM-DD, or tick that it has none.';
+  if (expiry !== 'ok') return EXPIRY_REQUIRED;
   return null;
 }
 
@@ -66,12 +80,15 @@ export function credentialErrors(input: {
   title: string;
   issuer: string;
   expiresOn: string;
+  noExpiry: boolean;
 }): Partial<Record<CredentialField, string>> {
   const errors: Partial<Record<CredentialField, string>> = {};
   if (!input.hasPhoto) errors.photo = 'Add a clear photo of the certificate.';
   if (textLength(input.title) < 2) errors.title = 'Enter the certificate name, e.g. Plumbing NC II.';
   if (textLength(input.issuer) < 2) errors.issuer = 'Enter who issued it, e.g. TESDA.';
-  if (!isValidExpiry(input.expiresOn)) errors.expiry = 'Pick the expiry date again, or clear it.';
+  const expiry = expiryIssue(input.expiresOn, input.noExpiry);
+  if (expiry === 'format') errors.expiry = 'Pick the expiry date again, or clear it.';
+  else if (expiry !== 'ok') errors.expiry = EXPIRY_REQUIRED;
   return errors;
 }
 
@@ -130,6 +147,7 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
     const [issuer, setIssuer] = useState('TESDA');
     const [number, setNumber] = useState('');
     const [expiresOn, setExpiresOn] = useState('');
+    const [noExpiry, setNoExpiry] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [fieldErrors, setFieldErrors] = useState<Partial<Record<CredentialField, string>>>({});
@@ -155,6 +173,7 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
       setTitle('');
       setNumber('');
       setExpiresOn('');
+      setNoExpiry(false);
     };
 
     const choose = async () => {
@@ -181,10 +200,10 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
 
     const submit = async () => {
       setSent(false);
-      const errors = credentialErrors({ hasPhoto: !!uri, title, issuer, expiresOn });
+      const errors = credentialErrors({ hasPhoto: !!uri, title, issuer, expiresOn, noExpiry });
       setSubmitted(true);
       setFieldErrors(errors);
-      const problem = credentialProblem({ hasPhoto: !!uri, categoryId: selectedCategory, title, issuer, expiresOn });
+      const problem = credentialProblem({ hasPhoto: !!uri, categoryId: selectedCategory, title, issuer, expiresOn, noExpiry });
       if (problem) {
         // Field errors cover everything but a missing service, which has no field of its own.
         setError(Object.keys(errors).length ? null : problem);
@@ -201,7 +220,7 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
           title: cleanText(title),
           issuer: cleanText(issuer),
           credential_number: cleanText(number) || undefined,
-          expires_on: expiresOn || undefined,
+          ...(noExpiry ? { no_expiry: true } : { expires_on: expiresOn }),
           document_path,
         });
         reset();
@@ -222,7 +241,12 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
       setTitle(item.title);
       setIssuer(item.issuer);
       setNumber(item.credential_number ?? '');
-      setExpiresOn(item.expires_on && parseExpiry(item.expires_on) >= new Date() ? item.expires_on : '');
+      setNoExpiry(item.no_expiry === true);
+      setExpiresOn(
+        item.no_expiry === true
+          ? ''
+          : (item.expires_on && parseExpiry(item.expires_on) >= new Date() ? item.expires_on : ''),
+      );
       setUri(null);
       setError(null);
       setSent(false);
@@ -236,6 +260,7 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
       if (Platform.OS === 'android') setShowDate(false);
       if (event.type === 'set' && picked) {
         setExpiresOn(formatExpiry(picked));
+        setNoExpiry(false);
         clearError('expiry');
       }
     };
@@ -320,12 +345,12 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
         <TextField label="Certificate number (optional)" value={number} onChangeText={setNumber} maxLength={60} editable={!busy} keyboardAppearance={appearance} />
 
         <View onLayout={fieldLayout('expiry')} style={styles.fieldBlock}>
-          <Text style={styles.label}>Expiry date (optional)</Text>
+          <Text style={styles.label}>Expiry date</Text>
           <View style={styles.dateRow}>
             <Tap
-              disabled={busy}
+              disabled={busy || noExpiry}
               onPress={() => setShowDate(true)}
-              style={[styles.dateField, !!fieldErrors.expiry && styles.dateFieldError]}
+              style={[styles.dateField, !!fieldErrors.expiry && styles.dateFieldError, noExpiry && styles.dateFieldDisabled]}
               accessibilityRole="button"
               accessibilityLabel="Expiry date"
               accessibilityValue={{ text: expiresOn || 'Not set' }}
@@ -339,12 +364,6 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
               </Tap>
             )}
           </View>
-          {!!fieldErrors.expiry && (
-            <View style={styles.errorRow}>
-              <CircleAlert size={14} color={Colors.dangerText} />
-              <Text accessibilityRole="alert" style={styles.errorText}>{fieldErrors.expiry}</Text>
-            </View>
-          )}
           {showDate && (
             <DateTimePicker
               themeVariant={appearance}
@@ -360,6 +379,27 @@ const CertificateUploadForm = forwardRef<CertificateUploadFormHandle, Certificat
             <Tap onPress={() => setShowDate(false)} accessibilityRole="button" accessibilityLabel="Done picking date" style={styles.linkBtn}>
               <Text style={styles.link}>Done</Text>
             </Tap>
+          )}
+          <CheckRow
+            label="This certificate has no expiry date"
+            checked={noExpiry}
+            disabled={busy}
+            onToggle={() => {
+              if (noExpiry) {
+                setNoExpiry(false);
+                return;
+              }
+              setNoExpiry(true);
+              setExpiresOn('');
+              setShowDate(false);
+              clearError('expiry');
+            }}
+          />
+          {!!fieldErrors.expiry && (
+            <View style={styles.errorRow}>
+              <CircleAlert size={14} color={Colors.dangerText} />
+              <Text accessibilityRole="alert" style={styles.errorText}>{fieldErrors.expiry}</Text>
+            </View>
           )}
         </View>
 
@@ -406,6 +446,7 @@ function createThemedStyles(theme: ThemePalette) {
       borderRadius: 12, borderWidth: 1, borderColor: V6Colors.line, backgroundColor: V6Colors.surface,
     },
     dateFieldError: { borderColor: Colors.dangerText },
+    dateFieldDisabled: { opacity: 0.5 },
     dateText: { color: V6Colors.ink900, fontSize: 15, lineHeight: 20, fontFamily: 'Inter' },
     linkBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 4 },
     sentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

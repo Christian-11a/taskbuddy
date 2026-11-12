@@ -247,6 +247,8 @@ export interface Credential {
   credential_number?: string | null;
   issued_on: string | null;
   expires_on: string | null;
+  /** True when the provider says the certificate has no expiry date. */
+  no_expiry?: boolean;
   /** 'revoked': an admin took back an approval (migration 0080); `revoke_reason` says why. */
   status: 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
   rejection_reason?: string | null;
@@ -931,6 +933,7 @@ async function rawRequest<T>(
     method,
     headers: {
       'Content-Type': 'application/json',
+      'X-Client-Features': 'revoked-status',
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -1611,6 +1614,7 @@ export const api = {
     issuer: string;
     credential_number?: string;
     expires_on?: string;
+    no_expiry?: boolean;
     document_path: string;
   }) {
     return authRequest<Credential>('/providers/me/credentials', { method: 'POST', body: input });
