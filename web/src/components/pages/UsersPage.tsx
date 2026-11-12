@@ -35,7 +35,7 @@ import { cn } from "@/lib/utils";
 import type { BulkCounts } from "@/lib/services";
 import { formatDate, formatRating, ratingForCsv, type UserRow } from "@/lib/adapters";
 import { ProviderScreeningSection, screeningUserFromRow, useScreeningLists } from "@/components/admin/ProviderScreening";
-import { ProviderVerificationItems } from "@/components/admin/RevokeVerification";
+import { ProviderVerificationSection } from "@/components/admin/RevokeVerification";
 
 const PAGE_SIZE = 12;
 
@@ -836,7 +836,7 @@ export function UsersPage() {
 
             {reviewing.isProvider && (
               <DrawerSection title="Verification">
-                <ProviderVerificationItems providerId={reviewing.id} onChanged={() => void refreshUsers()} />
+                <ProviderVerificationSection providerId={reviewing.id} providerName={reviewing.name} onChanged={() => void refreshUsers()} />
               </DrawerSection>
             )}
 

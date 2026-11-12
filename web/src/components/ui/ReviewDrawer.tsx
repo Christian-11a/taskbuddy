@@ -38,8 +38,8 @@ export function ReviewDrawer({ open, title, subtitle, onClose, children, footer 
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
     function handleKey(e: KeyboardEvent) {
-      // A confirmation dialog opened from inside the drawer owns Escape and Tab while it is up.
-      if (document.querySelector('[role="alertdialog"]')) return;
+      // A confirmation dialog or image viewer opened from inside the drawer owns Escape and Tab while it is up.
+      if (document.querySelector('[role="alertdialog"], [data-overlay-dialog]')) return;
       if (e.key === "Escape") {
         onClose();
         return;

@@ -20,8 +20,6 @@ vi.mock("@/lib/services", () => ({
   getScreeningCertificates: vi.fn(),
   getScreeningRejections: vi.fn(),
   getPastSuspensions: () => Promise.resolve({ count: 0, latestAt: null, latestReason: null }),
-  revokeVerification: vi.fn(),
-  canRevoke: (entry: { result: string }) => entry.result === "approved" || entry.result === "expired",
 }));
 
 const mocked = vi.mocked(services);
@@ -314,34 +312,10 @@ describe("VerificationsPage", () => {
       expect(screen.queryByText("Photo is blurry")).not.toBeInTheDocument();
     });
 
-    it("revokes an approved row with a required reason, then reloads", async () => {
-      const user = await openHistory();
-      mocked.revokeVerification.mockResolvedValue({ verified: false, withdrawnProposals: 2 });
-      // Rejected rows cannot be revoked; approved and expired ones can.
-      expect(screen.getAllByRole("button", { name: /^Revoke / })).toHaveLength(2);
-      await user.click(screen.getByRole("button", { name: "Revoke Identity (ID + selfie) for Ana Reyes" }));
-      const dialog = await screen.findByRole("alertdialog");
-      const confirm = within(dialog).getByRole("button", { name: "Revoke" });
-      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), "too short");
-      expect(confirm).toBeDisabled();
-      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), " — the ID photo was edited");
-      await user.click(confirm);
-      expect(mocked.revokeVerification).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "v:1", kind: "identity" }),
-        "too short — the ID photo was edited",
-      );
-      expect(await screen.findByText("Revoked. The provider is no longer verified. 2 pending proposals were withdrawn.")).toBeInTheDocument();
-      expect(mocked.getVerificationHistory).toHaveBeenCalledTimes(2);
-    });
-
-    it("keeps the dialog open with the server message when a revoke fails", async () => {
-      const user = await openHistory();
-      mocked.revokeVerification.mockRejectedValue(new Error("This was already revoked"));
-      await user.click(screen.getByRole("button", { name: "Revoke Identity (ID + selfie) for Ana Reyes" }));
-      const dialog = await screen.findByRole("alertdialog");
-      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), "The ID photo was edited");
-      await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
-      expect(await within(dialog).findByRole("alert")).toHaveTextContent("This was already revoked");
+    it("is a record only: revoking happens in the Users drawer", async () => {
+      await openHistory();
+      expect(screen.queryByRole("button", { name: /revoke/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/To revoke one, open the provider in Users/)).toBeInTheDocument();
     });
 
     it("has no approve or reject actions", async () => {
