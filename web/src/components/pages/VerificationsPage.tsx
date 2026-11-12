@@ -90,6 +90,17 @@ function failablePartsOf(c: VerificationCase): CasePart[] {
   return parts;
 }
 
+/**
+ * The expiry as the provider gave it. "No expiry date (provider says)" is a
+ * claim the admin checks against the photo; a blank one is from an older app
+ * that did not ask.
+ */
+export function expiryText(c: { expiresOn: string | null; noExpiry?: boolean }): string {
+  if (c.expiresOn) return formatDate(c.expiresOn);
+  if (c.noExpiry) return "No expiry date (provider says). Check the photo";
+  return "Not given";
+}
+
 function expiredOnOf(c: VerificationCase): string | null {
   const exp = c.credential?.expiresOn;
   return exp && exp < manilaToday() ? exp : null;
@@ -497,7 +508,7 @@ function ReviewQueue({ tabs }: { tabs: ReactNode }) {
                       <Field label="Issuer">{selected.credential.issuer}</Field>
                       <Field label="Number">{selected.credential.number ?? "—"}</Field>
                       <Field label="Issued">{selected.credential.issuedOn ? formatDate(selected.credential.issuedOn) : "—"}</Field>
-                      <Field label="Expires">{selected.credential.expiresOn ? formatDate(selected.credential.expiresOn) : "—"}</Field>
+                      <Field label="Expires">{expiryText(selected.credential)}</Field>
                     </FieldGrid>
                     {guidance && (
                       <p className="rounded-[10px] bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted-foreground">

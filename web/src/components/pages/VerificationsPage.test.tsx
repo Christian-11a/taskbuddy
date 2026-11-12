@@ -33,6 +33,7 @@ const credential = (over: Partial<NonNullable<services.VerificationCase["credent
   serviceName: "Plumbing",
   issuedOn: "2025-01-10",
   expiresOn: "2099-01-01",
+  noExpiry: false,
   documentUrl: "https://files.example.com/p1/cert.jpg?token=abc",
   ...over,
 });
@@ -390,5 +391,14 @@ describe("VerificationsPage", () => {
       expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
       expect(screen.getByRole("combobox", { name: "Filter decisions by result" })).toHaveValue("all");
     });
+  });
+});
+
+describe("expiryText", () => {
+  it("shows the date, the provider's no-expiry claim, or that none was given", async () => {
+    const { expiryText } = await import("./VerificationsPage");
+    expect(expiryText({ expiresOn: "2029-03-03", noExpiry: false })).toBe("Mar 3, 2029");
+    expect(expiryText({ expiresOn: null, noExpiry: true })).toBe("No expiry date (provider says). Check the photo");
+    expect(expiryText({ expiresOn: null, noExpiry: false })).toBe("Not given");
   });
 });

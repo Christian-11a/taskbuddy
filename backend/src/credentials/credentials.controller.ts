@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Post,
@@ -14,6 +15,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import type { Profile } from '../common/types';
 import { CredentialsService } from './credentials.service';
+import { knowsRevoked } from '../common/client-features';
 import { RevokeVerificationDto } from '../verifications/dto/verifications.dto';
 import {
   CreateCredentialDto,
@@ -28,8 +30,11 @@ export class CredentialsController {
 
   @Get('me/credentials')
   @Roles('provider')
-  mine(@CurrentUser() user: Profile) {
-    return this.credentials.mine(user);
+  mine(
+    @CurrentUser() user: Profile,
+    @Headers('x-client-features') features?: string,
+  ) {
+    return this.credentials.mine(user, knowsRevoked(features));
   }
 
   @Post('me/credentials')

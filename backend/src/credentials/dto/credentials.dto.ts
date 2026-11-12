@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsISO8601,
@@ -58,6 +59,11 @@ export class CreateCredentialDto {
   @IsOptional()
   @IsISO8601({ strict: true })
   expires_on?: string;
+
+  /** The provider says no expiry date is printed (0081). Never together with expires_on. */
+  @IsOptional()
+  @IsBoolean()
+  no_expiry?: boolean;
 
   /** Storage path in the `provider-credentials` bucket. */
   @IsString()

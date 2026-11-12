@@ -1505,6 +1505,8 @@ export interface VerificationCase {
     serviceName: string;
     issuedOn: string | null;
     expiresOn: string | null;
+    /** The provider says the certificate has no expiry date (0081). */
+    noExpiry: boolean;
     documentUrl: string | null;
   } | null;
 }
@@ -1531,6 +1533,7 @@ function mapCaseRow(row: AdminVerificationCaseApi): VerificationCase {
           serviceName: c.service_categories?.name ?? `Category #${c.category_id}`,
           issuedOn: c.issued_on,
           expiresOn: c.expires_on,
+          noExpiry: c.no_expiry === true,
           documentUrl: c.document_url,
         }
       : null,

@@ -18,7 +18,7 @@ import type { RevokeVerificationDto } from '../verifications/dto/verifications.d
 
 const BUCKET = 'provider-credentials';
 const SELECT =
-  'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, status, rejection_reason, reviewed_at, revoked_at, revoke_reason, created_at, service_categories(id, name)';
+  'id, provider_id, category_id, credential_type, title, issuer, credential_number, issued_on, expires_on, document_path, no_expiry, status, rejection_reason, reviewed_at, revoked_at, revoke_reason, created_at, service_categories(id, name)';
 
 type CredentialRow = {
   id: string;
@@ -35,6 +35,13 @@ type JoinedCredentialRow = CredentialRow & {
 };
 
 /** Today in Manila, as the `date` the expiry is compared with. */
+/**
+ * On once every provider has an app that asks for the expiry (0081). Off, an
+ * upload without either answer is still accepted, as the older app sends neither.
+ */
+export const requireCredentialExpiry = () =>
+  process.env.REQUIRE_CREDENTIAL_EXPIRY === 'true';
+
 const today = () =>
   new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
 
@@ -46,6 +53,18 @@ const effectiveStatus = (row: CredentialRow) =>
   row.status === 'approved' && row.expires_on && row.expires_on < today()
     ? 'expired'
     : row.status;
+
+/** A revoked row as an older app understands it: rejected, with the revoke reason. */
+export function asRejectedForOldApps<T extends Record<string, unknown>>(
+  row: T,
+): T {
+  if (row.status !== 'revoked') return row;
+  return {
+    ...row,
+    status: 'rejected',
+    rejection_reason: row.revoke_reason ?? row.rejection_reason ?? null,
+  };
+}
 
 @Injectable()
 export class CredentialsService {
@@ -64,6 +83,14 @@ export class CredentialsService {
     await this.uploads.assertValidImage(BUCKET, dto.document_path);
     if (dto.expires_on && dto.expires_on < today())
       throw new BadRequestException('This credential has already expired');
+    if (dto.expires_on && dto.no_expiry)
+      throw new BadRequestException(
+        'Pick the expiry date or say it has none, not both',
+      );
+    if (requireCredentialExpiry() && !dto.expires_on && !dto.no_expiry)
+      throw new BadRequestException(
+        'Add the expiry date printed on the certificate, or say it has no expiry date',
+      );
     const { data, error } = await this.supabase.admin
       .from('provider_credentials')
       .insert({
@@ -71,6 +98,7 @@ export class CredentialsService {
         title: dto.title.trim(),
         issuer: dto.issuer.trim(),
         credential_number: dto.credential_number?.trim() || null,
+        no_expiry: dto.no_expiry === true,
         provider_id: user.id,
       })
       .select(SELECT)
@@ -84,16 +112,22 @@ export class CredentialsService {
     return this.shape(data, true);
   }
 
-  async mine(user: Profile) {
+  /**
+   * `revokedAware`: the app sent `X-Client-Features: revoked-status`. Older
+   * apps do not know 'revoked', so they get it as 'rejected' with the revoke
+   * reason as the rejection reason.
+   */
+  async mine(user: Profile, revokedAware = true) {
     const { data, error } = await this.supabase.admin
       .from('provider_credentials')
       .select(SELECT)
       .eq('provider_id', user.id)
       .order('created_at', { ascending: false });
     if (error) throw new BadRequestException(error.message);
-    return Promise.all(
+    const rows = await Promise.all(
       (data as CredentialRow[]).map((row) => this.shape(row, true)),
     );
+    return revokedAware ? rows : rows.map(asRejectedForOldApps);
   }
 
   /** A provider may withdraw a pending or rejected one; approved and revoked ones stay on record. */
@@ -107,10 +141,23 @@ export class CredentialsService {
       .select('id')
       .maybeSingle();
     if (error) throw new BadRequestException(error.message);
-    if (!data)
+    if (!data) {
+      // An older app shows a revoked certificate as rejected and offers
+      // Remove; say why it stays instead of "not found".
+      const { data: kept } = await this.supabase.admin
+        .from('provider_credentials')
+        .select('status')
+        .eq('id', id)
+        .eq('provider_id', user.id)
+        .maybeSingle();
+      if ((kept as { status?: string } | null)?.status === 'revoked')
+        throw new ConflictException(
+          'This certificate was revoked by an admin and stays on record. Upload a new one instead.',
+        );
       throw new NotFoundException(
         'Credential not found, or already decided and kept on record',
       );
+    }
     return { removed: true };
   }
 
