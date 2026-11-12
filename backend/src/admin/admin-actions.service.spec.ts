@@ -135,6 +135,36 @@ describe('AdminActionsService', () => {
       ).toBe(true);
     });
 
+    it('filters by target, so past suspensions of one user can be listed', async () => {
+      const { supabase, calls } = createSupabaseMock({
+        admin_actions: [{ data: [], error: null, count: 0 }],
+      });
+      const service = new AdminActionsService(supabase);
+      await service.list({
+        action: 'user.suspend',
+        target_id: '44444444-4444-4444-4444-444444444444',
+      });
+      expect(
+        calls.some(
+          (c) =>
+            c.method === 'eq' &&
+            c.args[0] === 'target_id' &&
+            c.args[1] === '44444444-4444-4444-4444-444444444444',
+        ),
+      ).toBe(true);
+    });
+
+    it('refuses search combined with a target filter', async () => {
+      const { supabase } = createSupabaseMock({});
+      const service = new AdminActionsService(supabase);
+      await expect(
+        service.list({
+          search: 'abc',
+          target_id: '44444444-4444-4444-4444-444444444444',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
     it('throws BadRequestException on query error', async () => {
       const { supabase } = createSupabaseMock({
         admin_actions: [{ data: null, error: { message: 'boom' } }],

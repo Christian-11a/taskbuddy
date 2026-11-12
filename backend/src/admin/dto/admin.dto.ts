@@ -166,6 +166,11 @@ export class ListAuditQueryDto {
   @IsUUID()
   actor_id?: string;
 
+  /** The row the action was taken on, e.g. a user for `user.suspend`. */
+  @IsOptional()
+  @IsUUID()
+  target_id?: string;
+
   @IsOptional()
   @IsDateString()
   from?: string;

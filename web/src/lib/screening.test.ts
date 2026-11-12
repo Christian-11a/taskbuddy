@@ -161,6 +161,28 @@ describe("suspension flag", () => {
   });
 });
 
+describe("past suspensions", () => {
+  it("flags one suspension on record and shows the latest in Manila's day", () => {
+    const report = screenProvider(input({
+      pastSuspensions: { count: 1, latestAt: "2026-10-04T17:30:00Z", latestReason: "No-show twice" },
+    }));
+    expect(report.summary).toBe("1 thing to check");
+    expect(row(report, "Past suspensions").flagged).toBe(true);
+    expect(row(report, "Past suspensions").value).toBe("1 time (latest Oct 5, 2026 — No-show twice)");
+  });
+
+  it("shows None for a clean record and Not available when the audit log could not be read", () => {
+    expect(row(screenProvider(input({ pastSuspensions: { count: 0, latestAt: null, latestReason: null } })), "Past suspensions"))
+      .toEqual({ label: "Past suspensions", value: "None", flagged: false });
+    expect(row(screenProvider(input({ pastSuspensions: null })), "Past suspensions").value).toBe("Not available");
+  });
+
+  it("says how many times", () => {
+    const report = screenProvider(input({ pastSuspensions: { count: 3, latestAt: "2026-10-04T01:00:00Z", latestReason: null } }));
+    expect(row(report, "Past suspensions").value).toBe("3 times (latest Oct 4, 2026)");
+  });
+});
+
 describe("screenProvider", () => {
   it("reports no concerns and shows the soonest expiry when every rule is clear", () => {
     const report = screenProvider(input());

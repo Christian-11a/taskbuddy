@@ -64,6 +64,7 @@ const IDENTITY_LABEL: Record<string, string> = {
   approved: 'approved',
   pending: 'under review',
   rejected: 'not accepted',
+  revoked: 'revoked',
   none: 'not started',
 };
 const CERTIFICATE_LABEL: Record<string, string> = {
@@ -71,13 +72,14 @@ const CERTIFICATE_LABEL: Record<string, string> = {
   pending: 'under review',
   expired: 'expired',
   rejected: 'not accepted',
+  revoked: 'revoked',
   approved: 'approved',
 };
 
 /** What the certificate row's action says, or null when nothing is left to do. */
 export function certificateActionLabel(certificate: string): string | null {
   if (certificate === 'none') return 'Upload your certificate';
-  if (certificate === 'rejected') return 'Upload a new certificate';
+  if (certificate === 'rejected' || certificate === 'revoked') return 'Upload a new certificate';
   if (certificate === 'expired') return 'Upload renewal';
   return null;
 }

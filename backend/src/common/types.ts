@@ -27,7 +27,8 @@ export type WalletTxnKind =
   // A card-funded payout sent on to the provider's Stripe account (0027).
   | 'connect_transfer';
 export type BookingStatus = 'scheduled' | 'completed' | 'cancelled';
-export type VerificationStatus = 'pending' | 'approved' | 'rejected';
+export type VerificationStatus =
+  'pending' | 'approved' | 'rejected' | 'revoked';
 export type VerificationMethod = 'manual' | 'stripe_identity';
 export type DevicePlatform = 'ios' | 'android' | 'web';
 

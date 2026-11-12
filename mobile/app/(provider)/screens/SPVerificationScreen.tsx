@@ -452,11 +452,14 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
   /** Which view is on screen; the rules live in src/lib/verifyFlow.ts. */
   // New API: the ID status comes from `identity`; an approved ID without the certificate is not "approved".
-  const idStatus: 'pending' | 'approved' | 'rejected' | null = newShape
+  // A revoked ID (migration 0080) follows the rejected path: the provider uploads new photos.
+  const rawIdStatus = newShape
     ? summary.verified || summary.identity === 'approved'
       ? 'approved'
       : summary.identity === 'none' ? null : summary.identity
     : verification?.status ?? null;
+  const idRevoked = rawIdStatus === 'revoked';
+  const idStatus: 'pending' | 'approved' | 'rejected' | null = idRevoked ? 'rejected' : rawIdStatus;
   const baseView = pickVerifyView({
     loading,
     status: idStatus,
@@ -621,12 +624,21 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
         {view === 'rejected' && verification && (
           <>
-            <StatusCard
-              tone="closed"
-              overline={`Not approved · ${shortDate(verification.reviewed_at ?? verification.submitted_at)}`}
-              title="Your documents were rejected."
-              body={rejectionNote(verification.rejection_reason) ?? undefined}
-            />
+            {idRevoked ? (
+              <StatusCard
+                tone="closed"
+                overline={`Revoked · ${shortDate(verification.revoked_at ?? verification.reviewed_at ?? verification.submitted_at)}`}
+                title="Your ID verification was revoked."
+                body={verification.revoke_reason?.trim() || 'Upload new photos to get verified again.'}
+              />
+            ) : (
+              <StatusCard
+                tone="closed"
+                overline={`Not approved · ${shortDate(verification.reviewed_at ?? verification.submitted_at)}`}
+                title="Your documents were rejected."
+                body={rejectionNote(verification.rejection_reason) ?? undefined}
+              />
+            )}
             {newShape && <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />}
             <Text style={styles.sectionTitle} accessibilityRole="header">How to fix it</Text>
             <CheckList items={HOW_TO_FIX} />

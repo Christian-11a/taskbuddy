@@ -352,6 +352,7 @@ const VERIFICATION_DISPLAY: Record<NonNullable<AdminUser["verification"]>, { lab
   IDENTITY_ONLY: { label: "Identity approved · certificate needed", badgeClass: "badge-pending" },
   PENDING: { label: "Pending review", badgeClass: "badge-pending" },
   REJECTED: { label: "Rejected", badgeClass: "badge-rejected" },
+  REVOKED: { label: "Revoked", badgeClass: "badge-rejected" },
   UNVERIFIED: { label: "Not submitted", badgeClass: "badge-processing" },
 };
 

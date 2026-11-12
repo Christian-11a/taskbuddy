@@ -52,7 +52,7 @@ export interface AdminUser {
   verification?: ProviderVerificationState | null;
 }
 
-export type ProviderVerificationState = "VERIFIED" | "IDENTITY_ONLY" | "PENDING" | "REJECTED" | "UNVERIFIED";
+export type ProviderVerificationState = "VERIFIED" | "IDENTITY_ONLY" | "PENDING" | "REJECTED" | "REVOKED" | "UNVERIFIED";
 
 // ─── Verifications ────────────────────────────────────────────────────────────
 

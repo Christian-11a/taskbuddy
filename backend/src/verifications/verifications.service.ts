@@ -16,6 +16,7 @@ import { VERIFICATION_DOCS_BUCKET } from '../uploads/uploads.constants';
 import {
   ListVerificationsQueryDto,
   RejectVerificationDto,
+  RevokeVerificationDto,
   StartIdentitySessionDto,
   SubmitVerificationDto,
 } from './dto/verifications.dto';
@@ -48,6 +49,8 @@ interface VerificationRow {
   reviewed_at: string | null;
   reviewed_by: string | null;
   rejection_reason: string | null;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
   profiles?: { full_name: string } | null;
 }
 
@@ -58,7 +61,7 @@ function isStripeError(e: unknown): boolean {
 }
 
 type CertificateState =
-  'none' | 'pending' | 'approved' | 'rejected' | 'expired';
+  'none' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
 
 type IdentityDecision = {
   provider_id: string;
@@ -400,7 +403,7 @@ export class VerificationsService {
     providerId: string,
     latestStatus?: string,
   ): Promise<{
-    identity: 'none' | 'pending' | 'approved' | 'rejected';
+    identity: 'none' | 'pending' | 'approved' | 'rejected' | 'revoked';
     certificate: CertificateState;
     verified: boolean;
     services: {
@@ -431,9 +434,14 @@ export class VerificationsService {
       identity_verified: boolean | null;
       service_categories: { name: string } | null;
     } | null;
-    let identity: 'none' | 'pending' | 'approved' | 'rejected' = 'none';
+    let identity: 'none' | 'pending' | 'approved' | 'rejected' | 'revoked' =
+      'none';
     if (pp?.identity_verified) identity = 'approved';
-    else if (latestStatus === 'pending' || latestStatus === 'rejected')
+    else if (
+      latestStatus === 'pending' ||
+      latestStatus === 'rejected' ||
+      latestStatus === 'revoked'
+    )
       identity = latestStatus;
 
     const services: {
@@ -483,6 +491,7 @@ export class VerificationsService {
           return 'approved';
         if (mine.some((r) => r.status === 'pending')) return 'pending';
         if (mine.some((r) => r.status === 'approved')) return 'expired';
+        if (mine.some((r) => r.status === 'revoked')) return 'revoked';
         if (mine.some((r) => r.status === 'rejected')) return 'rejected';
         return 'none';
       };
@@ -749,6 +758,28 @@ export class VerificationsService {
     return this.rawRow(id);
   }
 
+  /**
+   * Takes back an approved identity verification (0080): status, Verified
+   * refresh, withdrawn proposals, audit row and the provider's notice in one
+   * SQL transaction. 409 unless the submission is approved.
+   */
+  async revoke(admin: Profile, id: string, dto: RevokeVerificationDto) {
+    const { data, error } = await this.supabase.admin.rpc(
+      'admin_revoke_verification',
+      {
+        p_kind: 'identity',
+        p_id: id,
+        p_admin_id: admin.id,
+        p_reason: dto.reason.trim(),
+      },
+    );
+    if (error) throw rpcError(error);
+    return {
+      ...(await this.rawRow(id)),
+      revoke: data as { verified: boolean; withdrawn_proposals: number },
+    };
+  }
+
   private async rawRow(id: string) {
     const { data, error } = await this.supabase.admin
       .from('provider_verifications')
@@ -873,6 +904,8 @@ export class VerificationsService {
       submitted_at: row.submitted_at,
       reviewed_at: row.reviewed_at,
       rejection_reason: row.rejection_reason,
+      revoked_at: row.revoked_at ?? null,
+      revoke_reason: row.revoke_reason ?? null,
       documents,
     };
   }

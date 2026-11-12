@@ -47,6 +47,9 @@ export class AdminActionsService {
     const offset = query.offset ?? 0;
     const limit = query.limit ?? 50;
     const search = likeSearchParam(query.search);
+    if (search && query.target_id) {
+      throw new BadRequestException('Search cannot be combined with target_id');
+    }
     if (search) {
       const { data, error } = await this.supabase.admin.rpc(
         'admin_search_audit',
@@ -70,6 +73,7 @@ export class AdminActionsService {
       .range(offset, offset + limit - 1);
     if (query.action) builder = builder.eq('action', query.action);
     if (query.actor_id) builder = builder.eq('actor_id', query.actor_id);
+    if (query.target_id) builder = builder.eq('target_id', query.target_id);
     if (query.from) builder = builder.gte('created_at', query.from);
     if (query.to) builder = builder.lte('created_at', query.to);
 

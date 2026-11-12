@@ -329,7 +329,8 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   useRefreshOnForeground(reloadPayout, true);
   const payoutLinked = payoutLink ? payoutLink.linked : null;
   const idState = verification?.identity ?? verification?.status;
-  const verifyState: VerifyState = idState === 'pending' ? 'pending' : idState === 'rejected' ? 'rejected' : 'none';
+  // A revoked ID (migration 0080) is handled like a rejection: upload new photos.
+  const verifyState: VerifyState = idState === 'pending' ? 'pending' : idState === 'rejected' || idState === 'revoked' ? 'rejected' : 'none';
   useEffect(() => {
     if (!isVerified) void refreshProfile();
     // Only on mount — refreshProfile itself is stable (useCallback([])), and

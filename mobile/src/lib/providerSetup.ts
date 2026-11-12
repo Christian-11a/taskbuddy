@@ -58,6 +58,8 @@ function verifyCopy(
       return { subtitle: 'ID approved · certificate under review', actionLabel: 'View status', opensCertificate: true };
     case 'rejected':
       return { subtitle: 'Certificate not accepted · upload a new one', actionLabel: 'Upload again', opensCertificate: true };
+    case 'revoked':
+      return { subtitle: 'Certificate revoked · upload a new one', actionLabel: 'Upload again', opensCertificate: true };
     case 'expired':
       return { subtitle: 'Certificate expired · upload a renewed one', actionLabel: 'Renew certificate', opensCertificate: true };
     default:

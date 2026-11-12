@@ -31,6 +31,7 @@ function createSupabaseMock(resultsByTable: Record<string, QueryResult[]>) {
       'delete',
       'eq',
       'neq',
+      'in',
       'or',
       'order',
       'range',
@@ -254,6 +255,54 @@ describe('CredentialsService', () => {
     expect(result.credentials[0]).not.toHaveProperty('document_path');
   });
 
+  it('revokes through admin_revoke_verification with the trimmed reason', async () => {
+    const { service, rpc } = build({
+      provider_credentials: [
+        {
+          data: row({ status: 'revoked', revoke_reason: 'Fake number' }),
+          error: null,
+        },
+      ],
+    });
+    rpc.mockResolvedValue({
+      data: { verified: false, withdrawn_proposals: 2 },
+      error: null,
+    });
+    const result = await service.revoke(admin, 'c1', {
+      reason: '  Number not found in TESDA records  ',
+    });
+    expect(rpc).toHaveBeenCalledWith('admin_revoke_verification', {
+      p_kind: 'credential',
+      p_id: 'c1',
+      p_admin_id: 'a1',
+      p_reason: 'Number not found in TESDA records',
+    });
+    expect(result.status).toBe('revoked');
+    expect(result.revoke).toEqual({ verified: false, withdrawn_proposals: 2 });
+    expect(result).not.toHaveProperty('document_path');
+  });
+
+  it('maps revoke errors: not approved is a conflict, unknown id is not found', async () => {
+    const { service, rpc } = build({});
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: {
+        code: 'TB409',
+        message: 'Only an approved verification can be revoked',
+      },
+    });
+    await expect(
+      service.revoke(admin, 'c1', { reason: 'A reason long enough' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    rpc.mockResolvedValueOnce({
+      data: null,
+      error: { code: 'TB404', message: 'Certificate not found' },
+    });
+    await expect(
+      service.revoke(admin, 'c1', { reason: 'A reason long enough' }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it('will not delete an approved credential', async () => {
     const { service, calls } = build({
       provider_credentials: [{ data: null, error: null }],
@@ -262,7 +311,10 @@ describe('CredentialsService', () => {
       NotFoundException,
     );
     expect(calls).toContainEqual(
-      expect.objectContaining({ method: 'neq', args: ['status', 'approved'] }),
+      expect.objectContaining({
+        method: 'in',
+        args: ['status', ['pending', 'rejected']],
+      }),
     );
   });
 });

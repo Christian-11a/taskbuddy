@@ -241,6 +241,7 @@ function verificationState(row: AdminUserApiRow): AdminUser["verification"] {
   if (row.latest_verification_status === "approved") return "IDENTITY_ONLY";
   if (row.latest_verification_status === "pending") return "PENDING";
   if (row.latest_verification_status === "rejected") return "REJECTED";
+  if (row.latest_verification_status === "revoked") return "REVOKED";
   return "UNVERIFIED";
 }
 
@@ -1561,8 +1562,11 @@ export interface VerificationHistoryEntry {
   providerName: string;
   /** What was decided: "Identity (ID + selfie)", "Identity (Stripe)" or "Certificate: <service> - <title>". */
   subject: string;
-  /** "expired" is an approved certificate whose expiry date has since passed (the API reports it that way). */
-  result: "approved" | "rejected" | "expired";
+  /**
+   * "expired" is an approved certificate whose expiry date has since passed (the API reports it that way).
+   * "revoked" is an approval an admin took back (migration 0080).
+   */
+  result: "approved" | "rejected" | "expired" | "revoked";
   reason: string | null;
   /** When it was decided; falls back to the submission date. */
   decidedAt: string;
@@ -1593,19 +1597,29 @@ export async function getScreeningRejections(): Promise<{ providerId: string }[]
 }
 
 /**
- * Every approved and rejected identity check and certificate, newest first.
- * The API has no reviewer name or search on these lists, so the page filters
- * by provider name on what is loaded here.
+ * Every approved, rejected and revoked identity check and certificate, newest
+ * first. The API has no reviewer name or search on these lists, so the page
+ * filters by provider name on what is loaded here. Revoked rows are optional:
+ * an API without migration 0080 refuses `status=revoked`, and the history
+ * still loads without them.
  */
 export async function getVerificationHistory(): Promise<VerificationHistoryEntry[]> {
   const results = ["approved", "rejected"] as const;
-  const [identity, certs] = await Promise.all([
+  // Only an API that does not know the status (400) is tolerated; other failures still fail the history.
+  const revokedOrNone = <T,>(load: Promise<T[]>) =>
+    load.catch((err: unknown) => {
+      if (err instanceof ApiError && err.status === 400) return [] as T[];
+      throw err;
+    });
+  const [identity, certs, revokedIdentity, revokedCerts] = await Promise.all([
     Promise.all(results.map((st) => fetchAllRows<AdminVerificationApiRow>(`/admin/verifications?status=${st}&include_documents=false`, "verifications"))),
     Promise.all(results.map((st) => fetchAllRows<AdminCredentialApiRow>(`/admin/credentials?status=${st}`, "credentials", CREDENTIALS_PAGE_SIZE))),
+    revokedOrNone(fetchAllRows<AdminVerificationApiRow>("/admin/verifications?status=revoked&include_documents=false", "verifications")),
+    revokedOrNone(fetchAllRows<AdminCredentialApiRow>("/admin/credentials?status=revoked", "credentials", CREDENTIALS_PAGE_SIZE)),
   ]);
   const entries: VerificationHistoryEntry[] = [];
-  for (const row of identity.flat()) {
-    if (row.status !== "approved" && row.status !== "rejected") continue;
+  for (const row of [...identity.flat(), ...revokedIdentity]) {
+    if (row.status !== "approved" && row.status !== "rejected" && row.status !== "revoked") continue;
     entries.push({
       id: `v:${row.id}`,
       kind: "identity",
@@ -1613,13 +1627,13 @@ export async function getVerificationHistory(): Promise<VerificationHistoryEntry
       providerName: row.full_name ?? "Unknown provider",
       subject: row.method === "stripe_identity" ? "Identity (Stripe)" : "Identity (ID + selfie)",
       result: row.status,
-      reason: row.rejection_reason,
-      decidedAt: row.reviewed_at ?? row.submitted_at,
+      reason: row.status === "revoked" ? (row.revoke_reason ?? null) : row.rejection_reason,
+      decidedAt: (row.status === "revoked" ? row.revoked_at : null) ?? row.reviewed_at ?? row.submitted_at,
     });
   }
-  for (const row of certs.flat()) {
+  for (const row of [...certs.flat(), ...revokedCerts]) {
     // The admin list reports an approved certificate past its expiry as "expired".
-    if (row.status !== "approved" && row.status !== "rejected" && row.status !== "expired") continue;
+    if (row.status === "pending") continue;
     entries.push({
       id: `c:${row.id}`,
       kind: "certificate",
@@ -1627,11 +1641,57 @@ export async function getVerificationHistory(): Promise<VerificationHistoryEntry
       providerName: row.profiles?.full_name ?? "Unknown provider",
       subject: `Certificate: ${row.service_categories?.name ?? `Category #${row.category_id}`} - ${row.title}`,
       result: row.status,
-      reason: row.rejection_reason,
-      decidedAt: row.reviewed_at ?? row.created_at,
+      reason: row.status === "revoked" ? (row.revoke_reason ?? null) : row.rejection_reason,
+      decidedAt: (row.status === "revoked" ? row.revoked_at : null) ?? row.reviewed_at ?? row.created_at,
     });
   }
   return entries.sort((a, b) => (a.decidedAt < b.decidedAt ? 1 : a.decidedAt > b.decidedAt ? -1 : 0));
+}
+
+/** The history entry id without its "v:" / "c:" prefix. */
+function historyRowId(entry: Pick<VerificationHistoryEntry, "id">): string {
+  return entry.id.slice(2);
+}
+
+/** Approved identity checks and certificates (including expired certificates) can be revoked. */
+export function canRevoke(entry: Pick<VerificationHistoryEntry, "result">): boolean {
+  return entry.result === "approved" || entry.result === "expired";
+}
+
+/**
+ * POST /admin/verifications/:id/revoke or /admin/credentials/:id/revoke (0080).
+ * The server removes Verified, withdraws not-yet-hired proposals, writes the
+ * audit row and tells the provider, all in one transaction.
+ */
+export async function revokeVerification(
+  entry: Pick<VerificationHistoryEntry, "id" | "kind">,
+  reason: string,
+): Promise<{ verified: boolean; withdrawnProposals: number }> {
+  const path = entry.kind === "identity" ? "/admin/verifications" : "/admin/credentials";
+  const res = await client.post<{ revoke?: { verified: boolean; withdrawn_proposals: number } }>(
+    `${path}/${historyRowId(entry)}/revoke`,
+    { reason: reason.trim() },
+  );
+  return { verified: res.revoke?.verified ?? false, withdrawnProposals: res.revoke?.withdrawn_proposals ?? 0 };
+}
+
+export interface PastSuspensions {
+  count: number;
+  latestAt: string | null;
+  latestReason: string | null;
+}
+
+/**
+ * Every `user.suspend` audit row for one user (GET /admin/audit?target_id=…),
+ * newest first. Throws when the API has no target filter yet.
+ */
+export async function getPastSuspensions(userId: string): Promise<PastSuspensions> {
+  const res = await client.get<{ actions: AdminActionApiRow[]; total: number }>(
+    `/admin/audit?action=user.suspend&target_id=${encodeURIComponent(userId)}&limit=100&offset=0`,
+  );
+  const latest = res.actions[0];
+  const reason = latest?.metadata && typeof latest.metadata.reason === "string" ? latest.metadata.reason : null;
+  return { count: res.total, latestAt: latest?.created_at ?? null, latestReason: reason };
 }
 
 export interface CaseDecision {

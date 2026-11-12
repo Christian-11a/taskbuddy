@@ -14,6 +14,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { Roles } from '../auth/roles.decorator';
 import type { Profile } from '../common/types';
 import { CredentialsService } from './credentials.service';
+import { RevokeVerificationDto } from '../verifications/dto/verifications.dto';
 import {
   CreateCredentialDto,
   ListCredentialsQueryDto,
@@ -75,5 +76,15 @@ export class AdminCredentialsController {
     @Body() dto: RejectCredentialDto,
   ) {
     return this.credentials.reject(admin, id, dto);
+  }
+
+  /** Take back an approved certificate (0080). Reason required. */
+  @Post(':id/revoke')
+  revoke(
+    @CurrentUser() admin: Profile,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RevokeVerificationDto,
+  ) {
+    return this.credentials.revoke(admin, id, dto);
   }
 }

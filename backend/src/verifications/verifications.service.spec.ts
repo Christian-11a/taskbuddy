@@ -544,6 +544,61 @@ describe('VerificationsService', () => {
     });
   });
 
+  describe('revoke', () => {
+    it('revokes an approved identity in one SQL call with the trimmed reason', async () => {
+      const { service, calls } = makeService(
+        {
+          provider_verifications: [
+            {
+              data: { id: 'v1', status: 'revoked', revoke_reason: 'Fake ID' },
+              error: null,
+            },
+          ],
+        },
+        {
+          admin_revoke_verification: {
+            verified: false,
+            withdrawn_proposals: 1,
+          },
+        },
+      );
+
+      const result = await service.revoke(admin, 'v1', {
+        reason: '  The ID photo was edited  ',
+      });
+
+      expect(
+        calls.find((c) => c.table === 'rpc:admin_revoke_verification')?.args[0],
+      ).toEqual({
+        p_kind: 'identity',
+        p_id: 'v1',
+        p_admin_id: 'a1',
+        p_reason: 'The ID photo was edited',
+      });
+      expect(result).toMatchObject({
+        status: 'revoked',
+        revoke: { verified: false, withdrawn_proposals: 1 },
+      });
+    });
+
+    it('409s when the verification is not approved', async () => {
+      const { service } = makeService(
+        {},
+        {
+          admin_revoke_verification: {
+            __error: {
+              code: 'TB409',
+              message: 'Only an approved verification can be revoked',
+            },
+          },
+        },
+      );
+      await expect(
+        service.revoke(admin, 'v1', { reason: 'A reason long enough' }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   describe('verificationState services', () => {
     it('returns the approved identity and primary certificate through mine', async () => {
       const { supabase } = createSupabaseMock({
@@ -846,6 +901,8 @@ describe('VerificationsService', () => {
         submitted_at: '2026-08-01T00:00:00Z',
         reviewed_at: null,
         rejection_reason: null,
+        revoked_at: null,
+        revoke_reason: null,
         document_type: null,
         documents: ['https://signed/doc', 'https://signed/doc'],
       });

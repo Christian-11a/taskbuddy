@@ -22,6 +22,8 @@ export const RATING_MIN_COMPLETED_JOBS = 3;
 export const CERTIFICATE_EXPIRY_WITHIN_DAYS = 30;
 /** Two or more rejected identity checks or certificates is a concern. */
 export const REJECTED_VERIFICATIONS_MIN = 2;
+/** One suspension on record (past or current) is a concern. */
+export const PAST_SUSPENSIONS_MIN = 1;
 
 export const SCREENING_NOT_AVAILABLE = "Not available";
 
@@ -59,6 +61,11 @@ export interface ScreeningInput {
   /** Null when the credentials list failed. An empty list means no approved certificate. */
   certificates: readonly ScreeningCertificate[] | null;
   rejectedVerifications: number | null;
+  /**
+   * Suspensions in the audit log (`user.suspend` rows for this provider),
+   * including a current one. Null when the audit log could not be read.
+   */
+  pastSuspensions?: { count: number; latestAt: string | null; latestReason: string | null } | null;
   /** YYYY-MM-DD, the date expiry is compared with. */
   today: string;
 }
@@ -109,6 +116,10 @@ export function flagsRejections(count: number | null): boolean {
 /** Current suspension only. Past suspensions are not on the user row. */
 export function flagsSuspension(suspended: boolean | null): boolean {
   return suspended === true;
+}
+
+export function flagsPastSuspensions(count: number | null): boolean {
+  return count !== null && count >= PAST_SUSPENSIONS_MIN;
 }
 
 /**
@@ -176,7 +187,9 @@ export function screenProvider(input: ScreeningInput): ScreeningReport {
   const certificate = input.certificates ? flagsCertificate(input.certificates, input.today) : false;
   const rejections = flagsRejections(input.rejectedVerifications);
   const suspension = flagsSuspension(user ? user.suspended : null);
-  const concerns = [cancellation, disputeFlag, rating, certificate, rejections, suspension].filter(Boolean).length;
+  const past = input.pastSuspensions ?? null;
+  const pastFlag = flagsPastSuspensions(past ? past.count : null);
+  const concerns = [cancellation, disputeFlag, rating, certificate, rejections, suspension, pastFlag].filter(Boolean).length;
   const expiry = certificateValue(input.certificates, input.today);
 
   return {
@@ -194,9 +207,8 @@ export function screenProvider(input: ScreeningInput): ScreeningReport {
       { label: "Certificate expiry", value: expiry.value, flagged: certificate },
       { label: "Past rejected verifications", value: countText(input.rejectedVerifications), flagged: rejections },
       { label: "Current suspension", value: suspensionText(user), flagged: suspension },
-      // searchAuditLog filters by action and free-text search, not by target id
-      // (the audit query has actor_id, not target_id). The whole log is not loaded.
-      { label: "Past suspensions", value: SCREENING_NOT_AVAILABLE, flagged: false },
+      // GET /admin/audit?action=user.suspend&target_id=… (needs the API with the target filter).
+      { label: "Past suspensions", value: pastSuspensionsText(past), flagged: pastFlag },
     ],
   };
 }
@@ -229,6 +241,17 @@ function suspensionText(user: ScreeningUser | null): string {
   if (!user.suspended) return "Not suspended";
   const until = user.suspendedUntil ? `Until ${user.suspendedUntil}` : "Indefinite";
   return user.suspensionReason ? `${until} — ${user.suspensionReason}` : until;
+}
+
+function pastSuspensionsText(past: ScreeningInput["pastSuspensions"] | null): string {
+  if (!past) return SCREENING_NOT_AVAILABLE;
+  if (past.count === 0) return "None";
+  const times = past.count === 1 ? "1 time" : `${past.count} times`;
+  if (!past.latestAt) return times;
+  // The audit timestamp is UTC; show Manila's day.
+  const at = Date.parse(past.latestAt);
+  const latest = Number.isNaN(at) ? past.latestAt : formatDate(new Date(at + 8 * 3600_000).toISOString());
+  return past.latestReason ? `${times} (latest ${latest} — ${past.latestReason})` : `${times} (latest ${latest})`;
 }
 
 function certificateValue(certificates: readonly ScreeningCertificate[] | null, today: string): { value: string } {

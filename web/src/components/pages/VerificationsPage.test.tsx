@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VerificationsPage } from "./VerificationsPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -19,6 +19,9 @@ vi.mock("@/lib/services", () => ({
   getScreeningBookings: vi.fn(),
   getScreeningCertificates: vi.fn(),
   getScreeningRejections: vi.fn(),
+  getPastSuspensions: () => Promise.resolve({ count: 0, latestAt: null, latestReason: null }),
+  revokeVerification: vi.fn(),
+  canRevoke: (entry: { result: string }) => entry.result === "approved" || entry.result === "expired",
 }));
 
 const mocked = vi.mocked(services);
@@ -230,7 +233,7 @@ describe("VerificationsPage", () => {
     expect(await screen.findByRole("heading", { name: "Screening" })).toBeInTheDocument();
     expect(await screen.findByText("1 thing to check")).toBeInTheDocument();
     expect(screen.getByText("Mar 10, 2024")).toBeInTheDocument();
-    expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("Not available");
+    await waitFor(() => expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("None"));
     expect(screen.getByText("Check")).toBeInTheDocument();
     await user.click(screen.getByText("Ben Cruz"));
     expect(mocked.getScreeningBookings).toHaveBeenCalledTimes(1);
@@ -309,6 +312,36 @@ describe("VerificationsPage", () => {
       await user.type(screen.getByLabelText("Search by provider"), "ana");
       expect(screen.getAllByRole("row").slice(1)).toHaveLength(1);
       expect(screen.queryByText("Photo is blurry")).not.toBeInTheDocument();
+    });
+
+    it("revokes an approved row with a required reason, then reloads", async () => {
+      const user = await openHistory();
+      mocked.revokeVerification.mockResolvedValue({ verified: false, withdrawnProposals: 2 });
+      // Rejected rows cannot be revoked; approved and expired ones can.
+      expect(screen.getAllByRole("button", { name: /^Revoke / })).toHaveLength(2);
+      await user.click(screen.getByRole("button", { name: "Revoke Identity (ID + selfie) for Ana Reyes" }));
+      const dialog = await screen.findByRole("alertdialog");
+      const confirm = within(dialog).getByRole("button", { name: "Revoke" });
+      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), "too short");
+      expect(confirm).toBeDisabled();
+      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), " — the ID photo was edited");
+      await user.click(confirm);
+      expect(mocked.revokeVerification).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "v:1", kind: "identity" }),
+        "too short — the ID photo was edited",
+      );
+      expect(await screen.findByText("Revoked. The provider is no longer verified. 2 pending proposals were withdrawn.")).toBeInTheDocument();
+      expect(mocked.getVerificationHistory).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps the dialog open with the server message when a revoke fails", async () => {
+      const user = await openHistory();
+      mocked.revokeVerification.mockRejectedValue(new Error("This was already revoked"));
+      await user.click(screen.getByRole("button", { name: "Revoke Identity (ID + selfie) for Ana Reyes" }));
+      const dialog = await screen.findByRole("alertdialog");
+      await user.type(within(dialog).getByLabelText("Revoke reason (required)"), "The ID photo was edited");
+      await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent("This was already revoked");
     });
 
     it("has no approve or reject actions", async () => {

@@ -59,7 +59,7 @@ export interface AdminUserApiRow {
   suspension_reason: string | null;
   /** Added by migration 0034. Null for non-providers. */
   is_verified?: boolean | null;
-  latest_verification_status?: "pending" | "approved" | "rejected" | null;
+  latest_verification_status?: "pending" | "approved" | "rejected" | "revoked" | null;
 }
 
 export interface ListUsersApiResponse {
@@ -139,7 +139,7 @@ export interface AnalyticsSummaryApiResponse {
 // Backend enums are lowercase, matching job_status/user_role; the adapters
 // uppercase them for display.
 
-export type VerificationStatusApi = "pending" | "approved" | "rejected";
+export type VerificationStatusApi = "pending" | "approved" | "rejected" | "revoked";
 
 export interface AdminVerificationApiRow {
   id: string;
@@ -150,6 +150,9 @@ export interface AdminVerificationApiRow {
   submitted_at: string;
   reviewed_at: string | null;
   rejection_reason: string | null;
+  /** Set when an admin took back an approval (migration 0080). */
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
   /** Which government ID the provider says they uploaded (migration 0034). */
   document_type?: string | null;
   /** Short-lived signed URLs — the documents bucket is private. */
@@ -473,9 +476,12 @@ export interface AdminCredentialApiRow {
   credential_number: string | null;
   issued_on: string | null;
   expires_on: string | null;
-  status: "pending" | "approved" | "rejected" | "expired";
+  status: "pending" | "approved" | "rejected" | "expired" | "revoked";
   rejection_reason: string | null;
   reviewed_at: string | null;
+  /** Set when an admin took back an approval (migration 0080). */
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
   created_at: string;
   document_url: string | null;
   service_categories?: { id: number; name: string } | null;

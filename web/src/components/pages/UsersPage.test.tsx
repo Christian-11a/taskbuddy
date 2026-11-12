@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { UsersPage, bulkMessage } from "./UsersPage";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -19,6 +19,9 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getScreeningBookings: vi.fn().mockResolvedValue([]),
     getScreeningCertificates: vi.fn().mockResolvedValue([]),
     getScreeningRejections: vi.fn().mockResolvedValue([]),
+    getPastSuspensions: () => Promise.resolve({ count: 0, latestAt: null, latestReason: null }),
+    getVerificationHistory: () => Promise.resolve([]),
+    revokeVerification: vi.fn(),
   };
 });
 
@@ -439,7 +442,7 @@ describe("UsersPage — provider screening", () => {
     expect(await screen.findByText("1 thing to check")).toBeInTheDocument();
     expect(screen.getByText("66.7% (2/3)")).toBeInTheDocument();
     expect(screen.getByText("Check")).toBeInTheDocument();
-    expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("Not available");
+    await waitFor(() => expect(screen.getByText("Past suspensions").parentElement).toHaveTextContent("None"));
 
     await user.click(screen.getAllByRole("button", { name: "Close" })[0]);
     await user.click(screen.getByText("Jamie Kim"));

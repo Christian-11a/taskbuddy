@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsIn,
@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsUUID,
   IsString,
+  Length,
   MaxLength,
 } from 'class-validator';
 import type { VerificationStatus } from '../../common/types';
@@ -66,7 +67,7 @@ export class StartIdentitySessionDto {
 
 export class ListVerificationsQueryDto {
   @IsOptional()
-  @IsIn(['pending', 'approved', 'rejected'])
+  @IsIn(['pending', 'approved', 'rejected', 'revoked'])
   status?: VerificationStatus;
 
   @IsOptional()
@@ -90,6 +91,19 @@ export class RejectVerificationDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+}
+
+/**
+ * `POST /admin/verifications/:id/revoke` and `POST /admin/credentials/:id/revoke`
+ * (0080). The reason is shown to the provider and kept in the audit log.
+ */
+export class RevokeVerificationDto {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(10, 500)
+  reason!: string;
 }
 
 export class ListVerificationCasesQueryDto {
