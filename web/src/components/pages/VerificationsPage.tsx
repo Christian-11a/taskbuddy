@@ -38,6 +38,7 @@ import { ApiError } from "@/lib/api/client";
 import { decideVerificationCase, getVerificationCases, getVerificationHistory, type VerificationCase, type VerificationHistoryEntry } from "@/lib/services";
 import { ProviderScreeningSection, useScreeningLists } from "@/components/admin/ProviderScreening";
 import { resultBadge } from "@/components/admin/RevokeVerification";
+import { ClearanceQueue } from "@/components/admin/ClearanceQueue";
 
 /** The API accepts a note of up to 500 characters. */
 const NOTE_MAX = 500;
@@ -158,15 +159,26 @@ function DocumentView({ url, title, broken, onBroken, onRefresh }: { url: string
  * approve here on purpose. See docs/TaskBuddyCompleteRefinement.md §28.
  */
 export function VerificationsPage() {
-  const [tab, setTab] = useState<"review" | "history">("review");
+  const [tab, setTab] = useState<VerificationTab>("review");
   const tabs = <VerificationTabs tab={tab} onChange={setTab} />;
+  if (tab === "clearances") {
+    return (
+      <div>
+        <PageHeader eyebrow="Operations" title="Verifications" description="NBI and police clearances submitted by providers." />
+        {tabs}
+        <ClearanceQueue />
+      </div>
+    );
+  }
   return tab === "review" ? <ReviewQueue tabs={tabs} /> : <HistoryView tabs={tabs} />;
 }
 
-function VerificationTabs({ tab, onChange }: { tab: "review" | "history"; onChange: (t: "review" | "history") => void }) {
+type VerificationTab = "review" | "clearances" | "history";
+
+function VerificationTabs({ tab, onChange }: { tab: VerificationTab; onChange: (t: VerificationTab) => void }) {
   return (
     <div role="tablist" aria-label="Verifications" className="mb-4 flex gap-1 border-b border-border">
-      {([["review", "To review"], ["history", "History"]] as const).map(([key, label]) => (
+      {([["review", "To review"], ["clearances", "Clearances"], ["history", "History"]] as const).map(([key, label]) => (
         <button
           key={key}
           type="button"

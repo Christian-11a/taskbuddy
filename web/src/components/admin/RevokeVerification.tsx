@@ -51,8 +51,11 @@ export function revokedNotice(count: number, result: { verified: boolean; withdr
 /** The confirmation text for what is ticked. */
 export function revokeEffect(selected: readonly Pick<VerificationHistoryEntry, "kind">[], providerName: string): string {
   const identity = selected.some((entry) => entry.kind === "identity");
+  const onlyClearance = selected.length > 0 && selected.every((entry) => entry.kind === "clearance");
   const first = identity
     ? `${providerName} loses the Verified badge.`
+    : onlyClearance
+    ? `${providerName} loses the Verified badge while a clearance is required, until a new clearance is approved.`
     : `${providerName} can no longer take jobs in ${selected.length === 1 ? "this service" : "these services"} unless another valid certificate covers ${selected.length === 1 ? "it" : "them"}.`;
   return `${first} Proposals they have not been hired for yet are withdrawn, unless the client is already paying. Jobs they were hired for continue. They get a notification with your reason and can upload new documents.`;
 }
@@ -70,7 +73,7 @@ const linkClass = "text-primary underline-offset-2 hover:underline disabled:opac
  */
 function DocumentLinks({ entry }: { entry: VerificationHistoryEntry }) {
   const [images, setImages] = useState<ViewerImage[] | null>(
-    entry.kind === "certificate" && entry.documentUrl ? [{ label: entry.subject.replace(/^Certificate: /, ""), url: entry.documentUrl }] : null,
+    entry.kind !== "identity" && entry.documentUrl ? [{ label: entry.subject.replace(/^Certificate: /, ""), url: entry.documentUrl }] : null,
   );
   const [index, setIndex] = useState<number | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "failed">("idle");
@@ -78,7 +81,7 @@ function DocumentLinks({ entry }: { entry: VerificationHistoryEntry }) {
   if (entry.kind === "identity" && entry.subject.includes("Stripe")) {
     return <span className="text-subtle">Checked by Stripe, no copy kept</span>;
   }
-  if (entry.kind === "certificate" && !entry.documentUrl) return <span className="text-subtle">No file on record</span>;
+  if (entry.kind !== "identity" && !entry.documentUrl) return <span className="text-subtle">No file on record</span>;
 
   function open(at: number) {
     if (images) {
@@ -99,11 +102,11 @@ function DocumentLinks({ entry }: { entry: VerificationHistoryEntry }) {
 
   const viewer = images && <ImageViewer images={images} index={index} onIndexChange={setIndex} onClose={() => setIndex(null)} />;
 
-  if (entry.kind === "certificate") {
+  if (entry.kind !== "identity") {
     return (
       <>
         <button type="button" className={linkClass} onClick={() => open(0)}>
-          View certificate
+          {entry.kind === "clearance" ? "View clearance" : "View certificate"}
         </button>
         {viewer}
       </>
@@ -301,7 +304,7 @@ export function ProviderVerificationSection({
 
       <ConfirmDialog
         open={confirming}
-        title={picked.length === 1 ? `Revoke ${picked[0]?.kind === "identity" ? "the ID check" : "this certificate"}?` : `Revoke ${picked.length} items?`}
+        title={picked.length === 1 ? `Revoke ${picked[0]?.kind === "identity" ? "the ID check" : picked[0]?.kind === "clearance" ? "this clearance" : "this certificate"}?` : `Revoke ${picked.length} items?`}
         message={revokeEffect(picked, providerName)}
         confirmLabel="Revoke"
         busy={busy}

@@ -1560,10 +1560,11 @@ export async function getVerificationCaseCount(): Promise<number> {
 
 export interface VerificationHistoryEntry {
   id: string;
-  kind: "identity" | "certificate";
+  /** "clearance" is an NBI or police clearance (migration 0082). */
+  kind: "identity" | "certificate" | "clearance";
   providerId: string;
   providerName: string;
-  /** What was decided: "Identity (ID + selfie)", "Identity (Stripe)" or "Certificate: <service> - <title>". */
+  /** What was decided: "Identity (ID + selfie)", "Identity (Stripe)", "Certificate: <service> - <title>" or "NBI clearance - <number>". */
   subject: string;
   /**
    * "expired" is an approved certificate whose expiry date has since passed (the API reports it that way).
@@ -1651,6 +1652,19 @@ export async function getVerificationHistory(): Promise<VerificationHistoryEntry
       documentUrl: row.document_url ?? null,
     });
   }
+  for (const row of await getDecidedClearances()) {
+    entries.push({
+      id: `k:${row.id}`,
+      kind: "clearance",
+      providerId: row.provider_id,
+      providerName: row.profiles?.full_name ?? "Unknown provider",
+      subject: `${clearanceLabel(row.clearance_type)} - ${row.clearance_number}`,
+      result: row.status === "pending" ? "approved" : row.status,
+      reason: row.status === "revoked" ? (row.revoke_reason ?? null) : row.rejection_reason,
+      decidedAt: (row.status === "revoked" ? row.revoked_at : null) ?? row.reviewed_at ?? row.created_at,
+      documentUrl: row.document_url ?? null,
+    });
+  }
   return entries.sort((a, b) => (a.decidedAt < b.decidedAt ? 1 : a.decidedAt > b.decidedAt ? -1 : 0));
 }
 
@@ -1664,7 +1678,81 @@ export async function getIdentityDocuments(entry: Pick<VerificationHistoryEntry,
   return row.documents ?? [];
 }
 
-/** The history entry id without its "v:" / "c:" prefix. */
+// ─── NBI / police clearances (migration 0082) ───────────────────────────────
+
+export interface AdminClearanceApiRow {
+  id: string;
+  provider_id: string;
+  clearance_type: "nbi" | "police";
+  clearance_number: string;
+  issued_on: string | null;
+  expires_on: string;
+  /** "expired" is an approved clearance past its expiry date. */
+  status: "pending" | "approved" | "rejected" | "expired" | "revoked";
+  rejection_reason: string | null;
+  reviewed_at: string | null;
+  revoked_at?: string | null;
+  revoke_reason?: string | null;
+  created_at: string;
+  document_url: string | null;
+  profiles?: { full_name: string | null } | null;
+}
+
+export function clearanceLabel(type: AdminClearanceApiRow["clearance_type"]): string {
+  return type === "nbi" ? "NBI clearance" : "Police clearance";
+}
+
+/**
+ * An API without migration 0082 has no /admin/clearances (404); treat that as
+ * "none yet". Any other failure is shown, never read as an empty list.
+ */
+function clearancesOrNone<T>(load: Promise<T[]>): Promise<T[]> {
+  return load.catch((err: unknown) => {
+    if (err instanceof ApiError && err.status === 404) return [] as T[];
+    throw err;
+  });
+}
+
+async function getDecidedClearances(): Promise<AdminClearanceApiRow[]> {
+  const lists = await Promise.all(
+    (["approved", "rejected", "revoked"] as const).map((st) =>
+      clearancesOrNone(fetchAllRows<AdminClearanceApiRow>(`/admin/clearances?status=${st}`, "clearances", CREDENTIALS_PAGE_SIZE)),
+    ),
+  );
+  return lists.flat();
+}
+
+/** Clearances waiting for review, oldest first. */
+export async function getPendingClearances(): Promise<AdminClearanceApiRow[]> {
+  return clearancesOrNone(fetchAllRows<AdminClearanceApiRow>("/admin/clearances?status=pending", "clearances", CREDENTIALS_PAGE_SIZE));
+}
+
+/** POST /admin/clearances/:id/approve or /reject (a reason is required to reject). */
+export async function decideClearance(id: string, approve: boolean, reason?: string): Promise<void> {
+  if (approve) await client.post(`/admin/clearances/${id}/approve`);
+  else await client.post(`/admin/clearances/${id}/reject`, { reason: (reason ?? "").trim() });
+}
+
+export interface DuplicateSignal {
+  kind: "certificate_number" | "clearance_number" | "document" | "phone";
+  otherId: string;
+  otherName: string;
+  otherStatus: "active" | "suspended" | "deleted";
+}
+
+/**
+ * Other accounts sharing a certificate or clearance number, an uploaded
+ * document file, or a phone number (GET /admin/users/:id/duplicates, 0082).
+ * Throws when the API does not have it yet.
+ */
+export async function getDuplicateSignals(userId: string): Promise<DuplicateSignal[]> {
+  const res = await client.get<{ duplicates: { kind: DuplicateSignal["kind"]; other_id: string; other_name: string | null; other_status: DuplicateSignal["otherStatus"] }[] }>(
+    `/admin/users/${encodeURIComponent(userId)}/duplicates`,
+  );
+  return res.duplicates.map((d) => ({ kind: d.kind, otherId: d.other_id, otherName: d.other_name ?? "Unknown user", otherStatus: d.other_status }));
+}
+
+/** The history entry id without its "v:" / "c:" / "k:" prefix. */
 function historyRowId(entry: Pick<VerificationHistoryEntry, "id">): string {
   return entry.id.slice(2);
 }
@@ -1683,7 +1771,7 @@ export async function revokeVerification(
   entry: Pick<VerificationHistoryEntry, "id" | "kind">,
   reason: string,
 ): Promise<{ verified: boolean; withdrawnProposals: number }> {
-  const path = entry.kind === "identity" ? "/admin/verifications" : "/admin/credentials";
+  const path = entry.kind === "identity" ? "/admin/verifications" : entry.kind === "clearance" ? "/admin/clearances" : "/admin/credentials";
   const res = await client.post<{ revoke?: { verified: boolean; withdrawn_proposals: number } }>(
     `${path}/${historyRowId(entry)}/revoke`,
     { reason: reason.trim() },

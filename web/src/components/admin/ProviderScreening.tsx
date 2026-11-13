@@ -11,7 +11,7 @@ import {
   type ScreeningReport,
   type ScreeningUser,
 } from "@/lib/screening";
-import { getPastSuspensions, getScreeningBookings, getScreeningCertificates, getScreeningRejections, getUsers, type PastSuspensions } from "@/lib/services";
+import { getDuplicateSignals, getPastSuspensions, getScreeningBookings, getScreeningCertificates, getScreeningRejections, getUsers, type DuplicateSignal, type PastSuspensions } from "@/lib/services";
 
 export interface LoadedScreening {
   bookings: Awaited<ReturnType<typeof getScreeningBookings>> | null;
@@ -117,6 +117,20 @@ function usePastSuspensions(providerId: string): PastSuspensions | null {
   return state && state.id === providerId ? state.value : null;
 }
 
+/** Duplicate signals for one provider; null while loading or when the API does not have them yet. */
+function useDuplicateSignals(providerId: string): DuplicateSignal[] | null {
+  const [state, setState] = useState<{ id: string; value: DuplicateSignal[] | null } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getDuplicateSignals(providerId).then(
+      (value) => { if (!cancelled) setState({ id: providerId, value }); },
+      () => { if (!cancelled) setState({ id: providerId, value: null }); },
+    );
+    return () => { cancelled = true; };
+  }, [providerId]);
+  return state && state.id === providerId ? state.value : null;
+}
+
 export function ProviderScreeningSection({
   providerId,
   presetUser,
@@ -151,6 +165,7 @@ function LoadedScreeningSection({
   disputes: DisputeRow[];
 }) {
   const pastSuspensions = usePastSuspensions(providerId);
+  const duplicates = useDuplicateSignals(providerId);
   const fromList = lists.users?.find((user) => user.id === providerId);
   const user = presetUser ?? (fromList ? screeningUserFromAdmin(fromList) : null);
   const jobs = lists.bookings ? countProviderBookings(lists.bookings, providerId) : null;
@@ -170,6 +185,7 @@ function LoadedScreeningSection({
     certificates: lists.certificates ? lists.certificates.filter((certificate) => certificate.providerId === providerId) : null,
     rejectedVerifications: lists.rejections ? lists.rejections.filter((row) => row.providerId === providerId).length : null,
     pastSuspensions,
+    duplicates,
     today: screeningToday(),
   });
   return <ScreeningResults report={report} />;

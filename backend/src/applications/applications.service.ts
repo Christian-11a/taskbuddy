@@ -71,6 +71,13 @@ export class ApplicationsService {
         code: 'certificate_required',
       });
     }
+    if (gate === 'clearance') {
+      throw new ForbiddenException({
+        message:
+          'Upload a valid NBI or police clearance before applying to jobs',
+        code: 'clearance_required',
+      });
+    }
     // Payouts go straight to the linked account when a job is paid, so a
     // provider without one would win work they cannot be paid for.
     const { data: payoutAccount, error: payoutError } =
@@ -362,6 +369,13 @@ export class ApplicationsService {
         code: 'provider_not_certified',
       });
     }
+    if (gate === 'clearance') {
+      throw new ConflictException({
+        message:
+          'This provider has no valid NBI or police clearance and cannot be hired yet',
+        code: 'provider_not_cleared',
+      });
+    }
   }
 
   /**
@@ -511,7 +525,7 @@ export class ApplicationsService {
   async serviceGate(
     providerId: string,
     categoryId: number,
-  ): Promise<'ok' | 'identity' | 'certificate'> {
+  ): Promise<'ok' | 'identity' | 'certificate' | 'clearance'> {
     const { data: cats, error } = await this.supabase.admin.rpc(
       'provider_approved_categories',
       { p_provider_id: providerId },
@@ -528,7 +542,16 @@ export class ApplicationsService {
       .select('identity_verified')
       .eq('profile_id', providerId)
       .maybeSingle();
-    return pp?.identity_verified ? 'certificate' : 'identity';
+    if (!pp?.identity_verified) return 'identity';
+    // 0082: with the clearance requirement on, a missing NBI / police
+    // clearance blocks every service. An API without 0082 has no such
+    // function; then it can only be the certificate.
+    const { data: cleared, error: clearanceError } =
+      await this.supabase.admin.rpc('provider_clearance_ok', {
+        p_provider_id: providerId,
+      });
+    if (!clearanceError && cleared === false) return 'clearance';
+    return 'certificate';
   }
 
   private async categoryName(categoryId: number): Promise<string> {

@@ -1678,6 +1678,7 @@ describe("getVerificationHistory", () => {
       service_categories: { id: 1, name: "Plumbing" }, profiles: { full_name: "Ana" },
     });
     global.fetch = vi.fn((url: string) => {
+      if (String(url).includes("/admin/clearances")) return Promise.resolve(jsonResponse({ clearances: [], total: 0 }));
       if (String(url).includes("/admin/credentials?status=approved")) {
         return Promise.resolve(jsonResponse({ credentials: [cert("c-old", "expired", "2026-08-01T00:00:00Z"), cert("c-ok", "approved", "2026-10-01T00:00:00Z")], total: 2 }));
       }
@@ -1704,6 +1705,7 @@ describe("getVerificationHistory", () => {
       created_at: "2026-01-01T00:00:00Z", service_categories: { id: 1, name: "Plumbing" }, profiles: { full_name: "Ana" },
     };
     global.fetch = vi.fn((url: string) => {
+      if (String(url).includes("/admin/clearances")) return Promise.resolve(jsonResponse({ clearances: [], total: 0 }));
       const u = String(url);
       if (u.includes("/admin/credentials?status=revoked")) return Promise.resolve(jsonResponse({ credentials: [revokedCert], total: 1 }));
       if (u.includes("/admin/credentials")) return Promise.resolve(jsonResponse({ credentials: [], total: 0 }));
@@ -1714,11 +1716,47 @@ describe("getVerificationHistory", () => {
     ]);
 
     global.fetch = vi.fn((url: string) => {
+      if (String(url).includes("/admin/clearances")) return Promise.resolve(jsonResponse({ clearances: [], total: 0 }));
       const u = String(url);
       if (u.includes("status=revoked")) {
         return Promise.resolve(jsonResponse({ message: ["status must be one of the following values"], statusCode: 400 }, 400));
       }
       return Promise.resolve(jsonResponse(u.includes("/admin/credentials") ? { credentials: [], total: 0 } : { verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+    await expect(services.getVerificationHistory()).resolves.toEqual([]);
+  });
+
+  it("adds decided clearances to the history, and posts a clearance revoke to its own route", async () => {
+    const clearance = {
+      id: "k9", provider_id: "p1", clearance_type: "nbi", clearance_number: "A123", issued_on: null, expires_on: "2027-01-01",
+      status: "approved", rejection_reason: null, reviewed_at: "2026-11-10T00:00:00Z", created_at: "2026-11-09T00:00:00Z",
+      document_url: "https://files.example.com/k9.jpg", profiles: { full_name: "Ana" },
+    };
+    global.fetch = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/admin/clearances?status=approved")) return Promise.resolve(jsonResponse({ clearances: [clearance], total: 1 }));
+      if (u.includes("/admin/clearances")) return Promise.resolve(jsonResponse({ clearances: [], total: 0 }));
+      if (u.includes("/admin/credentials")) return Promise.resolve(jsonResponse({ credentials: [], total: 0 }));
+      return Promise.resolve(jsonResponse({ verifications: [], total: 0 }));
+    }) as unknown as typeof fetch;
+    const [entry] = await services.getVerificationHistory();
+    expect(entry).toMatchObject({ id: "k:k9", kind: "clearance", subject: "NBI clearance - A123", result: "approved", documentUrl: "https://files.example.com/k9.jpg" });
+
+    const calls: string[] = [];
+    global.fetch = vi.fn((url: string) => {
+      calls.push(String(url));
+      return Promise.resolve(jsonResponse({ revoke: { verified: false, withdrawn_proposals: 0 } }));
+    }) as unknown as typeof fetch;
+    await services.revokeVerification({ id: "k:k9", kind: "clearance" }, "Number not in NBI records");
+    expect(calls[0]).toContain("/admin/clearances/k9/revoke");
+  });
+
+  it("history still loads on an API without clearances (404)", async () => {
+    global.fetch = vi.fn((url: string) => {
+      const u = String(url);
+      if (u.includes("/admin/clearances")) return Promise.resolve(jsonResponse({ message: "Cannot GET", statusCode: 404 }, 404));
+      if (u.includes("/admin/credentials")) return Promise.resolve(jsonResponse({ credentials: [], total: 0 }));
+      return Promise.resolve(jsonResponse({ verifications: [], total: 0 }));
     }) as unknown as typeof fetch;
     await expect(services.getVerificationHistory()).resolves.toEqual([]);
   });
@@ -1739,6 +1777,7 @@ describe("getVerificationHistory", () => {
   it("asks the credentials list for no more than 100 rows a page (the API rejects more with a 400)", async () => {
     const urls: string[] = [];
     global.fetch = vi.fn((url: string) => {
+      if (String(url).includes("/admin/clearances")) return Promise.resolve(jsonResponse({ clearances: [], total: 0 }));
       urls.push(String(url));
       const u = String(url);
       const limit = Number(/limit=(\d+)/.exec(u)?.[1] ?? 0);
