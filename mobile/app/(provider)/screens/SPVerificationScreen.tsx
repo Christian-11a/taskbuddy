@@ -178,9 +178,11 @@ interface SPVerificationScreenProps {
   startAt?: 'certificate';
   /** With `startAt`: the service the certificate is for. Defaults to the provider's primary service. */
   categoryId?: number;
+  /** Opens the NBI / police clearance screen. */
+  onOpenClearance?: () => void;
 }
 
-export default function SPVerificationScreen({ onBack, onEditProfile, onVerified, startAt, categoryId }: SPVerificationScreenProps) {
+export default function SPVerificationScreen({ onBack, onEditProfile, onVerified, startAt, categoryId, onOpenClearance }: SPVerificationScreenProps) {
   const { Colors, V6Colors, styles } = useThemedStyles(createThemedStyles);
   const headerTop = useHeaderTop();
   // The API refuses a verification without a service profile, an address or
@@ -274,10 +276,17 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
 
   // The two-part state is only there on the new API; the old one keeps today's screens.
   const newShape = hasNewShape(verification);
-  const serverSummary = verificationSummary(verification);
+  const credentials = useAsyncData(
+    useCallback(() => (newShape ? api.myCredentials() : Promise.resolve([] as Credential[])), [newShape]),
+    [newShape],
+  );
   const primaryCategory = providerProfile?.category_id
     ?? verification?.services?.find((item) => item.primary)?.category_id
     ?? null;
+  const certificateRevokeReason = (credentials.data ?? []).find(
+    (item) => item.category_id === primaryCategory && item.status === 'revoked',
+  )?.revoke_reason;
+  const serverSummary = verificationSummary(verification, { certificateRevokeReason });
   const summary = submittedCertificate?.category_id === primaryCategory
     && serverSummary.certificate === 'none'
     ? {
@@ -291,10 +300,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
           : serverSummary.detail,
       }
     : serverSummary;
-  const credentials = useAsyncData(
-    useCallback(() => (newShape ? api.myCredentials() : Promise.resolve([] as Credential[])), [newShape]),
-    [newShape],
-  );
+  const clearanceState = verification?.clearance ?? 'none';
 
   // After a submission the old status stays loaded until the reload has run.
   // Keep the loader up until then, so that old status never shows again.
@@ -493,6 +499,14 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
     setCertCategory(category);
     setCertOnly(true);
   };
+  const statusRows = (
+    <CertificateStatusRows
+      summary={summary}
+      clearance={clearanceState}
+      onCertificateAction={() => openCertificate()}
+      onClearanceAction={onOpenClearance}
+    />
+  );
   /** Replace certificate on the review: back to the upload form for the same service (the certificate step is 3). */
   const replaceCertificate = () => {
     setCertReplacing(true);
@@ -616,7 +630,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                 <Text style={styles.checkAgain}>Check again</Text>
               </Tap>
             </StatusCard>
-            {newShape && <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />}
+            {newShape && statusRows}
             <Text style={styles.sectionTitle} accessibilityRole="header">Progress</Text>
             <PendingTimeline rows={pendingRows({ method: verification.method, fellBackToManual })} />
           </>
@@ -639,7 +653,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
                 body={rejectionNote(verification.rejection_reason) ?? undefined}
               />
             )}
-            {newShape && <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />}
+            {newShape && statusRows}
             <Text style={styles.sectionTitle} accessibilityRole="header">How to fix it</Text>
             <CheckList items={HOW_TO_FIX} />
           </>
@@ -649,19 +663,25 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
         {view === 'status' && (
           <>
             <StatusCard
-              tone={summary.certificate === 'pending' ? 'attention' : summary.certificate === 'none' ? 'action' : 'closed'}
+              tone={
+                summary.certificate === 'pending' || (summary.missing.includes('clearance') && clearanceState === 'pending')
+                  ? 'attention'
+                  : summary.certificate === 'none' || (summary.missing.includes('clearance') && clearanceState === 'none')
+                    ? 'action'
+                    : 'closed'
+              }
               overline="Verification"
               title={summary.headline}
               body={summary.detail}
             >
-              {summary.certificate === 'pending' && (
+              {(summary.certificate === 'pending' || (summary.missing.includes('clearance') && clearanceState === 'pending')) && (
                 <Tap onPress={() => { reload(); credentials.reload(); }} hitSlop={8} accessibilityRole="button" accessibilityLabel="Check again">
                   <Text style={styles.checkAgain}>Check again</Text>
                 </Tap>
               )}
             </StatusCard>
             <CertificateExpiryNotice credentials={credentials.data} serviceNames={serviceNames} onRenew={openCertificate} />
-            <CertificateStatusRows summary={summary} onCertificateAction={() => openCertificate()} />
+            {statusRows}
           </>
         )}
 
@@ -711,6 +731,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               icon={ShieldCheck}
               text="Your documents are stored privately and are only visible to TaskBuddy admins reviewing your account."
             />
+            {newShape && statusRows}
             {newShape && (
               <CertificateExpiryNotice credentials={credentials.data} serviceNames={serviceNames} onRenew={openCertificate} />
             )}

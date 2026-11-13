@@ -257,6 +257,24 @@ export interface Credential {
   service_categories: { id: number; name: string } | null;
 }
 
+export type ClearanceType = 'nbi' | 'police';
+
+/** An NBI or police clearance (migration 0082). `document_url` is only on the owner's copy. */
+export interface Clearance {
+  id: string;
+  clearance_type: ClearanceType;
+  clearance_number: string;
+  issued_on: string | null;
+  expires_on: string;
+  status: 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
+  rejection_reason: string | null;
+  revoke_reason: string | null;
+  reviewed_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+  document_url: string | null;
+}
+
 export interface PortfolioEntry {
  id: string; provider_id: string; caption: string; position: number;
  category_id: number | null; created_at: string; image_url: string;
@@ -486,6 +504,8 @@ export interface SignedUpload {
 /** Where a certificate stands for one service (migration 0068). */
 export type CertificateState = 'none' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
 export type IdentityState = 'none' | 'pending' | 'approved' | 'rejected' | 'revoked';
+/** Latest NBI / police clearance on `GET /verifications/me`. */
+export type ClearanceState = 'none' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
 
 /** One service a provider offers (the primary one and approved extras), with its certificate. */
 export interface VerifiedService {
@@ -503,6 +523,12 @@ export interface VerificationState {
   /** True only when identity and the primary certificate are both approved. */
   verified?: boolean;
   services?: VerifiedService[];
+  /** Latest NBI / police clearance. Omitted by an older API. */
+  clearance?: ClearanceState;
+  /** The switch: a clearance counts toward Verified only while this is true. */
+  clearance_required?: boolean;
+  /** Rejection or revoke reason of the latest clearance, or null. */
+  clearance_reason?: string | null;
 }
 
 export interface Verification extends VerificationState {
@@ -1621,6 +1647,23 @@ export const api = {
   },
   removeCredential(id: string) {
     return authRequest<{ removed: boolean }>(`/providers/me/credentials/${id}`, { method: 'DELETE' });
+  },
+
+  myClearances() {
+    return authRequest<{ clearances: Clearance[]; required: boolean }>('/providers/me/clearances');
+  },
+  createClearance(input: {
+    clearance_type: ClearanceType;
+    clearance_number: string;
+    issued_on?: string;
+    expires_on: string;
+    document_path: string;
+  }) {
+    return authRequest<Clearance>('/providers/me/clearances', { method: 'POST', body: input });
+  },
+  /** Only pending or rejected. A decided clearance stays on record (404). */
+  removeClearance(id: string) {
+    return authRequest<{ removed: boolean }>(`/providers/me/clearances/${id}`, { method: 'DELETE' });
   },
   myPortfolio() { return authRequest<PortfolioEntry[]>('/providers/me/portfolio'); },
   providerPortfolio(id:string) { return authRequest<PortfolioEntry[]>(`/providers/${id}/portfolio`); },

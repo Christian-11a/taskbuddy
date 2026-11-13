@@ -48,6 +48,7 @@ export type SPScreen =
   | 'Earnings'
   | 'Portfolio'
   | 'Credentials'
+  | 'Clearance'
   | 'My Services'
   | 'Settings'
   | 'Help & Support'

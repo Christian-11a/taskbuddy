@@ -12,7 +12,59 @@ describe('verificationSummary', () => {
     expect(verificationSummary({ identity: 'revoked', certificate: 'approved', verified: false }).detail)
       .toBe('Upload new photos to get verified again.');
     expect(verificationSummary({ identity: 'approved', certificate: 'revoked', verified: false }))
-      .toMatchObject({ headline: 'ID approved · certificate revoked', missing: ['certificate'] });
+      .toMatchObject({
+        headline: 'ID approved · certificate revoked',
+        detail: 'Upload a new certificate to get verified again.',
+        missing: ['certificate'],
+      });
+    expect(verificationSummary(
+      { identity: 'approved', certificate: 'revoked', verified: false },
+      { certificateRevokeReason: 'The name does not match the ID.' },
+    ).detail).toBe('The name does not match the ID. Upload a new certificate to get verified again.');
+  });
+
+  it('names the clearance only when it is required and the ID and certificate are approved', () => {
+    const base = { identity: 'approved' as const, certificate: 'approved' as const, verified: false, clearance_required: true };
+    expect(verificationSummary({ ...base, clearance: 'none' })).toMatchObject({
+      verified: false,
+      headline: 'ID and certificate approved · clearance needed',
+      detail: 'Upload your NBI or police clearance.',
+      missing: ['clearance'],
+    });
+    expect(verificationSummary({ ...base, clearance: 'pending' })).toMatchObject({
+      headline: 'ID and certificate approved · clearance under review',
+      detail: 'An admin is checking your clearance.',
+      missing: ['clearance'],
+    });
+    expect(verificationSummary({ ...base, clearance: 'rejected', clearance_reason: 'Name does not match.' })).toMatchObject({
+      headline: 'ID and certificate approved · clearance not accepted',
+      detail: 'Name does not match. Upload your NBI or police clearance again.',
+    });
+    expect(verificationSummary({ ...base, clearance: 'revoked', clearance_reason: '  Taken back.  ' })).toMatchObject({
+      headline: 'ID and certificate approved · clearance revoked',
+      detail: 'Taken back. Upload your NBI or police clearance again.',
+    });
+    expect(verificationSummary({ ...base, clearance: 'rejected' }).detail).toBe('Upload your NBI or police clearance again.');
+    expect(verificationSummary({ ...base, clearance: 'expired' })).toMatchObject({
+      headline: 'ID and certificate approved · clearance expired',
+      detail: 'Upload a current clearance.',
+      missing: ['clearance'],
+    });
+    expect(verificationSummary({ ...base, clearance: 'approved', verified: true })).toMatchObject({
+      verified: true, headline: "You're verified", missing: [],
+    });
+  });
+
+  it('leaves the summary unchanged while a clearance is not required', () => {
+    expect(verificationSummary({
+      identity: 'approved', certificate: 'approved', verified: true, clearance: 'none', clearance_required: false,
+    })).toMatchObject({ verified: true, headline: "You're verified", missing: [] });
+    expect(verificationSummary({
+      identity: 'approved', certificate: 'none', verified: false, clearance: 'none', clearance_required: false,
+    })).toMatchObject({ headline: 'ID approved · certificate needed', missing: ['certificate'] });
+    expect(verificationSummary({
+      identity: 'pending', certificate: 'approved', verified: false, clearance: 'none', clearance_required: true,
+    })).toMatchObject({ headline: 'ID under review', missing: ['identity'] });
   });
 
   it('says verified only when verified is true', () => {

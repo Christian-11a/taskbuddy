@@ -11,7 +11,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import Banner from './ui/Banner';
 import Tap from './ui/Tap';
 import { useThemedStyles, type Palette } from '../context/ThemeContext';
-import type { Credential } from '../lib/api';
+import type { ClearanceState, Credential } from '../lib/api';
 import { certificateExpiry, type VerificationSummary } from '../lib/verificationStatus';
 
 /** Today as YYYY-MM-DD in the phone's own calendar. */
@@ -84,15 +84,37 @@ export function certificateActionLabel(certificate: string): string | null {
   return null;
 }
 
+const CLEARANCE_LABEL: Record<ClearanceState, string> = {
+  none: 'not uploaded',
+  pending: 'under review',
+  approved: 'approved',
+  rejected: 'not accepted',
+  expired: 'expired',
+  revoked: 'revoked',
+};
+
+/** The clearance row's action. Pending and approved open the list; the rest start an upload. */
+export function clearanceActionLabel(clearance: string): string {
+  if (clearance === 'rejected' || clearance === 'revoked' || clearance === 'expired') return 'Upload again';
+  if (clearance === 'pending' || clearance === 'approved') return 'View';
+  return 'Upload clearance';
+}
+
 export function CertificateStatusRows({
   summary,
+  clearance = 'none',
   onCertificateAction,
+  onClearanceAction,
 }: {
   summary: Pick<VerificationSummary, 'identity' | 'certificate'>;
+  /** Shown even while a clearance is not required, so a provider can upload early. */
+  clearance?: ClearanceState;
   onCertificateAction?: () => void;
+  onClearanceAction?: () => void;
 }) {
   const { s } = useThemedStyles(createStyles);
   const action = certificateActionLabel(summary.certificate);
+  const clearanceAction = clearanceActionLabel(clearance);
   const identityOk = summary.identity === 'approved';
   const certificateOk = summary.certificate === 'approved';
   return (
@@ -112,6 +134,12 @@ export function CertificateStatusRows({
             </Tap>
           )
         )}
+      </View>
+      <View style={s.row}>
+        <Text style={s.rowText}>{`NBI or police clearance: ${CLEARANCE_LABEL[clearance]}`}</Text>
+        <Tap onPress={() => onClearanceAction?.()} hitSlop={8} accessibilityRole="button" accessibilityLabel={clearanceAction}>
+          <Text style={s.action}>{clearanceAction}</Text>
+        </Tap>
       </View>
     </View>
   );
