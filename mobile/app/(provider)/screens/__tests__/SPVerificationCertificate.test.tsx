@@ -110,7 +110,8 @@ describe('status screen', () => {
     );
     renderScreen();
     expect(await screen.findByText("You're verified!")).toBeTruthy();
-    expect(screen.queryByTestId('verification-status-rows')).toBeNull();
+    expect(screen.getByText('NBI or police clearance: not uploaded')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Upload clearance' })).toBeTruthy();
   });
 
   it('ID approved, certificate none: two rows and an action that opens the certificate step', async () => {
@@ -141,6 +142,41 @@ describe('status screen', () => {
     renderScreen();
     expect(await screen.findByText('Certificate: expired')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Upload renewal' }).length).toBeGreaterThan(0);
+  });
+
+  it('clearance row opens the clearance screen, and only counts as the thing left when required', async () => {
+    const onOpenClearance = jest.fn();
+    (api.myVerification as jest.Mock).mockResolvedValue(me({
+      verified: true, certificate: 'approved', services: [PLUMBING('approved')], clearance: 'rejected', clearance_required: false,
+    }));
+    render(
+      <SPVerificationScreen onBack={jest.fn()} onEditProfile={jest.fn()} onOpenClearance={onOpenClearance} />,
+    );
+    expect(await screen.findByText("You're verified!")).toBeTruthy();
+    expect(screen.getByText('NBI or police clearance: not accepted')).toBeTruthy();
+    fireEvent.press(screen.getByRole('button', { name: 'Upload again' }));
+    expect(onOpenClearance).toHaveBeenCalledTimes(1);
+  });
+
+  it('a required clearance that is not approved replaces the verified summary', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue(me({
+      certificate: 'approved', services: [PLUMBING('approved')], clearance: 'expired', clearance_required: true,
+    }));
+    renderScreen();
+    expect(await screen.findByText('ID and certificate approved · clearance expired')).toBeTruthy();
+    expect(screen.getByText('Upload a current clearance.')).toBeTruthy();
+    expect(screen.getByText('NBI or police clearance: expired')).toBeTruthy();
+    expect(screen.queryByText("You're verified!")).toBeNull();
+  });
+
+  it('shows the admin reason for a revoked certificate on the main service', async () => {
+    (api.myVerification as jest.Mock).mockResolvedValue(me({ certificate: 'revoked', services: [PLUMBING('revoked')] }));
+    (api.myCredentials as jest.Mock).mockResolvedValue([
+      credential({ category_id: 9, status: 'revoked', revoke_reason: 'Wrong service.' }),
+      credential({ status: 'revoked', revoke_reason: 'The name does not match the ID.' }),
+    ]);
+    renderScreen();
+    expect(await screen.findByText('The name does not match the ID. Upload a new certificate to get verified again.')).toBeTruthy();
   });
 
   it('ID approved, certificate rejected: says not accepted and offers a new upload', async () => {

@@ -81,6 +81,7 @@ import SPEarningsScreen from './app/(provider)/screens/SPEarningsScreen';
 import SPSettingsScreen from './app/(provider)/screens/SPSettingsScreen';
 import SPPortfolioScreen from './app/(provider)/screens/SPPortfolioScreen';
 import SPCredentialsScreen from './app/(provider)/screens/SPCredentialsScreen';
+import SPClearanceScreen from './app/(provider)/screens/SPClearanceScreen';
 import SPSkillRequestScreen from './app/(provider)/screens/SPSkillRequestScreen';
 
 // ── Shared navigation components ──────────────────────────────────────────────
@@ -1116,12 +1117,14 @@ function AppFlow() {
           }}
           startAt={spVerifyParams?.startAt}
           categoryId={spVerifyParams?.categoryId}
+          onOpenClearance={() => spNavigate('Clearance')}
         />
       </ScreenFrame>
     );
   }
   if (spScreen === 'Portfolio') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPPortfolioScreen onBack={spBack}/></ScreenFrame>);
   if (spScreen === 'Credentials') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPCredentialsScreen onBack={spBack}/></ScreenFrame>);
+  if (spScreen === 'Clearance') return wrap(<ScreenFrame bottomColor={V6Colors.surface}><SPClearanceScreen onBack={spBack}/></ScreenFrame>);
   if (spScreen === 'My Services') {
     return wrap(
       <ScreenFrame bottomColor={V6Colors.surface}>

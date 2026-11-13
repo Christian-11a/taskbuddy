@@ -4,10 +4,15 @@
  * without `identity`/`certificate`/`verified` falls back to the single
  * `status === 'approved'` rule.
  */
-import type { CertificateState, Credential, IdentityState, Verification } from './api';
+import type { CertificateState, ClearanceState, Credential, IdentityState, Verification } from './api';
 
 export type VerificationMe = Partial<Verification> | null | undefined;
-export type MissingPart = 'identity' | 'certificate';
+export type MissingPart = 'identity' | 'certificate' | 'clearance';
+
+export interface VerificationSummaryOptions {
+  /** Admin reason from the revoked credential for the provider's main service. */
+  certificateRevokeReason?: string | null;
+}
 
 export interface VerificationSummary {
   verified: boolean;
@@ -33,7 +38,34 @@ function legacyVerified(me: VerificationMe): boolean {
   return me?.status === 'approved';
 }
 
-export function verificationSummary(me: VerificationMe): VerificationSummary {
+/** A clearance counts as missing only while the switch is on and it is not approved. */
+function clearanceBlocks(me: VerificationMe, identity: IdentityState, certificate: CertificateState): boolean {
+  return me?.clearance_required === true
+    && identity === 'approved'
+    && certificate === 'approved'
+    && (me.clearance ?? 'none') !== 'approved';
+}
+
+function clearanceSummary(
+  me: VerificationMe,
+  identity: IdentityState,
+  certificate: CertificateState,
+): VerificationSummary {
+  const state: ClearanceState = me?.clearance && me.clearance !== 'approved' ? me.clearance : 'none';
+  const reason = me?.clearance_reason?.trim();
+  const again = 'Upload your NBI or police clearance again.';
+  const COPY: Record<Exclude<ClearanceState, 'approved'>, [string, string]> = {
+    none: ['ID and certificate approved · clearance needed', 'Upload your NBI or police clearance.'],
+    pending: ['ID and certificate approved · clearance under review', 'An admin is checking your clearance.'],
+    rejected: ['ID and certificate approved · clearance not accepted', reason ? `${reason} ${again}` : again],
+    revoked: ['ID and certificate approved · clearance revoked', reason ? `${reason} ${again}` : again],
+    expired: ['ID and certificate approved · clearance expired', 'Upload a current clearance.'],
+  };
+  const [headline, detail] = COPY[state];
+  return { verified: false, identity, certificate, headline, detail, missing: ['clearance'] };
+}
+
+export function verificationSummary(me: VerificationMe, options?: VerificationSummaryOptions): VerificationSummary {
   const identity = identityOf(me);
   if (!hasNewShape(me)) {
     const verified = legacyVerified(me);
@@ -48,7 +80,7 @@ export function verificationSummary(me: VerificationMe): VerificationSummary {
   }
   const certificate: CertificateState = me?.certificate ?? 'none';
   const verified = me?.verified === true;
-  if (verified) {
+  if (verified && !clearanceBlocks(me, identity, certificate)) {
     return { verified, identity, certificate, headline: "You're verified", detail: 'Your ID and certificate are approved.', missing: [] };
   }
   const missing: MissingPart[] = [];
@@ -68,6 +100,18 @@ export function verificationSummary(me: VerificationMe): VerificationSummary {
       };
     }
     return { verified, identity, certificate, headline: 'Get verified', detail: 'Add your ID and a selfie, then a certificate for your service.', missing };
+  }
+  if (clearanceBlocks(me, identity, certificate)) return clearanceSummary(me, identity, certificate);
+  if (certificate === 'revoked') {
+    const reason = options?.certificateRevokeReason?.trim();
+    return {
+      verified, identity, certificate,
+      headline: 'ID approved · certificate revoked',
+      detail: reason
+        ? `${reason} Upload a new certificate to get verified again.`
+        : 'Upload a new certificate to get verified again.',
+      missing,
+    };
   }
   const CERT: Record<Exclude<CertificateState, 'approved'>, [string, string]> = {
     none: ['ID approved · certificate needed', 'Upload a certificate for your service.'],
