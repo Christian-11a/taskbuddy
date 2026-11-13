@@ -20,6 +20,10 @@ vi.mock("@/lib/services", () => ({
   getScreeningCertificates: vi.fn(),
   getScreeningRejections: vi.fn(),
   getPastSuspensions: () => Promise.resolve({ count: 0, latestAt: null, latestReason: null }),
+  getDuplicateSignals: () => Promise.resolve([]),
+  getPendingClearances: () => Promise.resolve([]),
+  decideClearance: vi.fn(),
+  clearanceLabel: (t: string) => (t === "nbi" ? "NBI clearance" : "Police clearance"),
 }));
 
 const mocked = vi.mocked(services);

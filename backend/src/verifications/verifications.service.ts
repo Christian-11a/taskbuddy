@@ -108,6 +108,7 @@ export function revokedAsRejected<
     revoke_reason?: string | null;
     identity?: string;
     certificate?: string;
+    clearance?: string;
     services?: { certificate: string }[];
   },
 >(me: T): T {
@@ -124,6 +125,7 @@ export function revokedAsRejected<
     ...(me.certificate !== undefined
       ? { certificate: fix(me.certificate) }
       : {}),
+    ...(me.clearance !== undefined ? { clearance: fix(me.clearance) } : {}),
     ...(me.services
       ? {
           services: me.services.map((s) => ({
@@ -429,8 +431,92 @@ export class VerificationsService {
       (data as VerificationRow | null)?.status,
     );
     // Existing row fields stay as they were; identity/certificate/verified are added.
-    const result = { ...((data as VerificationRow | null) ?? {}), ...state };
+    const result = {
+      ...((data as VerificationRow | null) ?? {}),
+      ...state,
+      ...(await this.clearanceState(user.id)),
+    };
     return revokedAware ? result : revokedAsRejected(result);
+  }
+
+  /**
+   * The NBI / police clearance (0082): the latest one's state and whether a
+   * clearance is required for Verified right now. Reads that fail report
+   * "none" / not required instead of failing the whole status screen.
+   */
+  async clearanceState(providerId: string): Promise<{
+    clearance:
+      'none' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked';
+    clearance_required: boolean;
+    clearance_reason: string | null;
+  }> {
+    const [rows, settings] = await Promise.all([
+      this.supabase.admin
+        .from('provider_clearances')
+        .select('status, expires_on, rejection_reason, revoke_reason')
+        .eq('provider_id', providerId)
+        .order('created_at', { ascending: false }),
+      this.supabase.admin
+        .from('verification_settings')
+        .select('require_clearance')
+        .maybeSingle(),
+    ]);
+    const required =
+      !settings.error &&
+      (settings.data as { require_clearance?: boolean } | null)
+        ?.require_clearance === true;
+    if (rows.error || !Array.isArray(rows.data))
+      return {
+        clearance: 'none',
+        clearance_required: required,
+        clearance_reason: null,
+      };
+    const list = rows.data as {
+      status: string;
+      expires_on: string;
+      rejection_reason: string | null;
+      revoke_reason: string | null;
+    }[];
+    const today = new Date(Date.now() + 8 * 3600_000)
+      .toISOString()
+      .slice(0, 10);
+    const valid = list.find(
+      (r) => r.status === 'approved' && r.expires_on >= today,
+    );
+    if (valid)
+      return {
+        clearance: 'approved',
+        clearance_required: required,
+        clearance_reason: null,
+      };
+    const pending = list.find((r) => r.status === 'pending');
+    if (pending)
+      return {
+        clearance: 'pending',
+        clearance_required: required,
+        clearance_reason: null,
+      };
+    const latest = list[0];
+    if (!latest)
+      return {
+        clearance: 'none',
+        clearance_required: required,
+        clearance_reason: null,
+      };
+    if (latest.status === 'approved')
+      return {
+        clearance: 'expired',
+        clearance_required: required,
+        clearance_reason: null,
+      };
+    return {
+      clearance: latest.status === 'revoked' ? 'revoked' : 'rejected',
+      clearance_required: required,
+      clearance_reason:
+        latest.status === 'revoked'
+          ? latest.revoke_reason
+          : latest.rejection_reason,
+    };
   }
 
   /**

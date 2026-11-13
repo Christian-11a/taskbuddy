@@ -333,6 +333,49 @@ describe('ApplicationsService', () => {
       });
     });
 
+    it('names a missing clearance when that is what blocks the provider (0082)', async () => {
+      const { supabase } = createSupabaseMock(
+        {
+          jobs: [
+            {
+              data: {
+                id: 'j1',
+                title: 'Fix sink',
+                status: 'open',
+                client_id: 'c1',
+                category_id: 1,
+              },
+              error: null,
+            },
+          ],
+          provider_profiles: [
+            { data: { profile_id: 'p1' }, error: null },
+            { data: { identity_verified: true }, error: null },
+          ],
+        },
+        [],
+      );
+      (supabase.admin.rpc as unknown as jest.Mock).mockImplementation(
+        (fn: string) =>
+          Promise.resolve(
+            fn === 'provider_clearance_ok'
+              ? { data: false, error: null }
+              : { data: [], error: null },
+          ),
+      );
+      const service = new ApplicationsService(
+        supabase,
+        createEscrowMock().escrow,
+      );
+      const err: unknown = await service
+        .apply(provider, 'j1', {})
+        .catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(ForbiddenException);
+      expect((err as ForbiddenException).getResponse()).toMatchObject({
+        code: 'clearance_required',
+      });
+    });
+
     it('refuses a verified provider with no payout account', async () => {
       const { supabase, calls } = createSupabaseMock({
         jobs: [

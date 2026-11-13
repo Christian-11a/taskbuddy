@@ -161,6 +161,28 @@ describe("suspension flag", () => {
   });
 });
 
+describe("duplicate signals", () => {
+  it("flags shared numbers, documents and phones separately, naming the other accounts", () => {
+    const report = screenProvider(input({
+      duplicates: [
+        { kind: "certificate_number", otherName: "Ben Cruz", otherStatus: "active" },
+        { kind: "document", otherName: "Cara Lim", otherStatus: "suspended" },
+        { kind: "phone", otherName: "Cara Lim", otherStatus: "suspended" },
+      ],
+    }));
+    expect(report.summary).toBe("3 things to check");
+    expect(row(report, "Shared certificate or clearance number")).toEqual({ label: "Shared certificate or clearance number", value: "With Ben Cruz", flagged: true });
+    expect(row(report, "Shared document photo").value).toBe("With Cara Lim (suspended)");
+    expect(row(report, "Shared phone number").flagged).toBe(true);
+  });
+
+  it("shows None when nothing is shared and Not available when it could not be read", () => {
+    const clean = screenProvider(input({ duplicates: [] }));
+    expect(row(clean, "Shared phone number")).toEqual({ label: "Shared phone number", value: "None", flagged: false });
+    expect(row(screenProvider(input({ duplicates: null })), "Shared document photo").value).toBe("Not available");
+  });
+});
+
 describe("past suspensions", () => {
   it("flags one suspension on record and shows the latest in Manila's day", () => {
     const report = screenProvider(input({

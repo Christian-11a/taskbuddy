@@ -66,6 +66,11 @@ export interface ScreeningInput {
    * including a current one. Null when the audit log could not be read.
    */
   pastSuspensions?: { count: number; latestAt: string | null; latestReason: string | null } | null;
+  /**
+   * Other accounts sharing a certificate or clearance number, a document file,
+   * or a phone (migration 0082). Null when it could not be read.
+   */
+  duplicates?: readonly { kind: "certificate_number" | "clearance_number" | "document" | "phone"; otherName: string; otherStatus: string }[] | null;
   /** YYYY-MM-DD, the date expiry is compared with. */
   today: string;
 }
@@ -189,7 +194,14 @@ export function screenProvider(input: ScreeningInput): ScreeningReport {
   const suspension = flagsSuspension(user ? user.suspended : null);
   const past = input.pastSuspensions ?? null;
   const pastFlag = flagsPastSuspensions(past ? past.count : null);
-  const concerns = [cancellation, disputeFlag, rating, certificate, rejections, suspension, pastFlag].filter(Boolean).length;
+  const dup = input.duplicates ?? null;
+  const sharedNumbers = dup ? dup.filter((d) => d.kind === "certificate_number" || d.kind === "clearance_number") : null;
+  const sharedDocs = dup ? dup.filter((d) => d.kind === "document") : null;
+  const sharedPhone = dup ? dup.filter((d) => d.kind === "phone") : null;
+  const numbersFlag = !!sharedNumbers && sharedNumbers.length > 0;
+  const docsFlag = !!sharedDocs && sharedDocs.length > 0;
+  const phoneFlag = !!sharedPhone && sharedPhone.length > 0;
+  const concerns = [cancellation, disputeFlag, rating, certificate, rejections, suspension, pastFlag, numbersFlag, docsFlag, phoneFlag].filter(Boolean).length;
   const expiry = certificateValue(input.certificates, input.today);
 
   return {
@@ -209,6 +221,10 @@ export function screenProvider(input: ScreeningInput): ScreeningReport {
       { label: "Current suspension", value: suspensionText(user), flagged: suspension },
       // GET /admin/audit?action=user.suspend&target_id=… (needs the API with the target filter).
       { label: "Past suspensions", value: pastSuspensionsText(past), flagged: pastFlag },
+      // GET /admin/users/:id/duplicates (0082): same number, file or phone on another account.
+      { label: "Shared certificate or clearance number", value: sharedText(sharedNumbers), flagged: numbersFlag },
+      { label: "Shared document photo", value: sharedText(sharedDocs), flagged: docsFlag },
+      { label: "Shared phone number", value: sharedText(sharedPhone), flagged: phoneFlag },
     ],
   };
 }
@@ -241,6 +257,14 @@ function suspensionText(user: ScreeningUser | null): string {
   if (!user.suspended) return "Not suspended";
   const until = user.suspendedUntil ? `Until ${user.suspendedUntil}` : "Indefinite";
   return user.suspensionReason ? `${until} — ${user.suspensionReason}` : until;
+}
+
+function sharedText(list: readonly { otherName: string; otherStatus: string }[] | null): string {
+  if (!list) return SCREENING_NOT_AVAILABLE;
+  if (list.length === 0) return "None";
+  const names = [...new Map(list.map((d) => [d.otherName + d.otherStatus, d])).values()]
+    .map((d) => (d.otherStatus === "active" ? d.otherName : `${d.otherName} (${d.otherStatus})`));
+  return `With ${names.join(", ")}`;
 }
 
 function pastSuspensionsText(past: ScreeningInput["pastSuspensions"] | null): string {

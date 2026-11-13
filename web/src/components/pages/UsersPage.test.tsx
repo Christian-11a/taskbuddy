@@ -20,6 +20,7 @@ vi.mock("@/lib/services", async (importOriginal) => {
     getScreeningCertificates: vi.fn().mockResolvedValue([]),
     getScreeningRejections: vi.fn().mockResolvedValue([]),
     getPastSuspensions: () => Promise.resolve({ count: 0, latestAt: null, latestReason: null }),
+    getDuplicateSignals: () => Promise.resolve([]),
     getVerificationHistory: () => Promise.resolve([]),
     revokeVerification: vi.fn(),
   };
