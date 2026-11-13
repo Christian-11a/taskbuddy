@@ -587,6 +587,33 @@ describe('proposeBlockFor and the certificate card', () => {
   });
 });
 
+describe('proposeBlockFor and the clearance card (0082)', () => {
+  const me = (clearance: string, clearance_required: boolean) =>
+    ({
+      status: 'approved', identity: 'approved', certificate: 'approved', verified: false,
+      services: [{ category_id: 2, certificate: 'approved' }], clearance, clearance_required,
+    } as never);
+
+  it('names the clearance when it is required and missing, even with the certificate approved', () => {
+    expect(proposeBlockFor(me('none', true), false, 2)).toBe('clearance');
+    expect(proposeBlockFor(me('pending', true), false, 2)).toBe('clearance');
+  });
+  it('lets the provider propose once the clearance is approved, or while it is not required', () => {
+    expect(proposeBlockFor(me('approved', true), false, 2)).toBeNull();
+    expect(proposeBlockFor(me('none', false), false, 2)).toBeNull();
+  });
+  it('still names the ID first when the ID is missing', () => {
+    const v = { ...(me('none', true) as object), identity: 'none' } as never;
+    expect(proposeBlockFor(v, false, 2)).toBe('identity');
+  });
+  it('shows the clearance card with an Upload clearance action', () => {
+    const result = view({ status: 'open', category_id: 2 }, { proposeBlock: 'clearance', serviceName: 'Cleaning' });
+    expect(result.card.overline).toBe('CLEARANCE NEEDED');
+    expect(result.card.title).toBe('NBI or police clearance needed');
+    expect(result.main).toEqual({ kind: 'uploadClearance' });
+  });
+});
+
 describe('providerJobView: what is missing before a proposal, in order', () => {
   it('a verified provider with no payout account sees ONE STEP LEFT and Link payout account', () => {
     const result = view({ status: 'open' }, { proposeBlock: null, needsPayout: true });

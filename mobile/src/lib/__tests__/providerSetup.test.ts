@@ -60,6 +60,27 @@ describe('the Get verified step', () => {
   const verifyStep = (verifyState: 'none' | 'pending' | 'rejected', extras?: Parameters<typeof providerSetupSteps>[4]) =>
     providerSetupSteps(ready, bio, verifyState, null, extras)[2];
 
+  it('while a clearance is required, is not done until it is approved, and opens the clearance screen (0082)', () => {
+    const at = (clearance: 'none' | 'pending' | 'rejected' | 'revoked' | 'expired' | 'approved') =>
+      verifyStep('none', { identityApproved: true, certificate: 'approved', clearanceRequired: true, clearance });
+    expect(at('none')).toMatchObject({
+      done: false,
+      subtitle: 'ID and certificate approved · NBI or police clearance needed',
+      actionLabel: 'Upload clearance',
+      opensClearance: true,
+    });
+    expect(at('pending')).toMatchObject({ done: false, subtitle: 'ID and certificate approved · clearance under review', opensClearance: true });
+    expect(at('rejected')).toMatchObject({ subtitle: 'Clearance not accepted · upload a new one', actionLabel: 'Upload again' });
+    expect(at('revoked')).toMatchObject({ subtitle: 'Clearance revoked · upload a new one' });
+    expect(at('expired')).toMatchObject({ subtitle: 'Clearance expired · upload a current one' });
+    expect(at('approved')).toMatchObject({ done: true, subtitle: 'Verified' });
+  });
+
+  it('ignores the clearance while it is not required', () => {
+    expect(verifyStep('none', { identityApproved: true, certificate: 'approved', clearanceRequired: false, clearance: 'none' }))
+      .toMatchObject({ done: true, subtitle: 'Verified' });
+  });
+
   it('is not done until the ID and the certificate are both approved', () => {
     expect(verifyStep('none', { identityApproved: true, certificate: 'approved' })).toMatchObject({ done: true, state: 'done' });
     expect(verifyStep('none', { identityApproved: true, certificate: 'pending' })).toMatchObject({ done: false });

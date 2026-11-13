@@ -29,6 +29,7 @@ export type Action =
   // provider
   | { kind: 'sendProposal' }
   | { kind: 'getVerified' }
+  | { kind: 'uploadClearance' }
   | { kind: 'linkPayout' }
   | { kind: 'withdrawProposal' }
   | { kind: 'findJobs' }

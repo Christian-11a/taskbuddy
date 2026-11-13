@@ -1,4 +1,4 @@
-import type { CertificateState, Profile, ProviderProfile } from './api';
+import type { ClearanceState, CertificateState, Profile, ProviderProfile } from './api';
 import { addressSaved } from './verifyFlow';
 
 /** Where the provider's identity check stands, as the Feed reads `api.myVerification`. */
@@ -19,6 +19,8 @@ export interface SetupStep {
   actionLabel: string;
   /** Get verified only: true when the next action is the certificate, so the tap opens the certificate screen. */
   opensCertificate?: boolean;
+  /** Get verified only: true when the clearance is what is left, so the tap opens the clearance screen (0082). */
+  opensClearance?: boolean;
 }
 
 type ProfileFields = Partial<Pick<Profile, 'address' | 'city'>> | null | undefined;
@@ -33,6 +35,10 @@ export interface SetupExtras {
   certificate?: CertificateState | 'unknown';
   /** True when the ID check is approved (`me.identity === 'approved'`). Overrides `is_verified` for the ID step. */
   identityApproved?: boolean;
+  /** `me.clearance_required` (0082): while true, Get verified also needs an approved clearance. */
+  clearanceRequired?: boolean;
+  /** `me.clearance`: the latest NBI / police clearance. */
+  clearance?: ClearanceState;
 }
 
 /**
@@ -67,6 +73,24 @@ function verifyCopy(
   }
 }
 
+/** ID and certificate approved; the required clearance is what is left (0082). */
+function clearanceCopy(
+  clearance: ClearanceState,
+): Pick<SetupStep, 'subtitle' | 'actionLabel' | 'opensCertificate' | 'opensClearance'> {
+  switch (clearance) {
+    case 'pending':
+      return { subtitle: 'ID and certificate approved · clearance under review', actionLabel: 'View status', opensCertificate: false, opensClearance: true };
+    case 'rejected':
+      return { subtitle: 'Clearance not accepted · upload a new one', actionLabel: 'Upload again', opensCertificate: false, opensClearance: true };
+    case 'revoked':
+      return { subtitle: 'Clearance revoked · upload a new one', actionLabel: 'Upload again', opensCertificate: false, opensClearance: true };
+    case 'expired':
+      return { subtitle: 'Clearance expired · upload a current one', actionLabel: 'Upload clearance', opensCertificate: false, opensClearance: true };
+    default:
+      return { subtitle: 'ID and certificate approved · NBI or police clearance needed', actionLabel: 'Upload clearance', opensCertificate: false, opensClearance: true };
+  }
+}
+
 /**
  * The steps a new provider finishes, in order: address, bio, Get verified (the ID
  * check and the certificate for the main service, one step), then a payout account
@@ -85,13 +109,16 @@ export function providerSetupSteps(
   const bio = trimmed(providerProfile?.bio);
   const certificate = extras.certificate ?? 'none';
   const identityApproved = extras.identityApproved ?? providerProfile?.is_verified === true;
-  // is_verified is only set once the ID and the main service's certificate are both approved, so it counts as done on its own.
-  const verifyDone = providerProfile?.is_verified === true || (identityApproved && certificate === 'approved');
+  // is_verified is only set once the ID and the main service's certificate (and, while required, the clearance) are approved.
+  const clearanceOk = extras.clearanceRequired !== true || extras.clearance === 'approved';
+  const verifyDone = providerProfile?.is_verified === true || (identityApproved && certificate === 'approved' && clearanceOk);
   const addressDone = addressSaved(profile);
 
   const verify = verifyDone
     ? { subtitle: 'Verified', actionLabel: 'Get verified', opensCertificate: false }
-    : verifyCopy(verifyState, identityApproved, certificate);
+    : identityApproved && certificate === 'approved' && !clearanceOk
+      ? clearanceCopy(extras.clearance ?? 'none')
+      : verifyCopy(verifyState, identityApproved, certificate);
 
   const steps: Omit<SetupStep, 'state'>[] = [
     {
