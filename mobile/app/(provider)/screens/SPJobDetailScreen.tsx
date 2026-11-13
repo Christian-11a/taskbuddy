@@ -88,6 +88,7 @@ function labelFor(action: Action, pending: boolean): string {
   switch (action.kind) {
     case 'sendProposal': return 'Send proposal';
     case 'getVerified': return action.categoryId !== undefined ? 'Upload certificate' : 'Get verified';
+    case 'uploadClearance': return 'Upload clearance';
     case 'linkPayout': return 'Link payout account';
     case 'withdrawProposal': return 'Withdraw proposal';
     case 'findJobs': return pending ? 'Find more jobs' : 'Find similar jobs';
@@ -379,6 +380,9 @@ export default function SPJobDetailScreen({ jobId, onBack, onNavigate }: SPJobDe
       case 'getVerified':
         if (action.categoryId !== undefined) onNavigate('Verification', undefined, { startAt: 'certificate', categoryId: action.categoryId });
         else onNavigate('Verification');
+        return;
+      case 'uploadClearance':
+        onNavigate('Clearance');
         return;
       case 'linkPayout':
         onNavigate('Payout Account');

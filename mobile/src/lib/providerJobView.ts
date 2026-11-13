@@ -12,7 +12,7 @@
 import type { Dispute, Job, JobTask } from './api';
 import type { ProgressStep } from '../components/ui/ProgressStepper';
 import type { StatusCardTone } from '../components/ui/StatusCard';
-import { canWorkService, verificationSummary, type VerificationMe } from './verificationStatus';
+import { canWorkService, clearanceMissing, verificationSummary, type VerificationMe } from './verificationStatus';
 import { withDisputeBanner } from './jobDetailView';
 import { peso, timeOfDay } from './format';
 import { dayHeading } from './jobCalendar';
@@ -33,6 +33,7 @@ export type Action =
   | { kind: 'sendProposal' } | { kind: 'withdrawProposal' }
   // Get verified: no `categoryId` = the ID check; with one = that service's certificate step.
   | { kind: 'getVerified'; categoryId?: number }
+  | { kind: 'uploadClearance' }
   // The last gate before a proposal: a payout account (→ onNavigate('Payout Account')).
   | { kind: 'linkPayout' }
   | { kind: 'findJobs' } | { kind: 'startJob' } | { kind: 'declineBooking' } | { kind: 'viewWallet' };
@@ -76,7 +77,7 @@ export type ProviderJobViewInput = {
   now: Date;
 };
 
-export type ProposeBlock = 'identity' | 'certificate' | null;
+export type ProposeBlock = 'identity' | 'certificate' | 'clearance' | null;
 
 /**
  * Whether the provider may propose on a job's service, and if not, what is missing.
@@ -90,7 +91,9 @@ export function proposeBlockFor(
   if (!verification) return isVerified ? null : 'identity';
   if (canWorkService(verification, categoryId)) return null;
   const { identity } = verificationSummary(verification);
-  return identity === 'approved' ? 'certificate' : 'identity';
+  if (identity !== 'approved') return 'identity';
+  // With the ID approved, a missing clearance blocks every service (0082); say so first.
+  return clearanceMissing(verification) ? 'clearance' : 'certificate';
 }
 
 const OPEN_STATUSES: readonly string[] = ['open', 'recommending'];
@@ -145,6 +148,7 @@ function unhiredView(
   if (open) {
     if (block === 'identity') return verifyFirst();
     if (block === 'certificate') return certificateFirst(job, serviceName);
+    if (block === 'clearance') return clearanceFirst();
     return needsPayout ? payoutFirst() : newJob(job);
   }
   if (job.status === 'expired') return expiredNotHired();
@@ -216,6 +220,20 @@ function verifyFirst(): JobView {
     ),
     null,
     { kind: 'getVerified' },
+  );
+}
+
+/** ID approved, but the NBI / police clearance required for every service is missing (0082). */
+function clearanceFirst(): JobView {
+  return jobView(
+    card(
+      'attention',
+      'CLEARANCE NEEDED',
+      'NBI or police clearance needed',
+      'Upload a valid NBI or police clearance. Once an admin approves it, you can send proposals.',
+    ),
+    null,
+    { kind: 'uploadClearance' },
   );
 }
 

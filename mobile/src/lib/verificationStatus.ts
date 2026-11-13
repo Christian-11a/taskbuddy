@@ -38,6 +38,11 @@ function legacyVerified(me: VerificationMe): boolean {
   return me?.status === 'approved';
 }
 
+/** True while a clearance is required and the provider has no approved one (any certificate state). */
+export function clearanceMissing(me: VerificationMe): boolean {
+  return me?.clearance_required === true && (me.clearance ?? 'none') !== 'approved';
+}
+
 /** A clearance counts as missing only while the switch is on and it is not approved. */
 function clearanceBlocks(me: VerificationMe, identity: IdentityState, certificate: CertificateState): boolean {
   return me?.clearance_required === true
@@ -132,6 +137,8 @@ export function canWorkService(me: VerificationMe, categoryId: number | null | u
   if (!me) return false;
   if (!hasNewShape(me)) return legacyVerified(me);
   if (identityOf(me) !== 'approved') return false;
+  // 0082: while a clearance is required, no service can be worked without an approved one.
+  if (clearanceMissing(me)) return false;
   const service = me.services?.find((s) => s.category_id === categoryId);
   if (service) return service.certificate === 'approved';
   // No services list: only the overall flag is known.

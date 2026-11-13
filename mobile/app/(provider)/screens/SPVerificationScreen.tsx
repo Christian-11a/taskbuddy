@@ -128,6 +128,13 @@ const PREP_STEPS_WITH_CERTIFICATE = [
   PREP_STEPS[3],
 ];
 
+/** While a clearance is required (0082): the same list plus the NBI / police clearance, uploaded after the certificate. */
+const PREP_STEPS_WITH_CLEARANCE = [
+  ...PREP_STEPS_WITH_CERTIFICATE.slice(0, 4),
+  { title: 'NBI or police clearance', detail: 'A valid clearance, uploaded after your ID and certificate' },
+  ...PREP_STEPS_WITH_CERTIFICATE.slice(4),
+];
+
 /** Tips shown before the ID photo is taken. */
 const PHOTO_TIPS = [
   'Place it on a flat, dark surface',
@@ -748,7 +755,7 @@ export default function SPVerificationScreen({ onBack, onEditProfile, onVerified
               Clients only see and hire verified providers. It takes about 3 minutes.
             </Text>
             {profileIncomplete && profileNoticeView}
-            <PrepCard steps={newShape ? PREP_STEPS_WITH_CERTIFICATE : PREP_STEPS} profileItems={profileChecks(profile, providerProfile)} />
+            <PrepCard steps={!newShape ? PREP_STEPS : verification?.clearance_required ? PREP_STEPS_WITH_CLEARANCE : PREP_STEPS_WITH_CERTIFICATE} profileItems={profileChecks(profile, providerProfile)} />
             <Tap
               style={styles.protectLink}
               onPress={() => setProtectOpen(true)}

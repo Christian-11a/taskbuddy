@@ -434,6 +434,8 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
   const setupSteps = providerSetupSteps(profile, providerProfile, verifyState, payoutLinked, {
     certificate,
     identityApproved: verification?.identity !== undefined ? verification.identity === 'approved' : undefined,
+    clearanceRequired: verification?.clearance_required,
+    clearance: verification?.clearance,
   });
   // The setup list stays up until every step is done. A payout lookup still running (null) does not hold it open.
   const setupComplete = setupSteps.every((step) => step.done || (step.id === 'payout' && payoutLinked === null));
@@ -558,7 +560,7 @@ export default function SPHomeScreen({ onNavigate, tourOffer }: SPHomeScreenProp
               verifyState={verifyState}
               verified={isVerified}
               categoryName={providerProfile?.service_categories?.name ?? null}
-              onStep={(step) => (step.opensCertificate ? openCertificate() : onNavigate(step.id === 'verify' ? 'Verification' : step.id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
+              onStep={(step) => (step.opensClearance ? onNavigate('Clearance') : step.opensCertificate ? openCertificate() : onNavigate(step.id === 'verify' ? 'Verification' : step.id === 'payout' ? 'Payout Account' : 'Edit Profile'))}
               setupTour={setupTour}
             />
           )}

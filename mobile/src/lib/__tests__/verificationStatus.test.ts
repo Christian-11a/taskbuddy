@@ -182,3 +182,16 @@ describe('reconcileVerification', () => {
     expect(reconcileVerification(ok, { verified: false, identityVerified: false })).toBe(ok);
   });
 });
+
+describe('canWorkService with the clearance (0082)', () => {
+  const me = (clearance: string, clearance_required: boolean) =>
+    ({ identity: 'approved', certificate: 'approved', verified: false, services: [{ category_id: 1, name: 'Plumbing', primary: true, certificate: 'approved' }], clearance, clearance_required } as never);
+  it('refuses every service while a required clearance is missing', () => {
+    expect(canWorkService(me('none', true), 1)).toBe(false);
+    expect(canWorkService(me('rejected', true), 1)).toBe(false);
+  });
+  it('allows it once approved, or while not required', () => {
+    expect(canWorkService(me('approved', true), 1)).toBe(true);
+    expect(canWorkService(me('none', false), 1)).toBe(true);
+  });
+});
